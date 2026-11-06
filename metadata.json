@@ -1,0 +1,8 @@
+{
+  "name": "Remix Pixel Empire ",
+  "description": "Xây dựng thành trì, mở rộng lãnh thổ và chinh phục bản đồ pixel trong game chiến thuật thời gian thực hấp dẫn.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
