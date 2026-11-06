@@ -183,13 +183,13 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                   </div>
 
                   <button
-                    disabled={!canAfford || (!portValid && actualCount <= 1)}
+                    disabled={!canAfford || (isPort && !portValid)}
                     onClick={() => {
                       onBuild(type, actualCount);
                       onClose();
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all active:scale-95 ${
-                      canAfford && (portValid || actualCount > 1)
+                      canAfford && (!isPort || portValid)
                         ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md'
                         : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
                     }`}

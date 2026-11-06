@@ -66,7 +66,7 @@ export default function App() {
   const lightningFlashRef = useRef<{ startTime: number; duration: number } | null>(null);
   const nextLightningTimeRef = useRef<number>(0);
 
-  // Trạng thái Minimap & Settings Modal
+  // Trạng thái Minimap & Settings Modal & Sương Mù Chiến Tranh (Fog of War)
   const [showMinimap, setShowMinimap] = useState<boolean>(() => {
     try {
       return localStorage.getItem('pixel_empire_show_minimap') !== 'false';
@@ -74,6 +74,26 @@ export default function App() {
       return true;
     }
   });
+  const [fogOfWarEnabled, setFogOfWarEnabled] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('pixel_empire_fog_of_war') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const fogOfWarEnabledRef = useRef<boolean>(fogOfWarEnabled);
+  fogOfWarEnabledRef.current = fogOfWarEnabled;
+
+  const handleToggleFogOfWar = useCallback(() => {
+    setFogOfWarEnabled(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('pixel_empire_fog_of_war', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
+
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
   // Đổi tên Người chơi
@@ -866,6 +886,85 @@ export default function App() {
       const minTileY = Math.max(0, Math.floor(-currentCamera.y / tileSizePx));
       const maxTileY = Math.min(size - 1, Math.ceil((vpH - currentCamera.y) / tileSizePx));
 
+      // 2.5. Tính toán Lưới Tầm Nhìn Sương Mù Chiến Tranh (Fog of War)
+      let visibleGrid: boolean[][] | null = null;
+      if (fogOfWarEnabledRef.current) {
+        const vGrid: boolean[][] = Array.from({ length: size }, () => new Array(size).fill(false));
+        visibleGrid = vGrid;
+        const myNationId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+
+        // a. Tầm nhìn từ tất cả thổ cư & công trình thuộc sở hữu người chơi
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            const t = tiles[y]?.[x];
+            if (t && t.owner === myNationId) {
+              let visionRad = 3.5;
+              if (t.building === 'CITY') visionRad = 5.0;
+              else if (t.building === 'BARRACKS') visionRad = 4.5;
+              else if (t.building === 'FORTRESS') visionRad = 5.5;
+              else if (t.building === 'PORT') visionRad = 5.0;
+              else if (t.building === 'ARTILLERY') visionRad = 6.0;
+              else if (t.building === 'MISSILE_SILO') visionRad = 6.5;
+              else if (t.building === 'AIR_DEFENSE') visionRad = 7.5; // Radar phòng không quét xa nhất
+
+              const rCeil = Math.ceil(visionRad);
+              for (let dy = -rCeil; dy <= rCeil; dy++) {
+                for (let dx = -rCeil; dx <= rCeil; dx++) {
+                  const vx = x + dx;
+                  const vy = y + dy;
+                  if (vx >= 0 && vx < size && vy >= 0 && vy < size) {
+                    if (Math.hypot(dx, dy) <= visionRad) {
+                      vGrid[vy][vx] = true;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // b. Tầm nhìn từ Tướng người chơi đang di chuyển / trú ngụ
+        const playerNat = nations[myNationId];
+        if (playerNat && playerNat.general) {
+          const gen = playerNat.general;
+          const gx = Math.floor(gen.x);
+          const gy = Math.floor(gen.y);
+          const genRad = 5.0;
+          const rCeil = Math.ceil(genRad);
+          for (let dy = -rCeil; dy <= rCeil; dy++) {
+            for (let dx = -rCeil; dx <= rCeil; dx++) {
+              const vx = gx + dx;
+              const vy = gy + dy;
+              if (vx >= 0 && vx < size && vy >= 0 && vy < size) {
+                if (Math.hypot(dx, dy) <= genRad) {
+                  vGrid[vy][vx] = true;
+                }
+              }
+            }
+          }
+        }
+
+        // c. Tầm nhìn từ các đợt tiến công đang di chuyển
+        attackWaves.forEach(wave => {
+          if (wave.fromNation === myNationId) {
+            const wx = Math.floor(wave.sourceX + (wave.targetX - wave.sourceX) * wave.progress);
+            const wy = Math.floor(wave.sourceY + (wave.targetY - wave.sourceY) * wave.progress);
+            const waveRad = 3.5;
+            for (let dy = -4; dy <= 4; dy++) {
+              for (let dx = -4; dx <= 4; dx++) {
+                const vx = wx + dx;
+                const vy = wy + dy;
+                if (vx >= 0 && vx < size && vy >= 0 && vy < size) {
+                  if (Math.hypot(dx, dy) <= waveRad) {
+                    vGrid[vy][vx] = true;
+                  }
+                }
+              }
+            }
+          }
+        });
+      }
+
       // 3. Hiệu ứng Hào quang Thủ Đô (Capital Aura Rings)
       const pulseTime = timestamp / 800;
       nations.forEach(nation => {
@@ -1009,12 +1108,30 @@ export default function App() {
         }
       }
 
-      // 4.5. Vẽ Vùng Chọn Ô Đất (Selection Highlight) sắc nét, định vị 4 góc
+      // 4.5. Vẽ Vùng Chọn Ô Đất (Selection Highlight) sắc nét, định vị 4 góc & Vòng tròn hiệu lực Pháo Đài
       if (selectedTileRef.current) {
         const st = selectedTileRef.current;
         const spx = st.x * TILE_PIXEL_SIZE;
         const spy = st.y * TILE_PIXEL_SIZE;
         const pulse = 0.5 + 0.5 * Math.sin(timestamp * 0.007);
+
+        // Nếu ô được chọn là Pháo Đài (FORTRESS), vẽ vòng tròn hiệu lực bán kính 4 ô màu trắng mờ
+        if (st.building === 'FORTRESS') {
+          const fcx = spx + TILE_PIXEL_SIZE / 2;
+          const fcy = spy + TILE_PIXEL_SIZE / 2;
+          const radiusPx = 4.0 * TILE_PIXEL_SIZE;
+
+          ctx.save();
+          ctx.beginPath();
+          ctx.arc(fcx, fcy, radiusPx, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 4]);
+          ctx.stroke();
+          ctx.restore();
+        }
 
         ctx.save();
         ctx.strokeStyle = st.owner === 1 ? `rgba(251, 191, 36, ${0.75 + pulse * 0.25})` : `rgba(56, 189, 248, ${0.75 + pulse * 0.25})`;
@@ -1028,6 +1145,28 @@ export default function App() {
         ctx.fillRect(spx + TILE_PIXEL_SIZE - cLen, spy, cLen, 2); ctx.fillRect(spx + TILE_PIXEL_SIZE - 2, spy, 2, cLen);
         ctx.fillRect(spx, spy + TILE_PIXEL_SIZE - 2, cLen, 2); ctx.fillRect(spx, spy + TILE_PIXEL_SIZE - cLen, 2, cLen);
         ctx.fillRect(spx + TILE_PIXEL_SIZE - cLen, spy + TILE_PIXEL_SIZE - 2, cLen, 2); ctx.fillRect(spx + TILE_PIXEL_SIZE - 2, spy + TILE_PIXEL_SIZE - cLen, 2, cLen);
+        ctx.restore();
+      }
+
+      // 4.6. Phủ Lớp Sương Mù Chiến Tranh (Fog of War Overlay)
+      if (visibleGrid) {
+        ctx.save();
+        for (let y = minTileY; y <= maxTileY; y++) {
+          for (let x = minTileX; x <= maxTileX; x++) {
+            if (!visibleGrid[y][x]) {
+              const px = x * TILE_PIXEL_SIZE;
+              const py = y * TILE_PIXEL_SIZE;
+
+              // Lớp màu sương mù mờ tối chiến thuật
+              ctx.fillStyle = 'rgba(10, 15, 29, 0.82)';
+              ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
+
+              // Họa tiết ô vuông sương mờ pixel
+              ctx.fillStyle = 'rgba(15, 23, 42, 0.35)';
+              ctx.fillRect(px + 4, py + 4, 16, 16);
+            }
+          }
+        }
         ctx.restore();
       }
 
@@ -1199,26 +1338,11 @@ export default function App() {
 
         // Vệt di chuyển Neon
         ctx.strokeStyle = wave.hasGeneral ? '#f59e0b' : (nation?.color || '#ffffff');
-        ctx.lineWidth = wave.hasGeneral ? 4.2 : 3.2;
+        ctx.lineWidth = wave.hasGeneral ? 4.2 : 2.8;
         ctx.beginPath();
         ctx.moveTo(wave.sourceX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2, wave.sourceY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2);
         ctx.lineTo(curX, curY);
         ctx.stroke();
-
-        // Đầu Mũi Tên Quân Đội
-        ctx.fillStyle = wave.hasGeneral ? '#f59e0b' : (nation?.color || '#ffffff');
-        ctx.beginPath();
-        ctx.arc(curX, curY, wave.hasGeneral ? 8 : 6.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-
-        // Nhãn quân số (Kèm icon ⚔️ +30% nếu có Tướng)
-        ctx.font = 'bold 10px sans-serif';
-        ctx.fillStyle = wave.hasGeneral ? '#f59e0b' : '#ffffff';
-        ctx.textAlign = 'center';
-        ctx.fillText(`${wave.hasGeneral ? '⚔️ ' : ''}${wave.troops}`, curX, curY - 9);
       });
 
       // Vẽ Tên Lửa Đang Bay (Flying Missiles)
@@ -2873,6 +2997,37 @@ export default function App() {
       cost += 5;
     }
 
+    // Hiệu ứng Pháo Đài (FORTRESS) xung quanh trong bán kính 4 ô (Cộng dồn giảm 50% mỗi lần: 1 cái +20%, 2 cái +30%, 3 cái +35%...)
+    if (tgt.owner > 0) {
+      const fortressBonuses: number[] = [];
+      const size = data.tiles.length;
+      const fortressRadius = 4.0;
+
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const ft = data.tiles[y][x];
+          if (ft && ft.owner === tgt.owner && ft.building === 'FORTRESS') {
+            const dist = Math.hypot(ft.x - tgt.x, ft.y - tgt.y);
+            if (dist <= fortressRadius) {
+              const fLvl = ft.buildingLevel || 1;
+              fortressBonuses.push(0.20 * fLvl);
+            }
+          }
+        }
+      }
+
+      if (fortressBonuses.length > 0) {
+        fortressBonuses.sort((a, b) => b - a);
+        let totalMultiplier = 1.0;
+        let currentWeight = 1.0;
+        for (let i = 0; i < fortressBonuses.length; i++) {
+          totalMultiplier += fortressBonuses[i] * currentWeight;
+          currentWeight *= 0.5;
+        }
+        cost = Math.round(cost * totalMultiplier);
+      }
+    }
+
     // Công nghệ quân sự cấp 3: Giảm 20% thủ Núi khi tiến công
     if (attacker?.techLevels?.military >= 3 && tgt.terrain === 'MOUNTAIN') {
       cost = Math.max(3, Math.round(cost * 0.80));
@@ -2905,6 +3060,7 @@ export default function App() {
       tgt.owner = wave.fromNation;
       tgt.building = 'NONE';
       tgt.buildingLevel = 1;
+      offscreenTerritoryDirtyRef.current = true;
 
       // Công nghệ kinh tế cấp 3: Thưởng +20 vàng khi chiếm ô đất
       if (attacker && attacker.techLevels?.economy >= 3) {
@@ -3672,6 +3828,8 @@ export default function App() {
                 camera={cameraRef.current}
                 darkTitan={gameDataRef.current.darkTitan}
                 darkTitans={gameDataRef.current.darkTitans}
+                fogOfWarEnabled={fogOfWarEnabled}
+                playerNationId={isMultiplayer ? myPlayerNationId : 1}
                 onNavigate={(mapX, mapY) => {
                   const vpW = viewportSizeRef.current.width || 360;
                   const vpH = viewportSizeRef.current.height || 560;
@@ -4472,6 +4630,8 @@ export default function App() {
         onToggleWeather={toggleWeather}
         weather={weather}
         onCycleWeather={cycleWeather}
+        fogOfWarEnabled={fogOfWarEnabled}
+        onToggleFogOfWar={handleToggleFogOfWar}
         onQuitToTitle={() => {
           saveGameRef.current();
           setGameState('TITLE');

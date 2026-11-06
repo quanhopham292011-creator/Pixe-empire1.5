@@ -9,6 +9,8 @@ interface MinimapProps {
   onNavigate: (mapX: number, mapY: number) => void;
   darkTitan?: DarkTitan | null;
   darkTitans?: DarkTitan[];
+  fogOfWarEnabled?: boolean;
+  playerNationId?: number;
 }
 
 export const Minimap: React.FC<MinimapProps> = ({
@@ -19,6 +21,8 @@ export const Minimap: React.FC<MinimapProps> = ({
   onNavigate,
   darkTitan,
   darkTitans,
+  fogOfWarEnabled = true,
+  playerNationId = 1,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -42,13 +46,45 @@ export const Minimap: React.FC<MinimapProps> = ({
 
     offCtx.clearRect(0, 0, size, size);
 
+    // Tính toán vùng tầm nhìn người chơi cho Minimap
+    const visibleMap: boolean[][] | null = fogOfWarEnabled
+      ? Array.from({ length: mapSize }, () => new Array(mapSize).fill(false))
+      : null;
+
+    if (visibleMap) {
+      for (let y = 0; y < mapSize; y++) {
+        for (let x = 0; x < mapSize; x++) {
+          const t = tiles[y]?.[x];
+          if (t && t.owner === playerNationId) {
+            const rad = t.building === 'AIR_DEFENSE' ? 7.5 : t.building === 'MISSILE_SILO' ? 6.5 : 4.5;
+            const rCeil = Math.ceil(rad);
+            for (let dy = -rCeil; dy <= rCeil; dy++) {
+              for (let dx = -rCeil; dx <= rCeil; dx++) {
+                const vx = x + dx;
+                const vy = y + dy;
+                if (vx >= 0 && vx < mapSize && vy >= 0 && vy < mapSize) {
+                  if (Math.hypot(dx, dy) <= rad) {
+                    visibleMap[vy][vx] = true;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     // Vẽ địa hình & lãnh thổ vào offscreen cache
     for (let y = 0; y < mapSize; y++) {
       for (let x = 0; x < mapSize; x++) {
         const t = tiles[y]?.[x];
         if (!t) continue;
 
-        if (t.terrain === 'WATER') {
+        const isVisible = !visibleMap || visibleMap[y][x];
+
+        if (!isVisible) {
+          offCtx.fillStyle = '#0b1120'; // Mù sương chiến tranh trên Minimap
+        } else if (t.terrain === 'WATER') {
           offCtx.fillStyle = '#1e3a8a';
         } else if (t.owner > 0) {
           const nat = nations.find(n => n.id === t.owner);
@@ -64,7 +100,7 @@ export const Minimap: React.FC<MinimapProps> = ({
         offCtx.fillRect(x * tileSize, y * tileSize, Math.ceil(tileSize), Math.ceil(tileSize));
       }
     }
-  }, [tiles, nations, mapSize]);
+  }, [tiles, nations, mapSize, fogOfWarEnabled, playerNationId]);
 
   // 2. Main Render: Vẽ cache lên canvas chính và render Viewport Box, Boss & Đồng minh nhanh gọn (60fps)
   useEffect(() => {

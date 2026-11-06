@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Volume2, VolumeX, Pause, Play, Map, LogOut, X, AlertTriangle, Settings, Cloud, CloudRain, Sun } from 'lucide-react';
+import { Volume2, VolumeX, Pause, Play, Map, LogOut, X, AlertTriangle, Settings, Cloud, CloudRain, Sun, EyeOff, Eye } from 'lucide-react';
 import { WeatherType } from '../types';
 
 interface SettingsModalProps {
@@ -15,6 +15,8 @@ interface SettingsModalProps {
   onToggleWeather: () => void;
   weather: WeatherType;
   onCycleWeather: () => void;
+  fogOfWarEnabled: boolean;
+  onToggleFogOfWar: () => void;
   onQuitToTitle: () => void;
 }
 
@@ -31,6 +33,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onToggleWeather,
   weather,
   onCycleWeather,
+  fogOfWarEnabled,
+  onToggleFogOfWar,
   onQuitToTitle,
 }) => {
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
@@ -187,7 +191,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
 
-            {/* 5. Nút Thoát trận */}
+            {/* 5. Sương Mù Chiến Tranh (Fog of War) */}
+            <div className="flex items-center justify-between p-3 bg-slate-950/80 rounded-2xl border border-slate-800">
+              <div className="flex items-center gap-2.5">
+                {fogOfWarEnabled ? <EyeOff className="w-4 h-4 text-purple-400" /> : <Eye className="w-4 h-4 text-slate-500" />}
+                <div>
+                  <div className="text-xs font-bold text-slate-200">Sương Mù Chiến Tranh</div>
+                  <div className="text-[10px] text-slate-400">Ẩn vùng nằm ngoài tầm nhìn quân đội</div>
+                </div>
+              </div>
+              <button
+                onClick={onToggleFogOfWar}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                  fogOfWarEnabled
+                    ? 'bg-purple-600/90 border-purple-400 text-white shadow'
+                    : 'bg-slate-800 border-slate-700 text-slate-400'
+                }`}
+              >
+                {fogOfWarEnabled ? 'BẬT' : 'TẮT'}
+              </button>
+            </div>
+
+            {/* 6. Nút Thoát trận */}
             <button
               onClick={() => setShowQuitConfirm(true)}
               className="w-full py-3 bg-red-950/60 hover:bg-red-900/80 border border-red-800/80 text-red-300 font-extrabold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 mt-2"
