@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { BuildingType, Tile, Nation } from '../types';
-import { BUILDING_INFO } from '../utils/constants';
+import { BUILDING_INFO, formatPopulation } from '../utils/constants';
 import { Building2, Swords, Shield, Anchor, Crosshair, Rocket, ShieldAlert, X, Check, Layers } from 'lucide-react';
 
 interface BuildModalProps {
@@ -86,7 +86,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                 <Building2 className="w-4 h-4 text-amber-400" /> Xây Dựng Hàng Loạt
               </h3>
               <span className="text-xs bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 px-2.5 py-0.5 rounded-full">
-                💰 {playerNation.gold.toLocaleString()} Vàng
+                💰 {formatPopulation(playerNation.gold)} Vàng
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5 truncate">
@@ -175,7 +175,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                 <div className="shrink-0 flex flex-col items-end gap-1">
                   <div className="text-right">
                     <span className={`text-xs font-bold font-mono block ${canAfford ? 'text-amber-400' : 'text-slate-500'}`}>
-                      {totalCost.toLocaleString()} Vàng
+                      {formatPopulation(totalCost)} Vàng
                     </span>
                     <span className="text-[10px] text-slate-400 font-mono block">
                       ({actualCount} cái)

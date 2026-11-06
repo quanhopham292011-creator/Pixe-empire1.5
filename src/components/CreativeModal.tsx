@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Nation, WeatherType, DarkTitan } from '../types';
+import { formatPopulation } from '../utils/constants';
 import { 
   Wand2, X, Sparkles, Coins, Users, Cloud, Sun, CloudRain, 
   Zap, Skull, Flame, ShieldAlert, Check, RefreshCw, Trash2, Award
@@ -109,7 +110,7 @@ export const CreativeModal: React.FC<CreativeModalProps> = ({
           <div className="bg-slate-950/80 border border-slate-800 p-3 rounded-2xl space-y-2.5">
             <div className="flex items-center justify-between text-amber-400 font-bold border-b border-slate-800 pb-1.5">
               <span className="flex items-center gap-1.5">
-                <Coins className="w-4 h-4 text-amber-400" /> Vàng Hiện Có: <strong className="text-white font-mono text-sm">{playerNation.gold.toLocaleString()}</strong>
+                <Coins className="w-4 h-4 text-amber-400" /> Vàng Hiện Có: <strong className="text-white font-mono text-sm">{formatPopulation(playerNation.gold)}</strong>
               </span>
             </div>
 
@@ -160,7 +161,7 @@ export const CreativeModal: React.FC<CreativeModalProps> = ({
           <div className="bg-slate-950/80 border border-slate-800 p-3 rounded-2xl space-y-2.5">
             <div className="flex items-center justify-between text-blue-400 font-bold border-b border-slate-800 pb-1.5">
               <span className="flex items-center gap-1.5">
-                <Users className="w-4 h-4 text-blue-400" /> Quân Số Hiện Có: <strong className="text-white font-mono text-sm">{playerNation.troops.toLocaleString()}</strong>
+                <Users className="w-4 h-4 text-blue-400" /> Quân Số Hiện Có: <strong className="text-white font-mono text-sm">{formatPopulation(playerNation.troops)}</strong>
               </span>
             </div>
 

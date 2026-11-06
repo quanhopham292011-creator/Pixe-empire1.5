@@ -112,11 +112,11 @@ export function formatPopulation(num: number): string {
   if (num <= 0) return '0';
   if (num < 1000) return `${num}`;
   if (num < 1_000_000) {
-    const k = (num / 1000).toFixed(1).replace(/\.0$/, '');
-    return `${k}K`;
+    const k = (num / 1000).toFixed(num % 1000 === 0 ? 0 : 1).replace(/\.0$/, '');
+    return `${k}k`;
   }
-  const m = (num / 1_000_000).toFixed(1).replace(/\.0$/, '');
-  return `${m}M`;
+  const m = (num / 1_000_000).toFixed(num % 1_000_000 === 0 ? 0 : 1).replace(/\.0$/, '');
+  return `${m}m`;
 }
 
 export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {

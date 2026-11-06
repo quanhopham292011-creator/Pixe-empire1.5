@@ -124,8 +124,8 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-xs text-slate-300 pb-2 border-b border-slate-800/60">
                   <span>🌍 {percent}% Đất ({nation.territoryCount} ô)</span>
                   <span>👥 {formatPopulation(nation.population || 0)} Dân</span>
-                  <span>⚔️ {nation.troops} Quân</span>
-                  <span>💰 {nation.gold} Vàng</span>
+                  <span>⚔️ {formatPopulation(nation.troops)} Quân</span>
+                  <span>💰 {formatPopulation(nation.gold)} Vàng</span>
                 </div>
 
                 {isSelf && onFocusNation && (

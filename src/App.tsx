@@ -2518,7 +2518,7 @@ export default function App() {
                 data.events.unshift({
                   id: Math.random().toString(),
                   title: '⚔️ TRẢM TÀ THẦN THÀNH CÔNG',
-                  description: `👑 Quân đội ${attackerNation.name} đã ĐÁNH GỤC TÀ THẦN CỔ ĐẠI! Nhận +${DARK_TITAN_CONFIG.BOUNTY_GOLD.toLocaleString()} Vàng & Buff Sức Mạnh +30% toàn diện trong 3 phút!`,
+                  description: `👑 Quân đội ${attackerNation.name} đã ĐÁNH GỤC TÀ THẦN CỔ ĐẠI! Nhận +${formatPopulation(DARK_TITAN_CONFIG.BOUNTY_GOLD)} Vàng & Buff Sức Mạnh +30% toàn diện trong 3 phút!`,
                   type: 'HARVEST',
                   targetNationId: attackerNation.id,
                   timestamp: formatGameTime(data.gameTimeSeconds),
@@ -2592,7 +2592,7 @@ export default function App() {
         x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
         y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
         color: '#fbbf24', size: 0, life: 35, maxLife: 35, vx: 0, vy: -0.7,
-        type: 'FLOAT_TEXT', text: `✨ Vàng: ${player.gold.toLocaleString()}`
+        type: 'FLOAT_TEXT', text: `✨ Vàng: ${formatPopulation(player.gold)}`
       });
       soundManager.playBuild();
     }
@@ -2615,7 +2615,7 @@ export default function App() {
         x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
         y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
         color: '#38bdf8', size: 0, life: 35, maxLife: 35, vx: 0, vy: -0.7,
-        type: 'FLOAT_TEXT', text: `⚔️ Quân: ${player.troops.toLocaleString()}`
+        type: 'FLOAT_TEXT', text: `⚔️ Quân: ${formatPopulation(player.troops)}`
       });
       soundManager.playClick();
     }
@@ -2796,7 +2796,7 @@ export default function App() {
 
       // 1. Kiểm tra đủ vàng không
       if (player.gold < cfg.cost) {
-        showMissileToast(`Thiếu ${(cfg.cost - player.gold).toLocaleString()} Vàng để phóng ${cfg.name}!`);
+        showMissileToast(`Thiếu ${formatPopulation(cfg.cost - player.gold)} Vàng để phóng ${cfg.name}!`);
         return;
       }
 

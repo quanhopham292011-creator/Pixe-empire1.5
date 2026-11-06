@@ -1,6 +1,7 @@
 import React from 'react';
 import { Nation } from '../types';
 import { Trophy, Crown, Medal, Flag } from 'lucide-react';
+import { formatPopulation } from '../utils/constants';
 
 interface MatchLeaderboardProps {
   nations: Record<number, Nation> | undefined;
@@ -41,7 +42,7 @@ export const MatchLeaderboard: React.FC<MatchLeaderboardProps> = ({
           </span>
         </div>
         <span className="text-[10px] text-slate-400 font-mono">
-          Tổng {safeTotalLand.toLocaleString()} ô đất
+          Tổng {formatPopulation(safeTotalLand)} ô đất
         </span>
       </div>
 
@@ -134,7 +135,7 @@ export const MatchLeaderboard: React.FC<MatchLeaderboardProps> = ({
                 {/* SỐ Ô LÃNH THỔ & TỶ LỆ % */}
                 <div className="flex items-center gap-1.5 flex-shrink-0 text-right">
                   <span className="text-xs font-mono font-bold text-slate-100">
-                    {territory.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">ô</span>
+                    {formatPopulation(territory)} <span className="text-[10px] text-slate-400 font-normal">ô</span>
                   </span>
                   <span className="text-[10px] font-mono font-black text-amber-400 bg-slate-800/80 px-1.5 py-0.5 rounded">
                     {percent}%

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Rocket, Flame, Sparkles, AlertTriangle, X, ShieldAlert, CheckCircle2, Clock, Plus } from 'lucide-react';
 import { Nation, Tile, MissileType } from '../types';
-import { MISSILE_CONFIG, MISSILE_SETTINGS } from '../utils/constants';
+import { MISSILE_CONFIG, MISSILE_SETTINGS, formatPopulation } from '../utils/constants';
 
 interface MissileModalProps {
   isOpen: boolean;
@@ -45,7 +45,7 @@ export const MissileModal: React.FC<MissileModalProps> = ({
                 BỆ PHÓNG TÊN LỬA CHIẾN LƯỢC
               </h3>
               <p className="text-[11px] text-amber-400 font-mono font-bold">
-                💰 Vàng của bạn: {playerNation.gold.toLocaleString()}
+                💰 Vàng của bạn: {formatPopulation(playerNation.gold)}
               </p>
             </div>
           </div>
@@ -82,7 +82,7 @@ export const MissileModal: React.FC<MissileModalProps> = ({
             }}
             className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[10px] rounded-lg border border-slate-700 flex items-center gap-1 active:scale-95 transition-all"
           >
-            <Plus className="w-3 h-3" /> Xây thêm ({MISSILE_SETTINGS.SILO_BUILD_COST.toLocaleString()}đ)
+            <Plus className="w-3 h-3" /> Xây thêm ({formatPopulation(MISSILE_SETTINGS.SILO_BUILD_COST)}đ)
           </button>
         </div>
 
@@ -95,7 +95,7 @@ export const MissileModal: React.FC<MissileModalProps> = ({
               <div className="text-xs">
                 <div className="font-bold text-rose-300">Bạn chưa có Bệ Phóng Tên Lửa nào!</div>
                 <div className="text-slate-300 mt-0.5 leading-relaxed">
-                  Để bắn tên lửa, hãy xây Bệ Tên Lửa (Silo) trên đất của bạn với giá {MISSILE_SETTINGS.SILO_BUILD_COST.toLocaleString()} vàng.
+                  Để bắn tên lửa, hãy xây Bệ Tên Lửa (Silo) trên đất của bạn với giá {formatPopulation(MISSILE_SETTINGS.SILO_BUILD_COST)} vàng.
                 </div>
                 <button
                   onClick={() => {
@@ -139,7 +139,7 @@ export const MissileModal: React.FC<MissileModalProps> = ({
                     <div>
                       <h4 className="font-black text-white text-sm">{m.name}</h4>
                       <span className="text-[10px] font-mono font-bold text-amber-400">
-                        Giá: {m.cost.toLocaleString()} Vàng
+                        Giá: {formatPopulation(m.cost)} Vàng
                       </span>
                     </div>
                   </div>
@@ -189,7 +189,7 @@ export const MissileModal: React.FC<MissileModalProps> = ({
                   {!hasReadySilo
                     ? 'Bệ Phóng Đang Hồi Chiêu'
                     : !canAfford
-                    ? `Thiếu ${(m.cost - playerNation.gold).toLocaleString()} Vàng`
+                    ? `Thiếu ${formatPopulation(m.cost - playerNation.gold)} Vàng`
                     : `Chọn Mục Tiêu & Khai Hỏa ${m.name}`}
                 </button>
               </div>
