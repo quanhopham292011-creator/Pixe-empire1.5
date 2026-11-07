@@ -3,7 +3,7 @@
  */
 
 import { Tile, TerrainType, MapDimension, Nation, NationPersonality, GameDifficulty, SettlementTier } from '../types';
-import { REAL_NATION_NAMES } from './constants';
+import { REAL_NATION_NAMES, GENERAL_ROSTER } from './constants';
 
 function pseudoNoise(x: number, y: number, seed: number): number {
   const n = Math.sin(x * 12.9898 + y * 78.233 + seed * 43758.5453) * 43758.5453;
@@ -336,17 +336,23 @@ export function generateWorldMap(
 
     const nColor = nationColors[i] || nationColors[i % nationColors.length];
 
-    // Tạo Tướng đại diện duy nhất cho quốc gia (chiếm 30% sức mạnh)
+    // Chọn ngẫu nhiên 1 trong 5 Đại Tướng từ GENERAL_ROSTER cho quốc gia
+    const rosterItem = GENERAL_ROSTER[Math.floor(Math.random() * GENERAL_ROSTER.length)];
+
+    // Tạo Tướng đại diện duy nhất cho quốc gia (chiếm 30% sức mạnh) kèm kỹ năng chủ động
     const generalObj = {
       id: `gen_${i}`,
       nationId: i,
-      name: generalName,
+      name: rosterItem.name,
       status: 'IDLE' as const, // Ban đầu nhàn rỗi ở thủ đô
       x: spawn.x,
       y: spawn.y,
       combatPowerBonus: 0.30, // 30% bonus
       reviveTimer: 0,
       isDeployedToFront: false,
+      skillId: rosterItem.skillId,
+      skillCooldown: 0,
+      skillActiveTimer: 0,
     };
 
     nations.push({

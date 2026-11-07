@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Tile, Nation, DarkTitan } from '../types';
+import { Tile, Nation, DarkTitan, FlyingMissile } from '../types';
 
 interface MinimapProps {
   tiles: Tile[][];
@@ -9,6 +9,7 @@ interface MinimapProps {
   onNavigate: (mapX: number, mapY: number) => void;
   darkTitan?: DarkTitan | null;
   darkTitans?: DarkTitan[];
+  flyingMissiles?: FlyingMissile[];
   fogOfWarEnabled?: boolean;
   playerNationId?: number;
 }
@@ -21,6 +22,7 @@ export const Minimap: React.FC<MinimapProps> = ({
   onNavigate,
   darkTitan,
   darkTitans,
+  flyingMissiles = [],
   fogOfWarEnabled = true,
   playerNationId = 1,
 }) => {
@@ -163,6 +165,29 @@ export const Minimap: React.FC<MinimapProps> = ({
       ctx.stroke();
     });
 
+    // Điểm đánh dấu Tên lửa đang bay hướng tới lãnh thổ người chơi (Radar Warning Siren)
+    const incomingToPlayer = flyingMissiles.filter(m => {
+      const tgt = tiles[m.targetY]?.[m.targetX];
+      return m.fromNation !== playerNationId && tgt && tgt.owner === playerNationId;
+    });
+
+    incomingToPlayer.forEach(m => {
+      const mx = m.targetX * tileSize + tileSize / 2;
+      const my = m.targetY * tileSize + tileSize / 2;
+
+      ctx.fillStyle = '#ef4444';
+      ctx.beginPath();
+      ctx.arc(mx, my, 4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Vòng tròn radar đỏ nhấp nháy
+      ctx.strokeStyle = '#f87171';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(mx, my, 7, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+
     // Khung nhìn Camera thực tế (Viewport Box)
     const TILE_PIXEL_SIZE = 24;
     const vpW = window.innerWidth || 360;
@@ -184,7 +209,7 @@ export const Minimap: React.FC<MinimapProps> = ({
     ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
     ctx.fillRect(boxX, boxY, boxW, boxH);
 
-  }, [camera, darkTitan, darkTitans, nations, mapSize]);
+  }, [camera, darkTitan, darkTitans, flyingMissiles, nations, mapSize]);
 
   const handleInteract = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;

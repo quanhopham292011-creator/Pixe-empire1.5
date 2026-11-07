@@ -3,7 +3,7 @@
  */
 
 export type TerrainType = 'LAND' | 'WATER' | 'MOUNTAIN' | 'FOREST';
-export type BuildingType = 'NONE' | 'CITY' | 'BARRACKS' | 'FORTRESS' | 'PORT' | 'ARTILLERY' | 'MISSILE_SILO' | 'AIR_DEFENSE';
+export type BuildingType = 'NONE' | 'CITY' | 'BARRACKS' | 'FORTRESS' | 'PORT' | 'ARTILLERY' | 'MISSILE_SILO' | 'AIR_DEFENSE' | 'LASER';
 
 export type NationPersonality = 'AGGRESSIVE' | 'DEFENSIVE' | 'MERCHANT' | 'OPPORTUNIST';
 export type DiplomacyStatus = 'WAR' | 'TRUCE' | 'ALLIANCE';
@@ -43,6 +43,7 @@ export interface Tile {
 export type SettlementTier = 'TIER_1_FOREST' | 'TIER_2_TRIBE' | 'TIER_3_ETHNIC' | 'PLAYER' | 'BOSS';
 export type ColonyCategory = 'FOREST' | 'TRIBE' | 'ETHNIC';
 export type GeneralStatus = 'IDLE' | 'MARCHING' | 'INJURED' | 'RECOVERING' | 'FALLEN';
+export type GeneralSkillId = 'INSPIRE_AURA' | 'MISSILE_BARRAGE' | 'IRON_BORDER_SHIELD' | 'SUPPLY_REINFORCE' | 'SHADOW_RAID';
 
 export interface General {
   id: string;
@@ -56,6 +57,9 @@ export interface General {
   combatPowerBonus: number; // 0.30 -> chiếm 30% sức mạnh quân đội / +30% hiệu suất
   reviveTimer: number;
   isDeployedToFront: boolean;
+  skillId: GeneralSkillId;
+  skillCooldown: number; // giây hồi còn lại
+  skillActiveTimer: number; // giây hiệu ứng còn lại
 }
 
 export interface Nation {
@@ -123,6 +127,33 @@ export interface FlyingMissile {
   isMirvSub?: boolean;
 }
 
+export interface SeaTradeRoute {
+  id: string;
+  fromNation: number;
+  toNation: number;
+  fromPortX: number;
+  fromPortY: number;
+  toPortX: number;
+  toPortY: number;
+  distanceTiles: number;
+  isIntercontinental: boolean;
+}
+
+export interface SeaTradeShip {
+  id: string;
+  routeId: string;
+  fromNation: number;
+  toNation: number;
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+  progress: number; // 0 đến 1
+  speed: number;
+  cargoGold: number;
+  isIntercontinental: boolean;
+}
+
 export interface GameParticle {
   x: number;
   y: number;
@@ -132,8 +163,10 @@ export interface GameParticle {
   maxLife: number;
   vx: number;
   vy: number;
-  type: 'SPARK' | 'DUST' | 'AURA' | 'FLOAT_TEXT';
+  type: 'SPARK' | 'DUST' | 'AURA' | 'FLOAT_TEXT' | 'LASER_BEAM';
   text?: string;
+  targetX?: number;
+  targetY?: number;
 }
 
 export interface GameEvent {
@@ -193,5 +226,24 @@ export interface CoalitionData {
   memberNationIds: number[]; // ID các nước tham gia Liên Minh
   targetSector: { x: number; y: number } | null; // Mục tiêu trọng điểm được liên minh chỉ định đồng loạt tiến công
   lastCoordinationTimer: number;
+}
+
+export interface PlayerProfile {
+  level: number;
+  exp: number;
+  pixelCoins: number;
+}
+
+export interface VictoryReward {
+  expGained: number;
+  coinsGained: number;
+  leveledUp: boolean;
+  oldLevel: number;
+  newLevel: number;
+  oldExp: number;
+  newExp: number;
+  reqExp: number;
+  isMultiplayer: boolean;
+  isCreative: boolean;
 }
 

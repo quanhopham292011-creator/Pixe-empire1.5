@@ -160,7 +160,15 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
+      style={{
+        paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))',
+        paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(0.75rem, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(0.75rem, env(safe-area-inset-right, 0px))'
+      }}
+    >
       <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-3xl p-5 sm:p-7 shadow-2xl overflow-y-auto max-h-[92vh]">
         {/* Nút đóng */}
         <button

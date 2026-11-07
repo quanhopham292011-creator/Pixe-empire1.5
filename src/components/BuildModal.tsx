@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { BuildingType, Tile, Nation } from '../types';
 import { BUILDING_INFO, formatPopulation } from '../utils/constants';
-import { Building2, Swords, Shield, Anchor, Crosshair, Rocket, ShieldAlert, X, Check, Layers } from 'lucide-react';
+import { X, Layers } from 'lucide-react';
+import { BuildingSvgIcon } from './BuildingSvgIcon';
 
 interface BuildModalProps {
   isOpen: boolean;
@@ -61,45 +62,37 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     return { totalCost, actualCount };
   };
 
-  const buildingTypes: Array<Exclude<BuildingType, 'NONE'>> = ['CITY', 'BARRACKS', 'FORTRESS', 'PORT', 'ARTILLERY', 'MISSILE_SILO', 'AIR_DEFENSE'];
-
-  const getIcon = (type: BuildingType) => {
-    switch (type) {
-      case 'CITY': return <Building2 className="w-4 h-4 text-amber-400" />;
-      case 'BARRACKS': return <Swords className="w-4 h-4 text-red-400" />;
-      case 'FORTRESS': return <Shield className="w-4 h-4 text-blue-400" />;
-      case 'PORT': return <Anchor className="w-4 h-4 text-cyan-400" />;
-      case 'ARTILLERY': return <Crosshair className="w-4 h-4 text-purple-400" />;
-      case 'MISSILE_SILO': return <Rocket className="w-4 h-4 text-rose-400" />;
-      case 'AIR_DEFENSE': return <ShieldAlert className="w-4 h-4 text-emerald-400" />;
-      default: return null;
-    }
-  };
+  const buildingTypes: Array<Exclude<BuildingType, 'NONE'>> = ['CITY', 'BARRACKS', 'FORTRESS', 'PORT', 'ARTILLERY', 'LASER', 'MISSILE_SILO', 'AIR_DEFENSE'];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/65 backdrop-blur-sm p-2 sm:p-3">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom duration-200">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/60">
+    <div 
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4"
+      style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
+    >
+      <div className="w-full max-w-lg bg-slate-950 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom duration-200 text-slate-100">
+        
+        {/* HEADER */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/80">
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-white text-base flex items-center gap-1.5">
-                <Building2 className="w-4 h-4 text-amber-400" /> Xây Dựng Hàng Loạt
+              <h3 className="font-extrabold text-white text-base tracking-wide flex items-center gap-2">
+                🏗️ TRUNG TÂM XÂY DỰNG
               </h3>
-              <span className="text-xs bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 px-2.5 py-0.5 rounded-full">
+              <span className="text-xs bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 px-2.5 py-0.5 rounded-full">
                 💰 {formatPopulation(playerNation.gold)} Vàng
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-              Vị trí chọn ({selectedTile.x}, {selectedTile.y}) · {selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi'} {selectedTile.hasHarborAccess ? '· Giáp biển' : ''}
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Vị trí: ({selectedTile.x}, {selectedTile.y}) · {selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi'} {selectedTile.hasHarborAccess ? '· Giáp biển' : ''}
             </p>
           </div>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-xl active:bg-slate-800">
+          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-xl active:bg-slate-800 bg-slate-900 border border-slate-800">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* THANH CHỌN SỐ LƯỢNG XÂY GỘP (BATCH BUILD) */}
-        <div className="px-3.5 py-2 bg-slate-950/80 border-b border-slate-800/80 space-y-1">
+        {/* BATCH SELECTOR */}
+        <div className="px-4 py-2.5 bg-slate-900/50 border-b border-slate-800 space-y-1.5">
           <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
             <span className="flex items-center gap-1 text-amber-400">
               <Layers className="w-3.5 h-3.5" /> Mốc số lượng xây gộp:
@@ -116,8 +109,8 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                 onClick={() => setSelectedBatch(opt)}
                 className={`py-1.5 rounded-lg text-[11px] font-bold border transition-all active:scale-95 flex items-center justify-center ${
                   selectedBatch === opt
-                    ? 'bg-amber-500 border-amber-400 text-slate-950 font-black shadow'
-                    : 'bg-slate-800/80 border-slate-700/60 text-slate-400 hover:text-white'
+                    ? 'bg-amber-500 border-amber-300 text-slate-950 font-black shadow'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
                 }`}
               >
                 {opt === 'MAX' ? 'MAX' : `x${opt}`}
@@ -126,7 +119,8 @@ export const BuildModal: React.FC<BuildModalProps> = ({
           </div>
         </div>
 
-        <div className="p-3 space-y-2 max-h-[60vh] overflow-y-auto">
+        {/* RADIAL / GRID OPENFRONT STYLE BUILDING SELECTION */}
+        <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[62vh] overflow-y-auto">
           {buildingTypes.map((type) => {
             const info = BUILDING_INFO[type];
             const { totalCost, actualCount } = calculateBatchCost(type, selectedBatch);
@@ -134,75 +128,55 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             const isPort = type === 'PORT';
             const portValid = isPort ? selectedTile.hasHarborAccess : true;
             const isCurrentBuilding = selectedTile.building === type;
+            const isDisabled = !canAfford || (isPort && !portValid);
 
             return (
-              <div
+              <button
                 key={type}
-                className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 transition-colors ${
+                disabled={isDisabled}
+                onClick={() => {
+                  onBuild(type, actualCount);
+                  onClose();
+                }}
+                className={`group relative p-3 rounded-2xl border flex flex-col items-center text-center transition-all active:scale-95 ${
                   isCurrentBuilding
-                    ? 'bg-blue-950/40 border-blue-500/50'
-                    : 'bg-slate-800/60 border-slate-700/60'
+                    ? 'bg-blue-950/40 border-blue-500/60 shadow-lg shadow-blue-500/10'
+                    : isDisabled
+                    ? 'bg-slate-900/40 border-slate-800/80 opacity-40 grayscale cursor-not-allowed'
+                    : 'bg-slate-900 hover:bg-slate-850 border-slate-700/80 hover:border-slate-600 shadow-md'
                 }`}
               >
-                <div className="flex items-start gap-2 min-w-0 flex-1">
-                  <div className="p-2 bg-slate-900 rounded-xl border border-slate-700 shrink-0">
-                    {getIcon(type)}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-bold text-white text-xs sm:text-sm">{info.name}</span>
-                      {isCurrentBuilding ? (
-                        <span className="text-[9px] bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30 px-1.5 py-0.2 rounded-md">
-                          Cấp {selectedTile.buildingLevel || 1} (Xây Chồng)
-                        </span>
-                      ) : (
-                        selectedTile.building !== 'NONE' && (
-                          <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.2 rounded-md">
-                            Đổi công trình
-                          </span>
-                        )
-                      )}
-                    </div>
-                    <p className="text-[10px] text-slate-300 truncate mt-0.5">{info.desc}</p>
-                    {isPort && !portValid && (
-                      <p className="text-[10px] text-amber-400 font-medium truncate">
-                        ⚠️ Ô này không giáp biển
-                      </p>
-                    )}
-                  </div>
+                {/* ICON TRẮNG LỚN PHONG CÁCH OPENFRONT */}
+                <div className="w-12 h-12 rounded-2xl bg-slate-950 border border-slate-700/80 flex items-center justify-center text-white mb-2 shadow-inner group-hover:scale-105 transition-transform">
+                  <BuildingSvgIcon type={type} className="w-7 h-7 text-white" />
                 </div>
 
-                <div className="shrink-0 flex flex-col items-end gap-1">
-                  <div className="text-right">
-                    <span className={`text-xs font-bold font-mono block ${canAfford ? 'text-amber-400' : 'text-slate-500'}`}>
-                      {formatPopulation(totalCost)} Vàng
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-mono block">
-                      ({actualCount} cái)
-                    </span>
-                  </div>
+                {/* TÊN CÔNG TRÌNH */}
+                <span className="font-bold text-white text-xs tracking-tight line-clamp-1 mb-0.5">
+                  {info.name}
+                </span>
 
-                  <button
-                    disabled={!canAfford || (isPort && !portValid)}
-                    onClick={() => {
-                      onBuild(type, actualCount);
-                      onClose();
-                    }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-all active:scale-95 ${
-                      canAfford && (!isPort || portValid)
-                        ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md'
-                        : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
-                    }`}
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    <span>
-                      {isCurrentBuilding 
-                        ? `Xây Chồng (${actualCount > 1 ? `x${actualCount}` : '+1 Cấp'})` 
-                        : `Xây (${actualCount > 1 ? `x${actualCount}` : 'x1'})`}
-                    </span>
-                  </button>
+                {/* TRẠNG THÁI / CẤP ĐỘ */}
+                {isCurrentBuilding ? (
+                  <span className="text-[9px] bg-amber-500/25 text-amber-300 font-bold border border-amber-500/40 px-2 py-0.5 rounded-full mb-1">
+                    Cấp {selectedTile.buildingLevel || 1} (Xây Chồng)
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-slate-400 line-clamp-1 mb-1">
+                    {info.desc}
+                  </span>
+                )}
+
+                {/* GIÁ TIỀN NHỎ BÊN DƯỚI */}
+                <div className="mt-auto pt-2 border-t border-slate-800/80 w-full flex items-center justify-between text-[11px]">
+                  <span className={`font-mono font-bold ${canAfford ? 'text-amber-400' : 'text-slate-500'}`}>
+                    {formatPopulation(totalCost)} 💰
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded">
+                    {isCurrentBuilding ? `+${actualCount}` : `x${actualCount}`}
+                  </span>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>

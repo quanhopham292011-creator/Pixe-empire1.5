@@ -1,4 +1,4 @@
-import { TechNode, BuildingType, MissileType } from '../types';
+import { TechNode, BuildingType, MissileType, GeneralSkillId } from '../types';
 
 export const TILE_PIXEL_SIZE = 24; // Kích thước ô chuẩn 24px
 
@@ -167,6 +167,12 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
     baseCost: 50_000,
     icon: 'ShieldAlert',
   },
+  LASER: {
+    name: 'Tháp Laser Pink',
+    desc: 'Tự động quét & bắn tia laser hồng công nghệ cao xung quanh phạm vi mỗi 10s!',
+    baseCost: 220,
+    icon: 'Zap',
+  },
 };
 
 /**
@@ -250,5 +256,73 @@ export function formatGameTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+}
+
+export interface GeneralRosterItem {
+  name: string;
+  skillId: GeneralSkillId;
+  skillName: string;
+  description: string;
+  duration: number; // giây hiệu ứng
+  cooldown: number; // giây hồi chiêu
+  emoji: string;
+}
+
+export const GENERAL_ROSTER: GeneralRosterItem[] = [
+  {
+    name: 'Đại Tướng Hắc Phong',
+    skillId: 'INSPIRE_AURA',
+    skillName: 'Hào Quang Khích Lệ',
+    description: 'Mọi đợt quân đang hành quân tăng tốc độ +50% trong 10 giây.',
+    duration: 10,
+    cooldown: 60,
+    emoji: '📯',
+  },
+  {
+    name: 'Đại Tướng Hỏa Long',
+    skillId: 'MISSILE_BARRAGE',
+    skillName: 'Mưa Tên Lửa Chiến Thuật',
+    description: 'Bắn 5 quả tên lửa nhỏ quét sạch quân và dọn đường biên giới địch (Tốn 150 vàng).',
+    duration: 0,
+    cooldown: 90,
+    emoji: '🚀',
+  },
+  {
+    name: 'Đại Tướng Thiết Bích',
+    skillId: 'IRON_BORDER_SHIELD',
+    skillName: 'Khiên Sắt Biên Giới',
+    description: 'Tất cả ô biên giới của quốc gia nhận +40% phòng thủ trong 12 giây.',
+    duration: 12,
+    cooldown: 75,
+    emoji: '🛡️',
+  },
+  {
+    name: 'Đại Tướng Kim Ưng',
+    skillId: 'SUPPLY_REINFORCE',
+    skillName: 'Mật Lệnh Tiếp Tế',
+    description: 'Ngay lập tức bổ sung 20% max quân và +10% vàng hiện có.',
+    duration: 0,
+    cooldown: 80,
+    emoji: '🦅',
+  },
+  {
+    name: 'Đại Tướng Dạ Ảnh',
+    skillId: 'SHADOW_RAID',
+    skillName: 'Đột Kích Bóng Đêm',
+    description: 'Trong 8 giây, mọi đợt quân chiếm ô tốn ít hơn 50% quân và bỏ qua phòng thủ địch.',
+    duration: 8,
+    cooldown: 70,
+    emoji: '🌙',
+  },
+];
+
+/**
+ * Hệ số sức mạnh kỹ năng: Boss = 1.25, Người chơi và Bot thường = 1.0
+ */
+export function getSkillPower(nation?: { tier?: string } | null): number {
+  if (nation && nation.tier === 'BOSS') {
+    return 1.25;
+  }
+  return 1.0;
 }
 

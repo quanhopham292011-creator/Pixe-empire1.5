@@ -32,7 +32,10 @@ export const MissileModal: React.FC<MissileModalProps> = ({
   const missiles = (['ATOM', 'HYDRO', 'MIRV'] as MissileType[]).map(key => MISSILE_CONFIG[key]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in">
+    <div 
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-2 sm:p-4 animate-in fade-in"
+      style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
+    >
       <div className="w-full max-w-lg bg-slate-900 border border-rose-500/40 rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col text-left">
         {/* HEADER */}
         <div className="flex items-center justify-between px-4 py-3 bg-slate-950/80 border-b border-slate-800">
