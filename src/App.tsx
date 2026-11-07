@@ -697,6 +697,17 @@ export default function App() {
     drawTerritoryBuffer(offscreenTerritoryCanvasRef.current, tiles, nations, size);
   }, []);
 
+  // Khởi tạo Text Width Cache đơn giản
+  const textWidthCache = new Map<string, number>();
+  const getCachedWidth = (ctx: CanvasRenderingContext2D, text: string, font: string): number => {
+    const key = `${font}:${text}`;
+    if (textWidthCache.has(key)) return textWidthCache.get(key)!;
+    ctx.font = font;
+    const width = ctx.measureText(text).width;
+    textWidthCache.set(key, width);
+    return width;
+  };
+
   // Vòng lặp Render 60 FPS Render Chuẩn OpenFront
   useEffect(() => {
     let animId: number;
@@ -1246,9 +1257,9 @@ export default function App() {
           const popStr = `👥 ${formatPopulation(nation.population || 0)}`;
 
           ctx.font = isMajorNation ? 'bold 11px sans-serif' : '10px sans-serif';
-          const nameWidth = ctx.measureText(nameStr).width;
+          const nameWidth = getCachedWidth(ctx, nameStr, ctx.font);
           ctx.font = '9px sans-serif';
-          const popWidth = ctx.measureText(popStr).width;
+          const popWidth = getCachedWidth(ctx, popStr, ctx.font);
           const boxWidth = Math.max(nameWidth, popWidth) + (isMajorNation ? 16 : 12);
           const boxHeight = isMajorNation ? 28 : 24;
 
@@ -1314,8 +1325,8 @@ export default function App() {
           ctx.strokeStyle = '#f59e0b';
           ctx.lineWidth = 1.0;
           const tagText = `⚔️ ${gen.name} (+30%)`;
-          ctx.font = 'bold 9px sans-serif';
-          const tw = ctx.measureText(tagText).width + 8;
+          const font = 'bold 9px sans-serif';
+          const tw = getCachedWidth(ctx, tagText, font) + 8;
           ctx.fillRect(gx - tw / 2, gy - 20, tw, 14);
           ctx.strokeRect(gx - tw / 2, gy - 20, tw, 14);
 
@@ -1452,8 +1463,8 @@ export default function App() {
         const remSec = titan.remainingTime % 60;
         const titanLabel = `👿 TÀ THẦN [${remMin}:${remSec.toString().padStart(2, '0')}]`;
 
-        ctx.font = 'bold 9px sans-serif';
-        const tlw = ctx.measureText(titanLabel).width + 10;
+        const font = 'bold 9px sans-serif';
+        const tlw = getCachedWidth(ctx, titanLabel, font) + 10;
         ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
         ctx.strokeStyle = '#dc2626';
         ctx.lineWidth = 1.2;
@@ -2970,6 +2981,9 @@ export default function App() {
     multiplayerClient.onPlayerDisconnected = (info) => {
       setMultiplayerBanner(info.message);
       setTimeout(() => setMultiplayerBanner(null), 6000);
+      
+      // Nếu host thoát, server sẽ tự động cập nhật ROOM_UPDATED với host mới.
+      // Chỉ cần cập nhật trạng thái local nếu cần.
     };
 
     return () => {
@@ -3626,7 +3640,7 @@ export default function App() {
       {(gameState === 'PLAYING' || gameState === 'VICTORY' || gameState === 'DEFEAT') && (
         <>
           {/* THANH ĐIỀU HÀNH & NÚT CỐ ĐỊNH GÓC TRÊN */}
-          <header className="flex items-center justify-between px-2.5 py-1.5 sm:px-3 sm:py-2 bg-slate-900/95 border-b border-slate-800 z-40 shrink-0">
+          <header className="flex flex-wrap items-center justify-between px-2 py-1.5 sm:px-3 sm:py-2 bg-slate-900/95 border-b border-slate-800 z-40 shrink-0 gap-2">
             {/* THỐNG KÊ TÀI NGUYÊN (TỰ CO CO GIÃN HỢP LÝ TRÊN MÀN HÌNH NHỎ) */}
             <div className="flex items-center gap-1 sm:gap-2 min-w-0 overflow-hidden">
               <div className="flex items-center gap-1 bg-slate-950/80 px-2 py-1 rounded-lg sm:rounded-xl border border-slate-800 shrink-0">
@@ -4348,7 +4362,7 @@ export default function App() {
 
 
           {/* THANH DƯỚI CÙNG: THANH TRƯỢT ĐIỀU QUÂN & CÔNG CỤ TINH GỌN */}
-          <footer className="bg-slate-900/95 border-t border-slate-800 p-2 sm:p-2.5 z-20 shrink-0 space-y-1.5">
+          <footer className="bg-slate-900/95 border-t border-slate-800 p-2 sm:p-2.5 z-20 shrink-0">
             {/* HÀNG SLIDER CHỈNH QUÂN ĐỘI & TRẠNG THÁI TƯỚNG GỌN GÀNG */}
             <div className="bg-slate-950/80 px-2.5 py-1.5 rounded-xl border border-slate-800 space-y-1">
               <div className="flex items-center justify-between text-[11px] font-bold">
