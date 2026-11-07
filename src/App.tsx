@@ -4364,10 +4364,10 @@ export default function App() {
           {/* THANH DƯỚI CÙNG: THANH TRƯỢT ĐIỀU QUÂN & CÔNG CỤ TINH GỌN */}
           <footer className="bg-slate-900/95 border-t border-slate-800 p-2 sm:p-2.5 z-20 shrink-0">
             {/* HÀNG SLIDER CHỈNH QUÂN ĐỘI & TRẠNG THÁI TƯỚNG GỌN GÀNG */}
-            <div className="bg-slate-950/80 px-2.5 py-1.5 rounded-xl border border-slate-800 space-y-1">
+            <div className="bg-slate-950/80 px-2.5 py-2 rounded-xl border border-slate-800 space-y-2">
               <div className="flex items-center justify-between text-[11px] font-bold">
                 <span className="text-slate-300 flex items-center gap-1">
-                  <Swords className="w-3.5 h-3.5 text-amber-400" /> Tỉ lệ xuất quân:
+                  <Swords className="w-4 h-4 text-amber-400" /> Tỉ lệ xuất quân:
                 </span>
                 <span className="text-amber-400 font-mono text-[11px]">
                   {attackPercent}% → <strong className="text-white font-extrabold">{actualAttackTroops} Quân</strong>
@@ -4381,16 +4381,16 @@ export default function App() {
                   max="100"
                   value={attackPercent}
                   onChange={(e) => setAttackPercent(Number(e.target.value))}
-                  className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                  className="w-full h-4 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
                 />
 
-                {/* Các nút bấm nhanh 25%, 50%, 75%, 100% */}
+                {/* Các nút bấm nhanh 25%, 50%, 75%, 100% - Tăng touch target */}
                 <div className="flex items-center gap-1 shrink-0">
                   {[25, 50, 75, 100].map(pct => (
                     <button
                       key={pct}
                       onClick={() => setAttackPercent(pct)}
-                      className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition-all ${
+                      className={`px-2.5 py-1.5 rounded text-[10px] font-bold border transition-all ${
                         attackPercent === pct
                           ? 'bg-amber-500 border-amber-300 text-slate-950 font-extrabold'
                           : 'bg-slate-800 border-slate-700/80 text-slate-400'
@@ -4410,14 +4410,13 @@ export default function App() {
                 const isInjured = pGen.status === 'RECOVERING';
 
                 return (
-                  <div className="flex items-center justify-between text-[10px] bg-slate-900/70 px-2 py-1 rounded-lg border border-slate-800/80 text-slate-300">
+                  <div className="flex flex-wrap items-center justify-between text-[11px] bg-slate-900/70 px-2.5 py-2 rounded-lg border border-slate-800/80 text-slate-300 gap-2">
                     <div className="flex items-center gap-1 font-bold text-amber-400">
-                      <Crown className="w-3 h-3" /> {pGen.name}
-                      <span className="text-[9px] text-slate-400 font-normal hidden xs:inline">(+30% Sức mạnh)</span>
+                      <Crown className="w-4 h-4" /> {pGen.name}
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] ${
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      <span className={`font-bold px-2 py-1 rounded text-[10px] ${
                         isMarching 
                           ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40 animate-pulse' 
                           : isInjured 
@@ -4433,7 +4432,7 @@ export default function App() {
                             setPlayerGeneralDeployMode(prev => !prev);
                             soundManager.playClick();
                           }}
-                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition-colors ${
+                          className={`px-2 py-1 rounded text-[10px] font-bold border transition-colors ${
                             playerGeneralDeployMode 
                               ? 'bg-amber-500/20 border-amber-500/60 text-amber-300' 
                               : 'bg-slate-800 border-slate-700 text-slate-400'
