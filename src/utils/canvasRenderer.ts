@@ -1,86 +1,163 @@
 import { Tile, Nation } from '../types';
 import { TILE_PIXEL_SIZE } from './constants';
 
-// Buffer 1: Render Địa Hình Tĩnh Tối Ưu Đồ Họa Pixel (Biển, Bọt Sóng, Núi Tuyết, Tán Rừng)
+const SUB = 6;
+
+function hash(x: number, y: number): number {
+  let h = (x * 374761393 + y * 668265263) | 0;
+  h = (h ^ (h >> 13)) * 1274126177;
+  h = h ^ (h >> 16);
+  return ((h >>> 0) % 10000) / 10000;
+}
+
+function lerp(a: number, b: number, t: number) {
+  return a + (b - a) * t;
+}
+
+const LAND_RAMP: [number, number, number, number][] = [
+  [0.0, 172, 210, 122],
+  [0.3, 142, 192, 96],
+  [0.5, 226, 206, 156],
+  [0.75, 212, 186, 142],
+  [1.0, 250, 250, 247],
+];
+
+function landColor(h: number): [number, number, number] {
+  const v = Math.max(0, Math.min(1, h));
+  for (let i = 0; i < LAND_RAMP.length - 1; i++) {
+    const a = LAND_RAMP[i];
+    const b = LAND_RAMP[i + 1];
+    if (v <= b[0]) {
+      const t = (v - a[0]) / (b[0] - a[0]);
+      return [lerp(a[1], b[1], t), lerp(a[2], b[2], t), lerp(a[3], b[3], t)];
+    }
+  }
+  const l = LAND_RAMP[LAND_RAMP.length - 1];
+  return [l[1], l[2], l[3]];
+}
+
+function waterColor(depth: number): [number, number, number] {
+  const t = Math.max(0, Math.min(1, depth));
+  return [lerp(96, 40, t), lerp(166, 104, t), lerp(210, 168, t)];
+}
+
 export function drawTerrainBuffer(offCanvas: HTMLCanvasElement, tiles: Tile[][], size: number) {
   offCanvas.width = size * TILE_PIXEL_SIZE;
   offCanvas.height = size * TILE_PIXEL_SIZE;
   const ctx = offCanvas.getContext('2d');
   if (!ctx) return;
 
-  ctx.imageSmoothingEnabled = false;
-
+  const dist: number[][] = [];
+  const queue: [number, number][] = [];
   for (let y = 0; y < size; y++) {
+    dist[y] = [];
     for (let x = 0; x < size; x++) {
       const t = tiles[y]?.[x];
-      if (!t) continue;
-
-      const px = x * TILE_PIXEL_SIZE;
-      const py = y * TILE_PIXEL_SIZE;
-
-      if (t.terrain === 'WATER') {
-        // Nền biển đại dương sâu
-        ctx.fillStyle = '#1e3a8a';
-        ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
-
-        // Họa tiết sóng biển nhẹ nhàng
-        ctx.fillStyle = '#2563eb';
-        ctx.fillRect(px + 3, py + 4, 10, 2);
-        ctx.fillRect(px + 12, py + 14, 8, 2);
-
-        // Đường bọt sóng biển ven bờ (khi tiếp giáp Đất liền)
-        const hasLandNeighbor = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]].some(
-          ([nx, ny]) => nx >= 0 && nx < size && ny >= 0 && ny < size && tiles[ny][nx].terrain !== 'WATER'
-        );
-        if (hasLandNeighbor) {
-          ctx.fillStyle = 'rgba(56, 189, 248, 0.45)';
-          ctx.fillRect(px + 1, py + 1, TILE_PIXEL_SIZE - 2, TILE_PIXEL_SIZE - 2);
-        }
-      } else if (t.terrain === 'MOUNTAIN') {
-        // Núi cao có vách đá và tuyết đỉnh núi
-        ctx.fillStyle = '#334155';
-        ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
-
-        // Vách bóng râm núi
-        ctx.fillStyle = '#1e293b';
-        ctx.fillRect(px + 12, py + 4, 10, 18);
-
-        // Đỉnh núi tuyết trắng chói
-        ctx.fillStyle = '#f8fafc';
-        ctx.beginPath();
-        ctx.moveTo(px + 12, py + 2);
-        ctx.lineTo(px + 5, py + 10);
-        ctx.lineTo(px + 19, py + 10);
-        ctx.closePath();
-        ctx.fill();
-      } else if (t.terrain === 'FOREST') {
-        // Nền đất rừng
-        ctx.fillStyle = '#064e3b';
-        ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
-
-        // Tán cây xanh nhiều lớp
-        ctx.fillStyle = '#15803d';
-        ctx.fillRect(px + 2, py + 2, 20, 20);
-
-        ctx.fillStyle = '#16a34a';
-        ctx.fillRect(px + 5, py + 5, 14, 14);
-
-        ctx.fillStyle = '#4ade80';
-        ctx.fillRect(px + 7, py + 7, 5, 5);
+      if (t && t.terrain !== 'WATER') {
+        dist[y][x] = 0;
+        queue.push([x, y]);
       } else {
-        // Đất liền thường
-        ctx.fillStyle = '#334155';
-        ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
-
-        ctx.fillStyle = '#475569';
-        ctx.fillRect(px + 4, py + 4, 3, 3);
-        ctx.fillRect(px + 16, py + 14, 3, 3);
+        dist[y][x] = 99;
       }
     }
   }
+  for (let i = 0; i < queue.length; i++) {
+    const [qx, qy] = queue[i];
+    const d = dist[qy][qx];
+    if (d >= 8) continue;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = qx + dx;
+      const ny = qy + dy;
+      if (nx >= 0 && nx < size && ny >= 0 && ny < size && dist[ny][nx] > d + 1) {
+        dist[ny][nx] = d + 1;
+        queue.push([nx, ny]);
+      }
+    }
+  }
+
+  const hTile: number[][] = [];
+  for (let y = 0; y < size; y++) {
+    hTile[y] = [];
+    for (let x = 0; x < size; x++) {
+      const t = tiles[y]?.[x];
+      const r = hash(x, y);
+      if (!t || t.terrain === 'WATER') {
+        hTile[y][x] = -0.15 - Math.min(dist[y][x], 8) / 8;
+      } else if (t.terrain === 'MOUNTAIN') {
+        hTile[y][x] = 0.72 + r * 0.28;
+      } else if (t.terrain === 'FOREST') {
+        hTile[y][x] = 0.12 + r * 0.14;
+      } else {
+        hTile[y][x] = 0.18 + r * 0.3;
+      }
+    }
+  }
+
+  const G = size * SUB;
+  const H = new Float32Array(G * G);
+  for (let gy = 0; gy < G; gy++) {
+    const fy = (gy + 0.5) / SUB - 0.5;
+    const y0 = Math.max(0, Math.min(size - 1, Math.floor(fy)));
+    const y1 = Math.min(size - 1, y0 + 1);
+    const ty = Math.max(0, Math.min(1, fy - y0));
+    for (let gx = 0; gx < G; gx++) {
+      const fx = (gx + 0.5) / SUB - 0.5;
+      const x0 = Math.max(0, Math.min(size - 1, Math.floor(fx)));
+      const x1 = Math.min(size - 1, x0 + 1);
+      const tx = Math.max(0, Math.min(1, fx - x0));
+      const top = lerp(hTile[y0][x0], hTile[y0][x1], tx);
+      const bot = lerp(hTile[y1][x0], hTile[y1][x1], tx);
+      let h = lerp(top, bot, ty);
+      h += (hash(gx, gy) - 0.5) * 0.06;
+      H[gy * G + gx] = h;
+    }
+  }
+
+  const tmp = document.createElement('canvas');
+  tmp.width = G;
+  tmp.height = G;
+  const tctx = tmp.getContext('2d');
+  if (!tctx) return;
+  const img = tctx.createImageData(G, G);
+  const px = img.data;
+  for (let gy = 0; gy < G; gy++) {
+    for (let gx = 0; gx < G; gx++) {
+      const h = H[gy * G + gx];
+      let rgb: [number, number, number];
+      if (h <= 0) {
+        rgb = waterColor((-h - 0.15) / 1.0);
+      } else {
+        rgb = landColor(h);
+        const a = H[Math.max(0, gy - 1) * G + Math.max(0, gx - 1)];
+        const b = H[Math.min(G - 1, gy + 1) * G + Math.min(G - 1, gx + 1)];
+        if (a > 0 && b > 0) {
+          const shade = 1 + Math.max(-0.12, Math.min(0.12, (a - b) * 1.6));
+          rgb = [rgb[0] * shade, rgb[1] * shade, rgb[2] * shade];
+        }
+      }
+      const i = (gy * G + gx) * 4;
+      px[i] = rgb[0];
+      px[i + 1] = rgb[1];
+      px[i + 2] = rgb[2];
+      px[i + 3] = 255;
+    }
+  }
+  tctx.putImageData(img, 0, 0);
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(tmp, 0, 0, size * TILE_PIXEL_SIZE, size * TILE_PIXEL_SIZE);
 }
 
-// Buffer 2: Render Đồ Họa Chuẩn OpenFront (Đường viền Neon chói & Nét căng)
+function darken(hex: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return '#000000';
+  const n = parseInt(m[1], 16);
+  const r = Math.floor(((n >> 16) & 255) * 0.55);
+  const g = Math.floor(((n >> 8) & 255) * 0.55);
+  const b = Math.floor((n & 255) * 0.55);
+  return `rgb(${r},${g},${b})`;
+}
+
 export function drawTerritoryBuffer(offCanvas: HTMLCanvasElement, tiles: Tile[][], nations: Nation[], size: number) {
   offCanvas.width = size * TILE_PIXEL_SIZE;
   offCanvas.height = size * TILE_PIXEL_SIZE;
@@ -93,47 +170,24 @@ export function drawTerritoryBuffer(offCanvas: HTMLCanvasElement, tiles: Tile[][
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const t = tiles[y]?.[x];
-      if (!t || t.terrain === 'WATER') continue;
+      if (!t || t.terrain === 'WATER' || t.owner <= 0) continue;
+      const nation = nations[t.owner];
+      if (!nation) continue;
 
       const px = x * TILE_PIXEL_SIZE;
       const py = y * TILE_PIXEL_SIZE;
 
-      if (t.owner > 0) {
-        const nation = nations[t.owner];
-        if (nation) {
-          ctx.fillStyle = nation.color;
-          ctx.globalAlpha = nation.isPlayer ? 0.88 : (nation.tier === 'BOSS' ? 0.82 : 0.65);
-          ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
-          ctx.globalAlpha = 1.0;
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = nation.color;
+      ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
+      ctx.globalAlpha = 1.0;
 
-          // Đường viền Neon chói OpenFront
-          const isNeonGlowing = nation.isPlayer || nation.tier === 'BOSS';
-          ctx.strokeStyle = nation.isPlayer ? '#38bdf8' : (nation.tier === 'BOSS' ? '#f43f5e' : nation.color);
-          ctx.lineWidth = isNeonGlowing ? 3.0 : 1.8;
-          ctx.shadowColor = nation.isPlayer ? '#00f2fe' : (nation.tier === 'BOSS' ? '#ff0055' : nation.color);
-          ctx.shadowBlur = isNeonGlowing ? 6 : 0;
-
-          if (y === 0 || tiles[y - 1][x].owner !== t.owner) {
-            ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + TILE_PIXEL_SIZE, py); ctx.stroke();
-          }
-          if (y === size - 1 || tiles[y + 1][x].owner !== t.owner) {
-            ctx.beginPath(); ctx.moveTo(px, py + TILE_PIXEL_SIZE); ctx.lineTo(px + TILE_PIXEL_SIZE, py + TILE_PIXEL_SIZE); ctx.stroke();
-          }
-          if (x === 0 || tiles[y][x - 1].owner !== t.owner) {
-            ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py + TILE_PIXEL_SIZE); ctx.stroke();
-          }
-          if (x === size - 1 || tiles[y][x + 1].owner !== t.owner) {
-            ctx.beginPath(); ctx.moveTo(px + TILE_PIXEL_SIZE, py); ctx.lineTo(px + TILE_PIXEL_SIZE, py + TILE_PIXEL_SIZE); ctx.stroke();
-          }
-          ctx.shadowBlur = 0;
-        }
-      } else {
-        // Đất trung lập xám sáng
-        ctx.fillStyle = '#64748b';
-        ctx.globalAlpha = 0.35;
-        ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
-        ctx.globalAlpha = 1.0;
-      }
+      ctx.fillStyle = darken(nation.color);
+      const e = 2;
+      if (y === 0 || tiles[y - 1][x].owner !== t.owner) ctx.fillRect(px, py, TILE_PIXEL_SIZE, e);
+      if (y === size - 1 || tiles[y + 1][x].owner !== t.owner) ctx.fillRect(px, py + TILE_PIXEL_SIZE - e, TILE_PIXEL_SIZE, e);
+      if (x === 0 || tiles[y][x - 1].owner !== t.owner) ctx.fillRect(px, py, e, TILE_PIXEL_SIZE);
+      if (x === size - 1 || tiles[y][x + 1].owner !== t.owner) ctx.fillRect(px + TILE_PIXEL_SIZE - e, py, e, TILE_PIXEL_SIZE);
     }
   }
 }

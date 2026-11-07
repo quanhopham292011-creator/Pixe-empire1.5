@@ -728,13 +728,13 @@ export default function App() {
       const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
 
       if (clientW > 0 && clientH > 0) {
+        viewportSizeRef.current = { width: clientW, height: clientH, dpr };
         const targetW = Math.floor(clientW * dpr);
         const targetH = Math.floor(clientH * dpr);
 
         if (canvas.width !== targetW || canvas.height !== targetH) {
           canvas.width = targetW;
           canvas.height = targetH;
-          viewportSizeRef.current = { width: clientW, height: clientH, dpr };
           offscreenTerrainDirtyRef.current = true;
           offscreenTerritoryDirtyRef.current = true;
         }
@@ -832,63 +832,7 @@ export default function App() {
         ctx.drawImage(offscreenTerritoryCanvasRef.current, 0, 0);
       }
 
-      // 1.5. Cập nhật vị trí & Vẽ bóng đổ mây trôi trên mặt đất (Cloud Shadows on Terrain)
-      if (weatherEnabledRef.current) {
-        const mapPx = size * TILE_PIXEL_SIZE;
-        const pList = weatherParticlesRef.current;
-        const pLen = pList.length;
-
-        // Cập nhật vị trí các hạt thời tiết theo deltaSec
-        for (let i = 0; i < pLen; i++) {
-          const p = pList[i];
-          p.x += p.vx * deltaSec;
-          p.y += p.vy * deltaSec;
-
-          if (p.type === 'CLOUD') {
-            if (p.x > mapPx + 160) {
-              p.x = -160;
-              p.y = Math.random() * mapPx;
-            }
-            if (p.y > mapPx + 120) {
-              p.y = -120;
-            }
-          } else if (p.type === 'RAIN_DROP') {
-            if (p.y > mapPx + 20 || p.x > mapPx + 20) {
-              p.y = -20;
-              p.x = Math.random() * (mapPx + 100) - 50;
-            }
-          }
-        }
-
-        // Vẽ bóng đổ mây trên nền đất (nhẹ nhàng, trong suốt)
-        ctx.save();
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.085)';
-        for (let i = 0; i < pLen; i++) {
-          const p = pList[i];
-          if (p.type === 'CLOUD' && p.puffs) {
-            const sx = (p.x + 14) * zoom + currentCamera.x;
-            const sy = (p.y + 18) * zoom + currentCamera.y;
-            if (sx < -140 || sx > vpW + 140 || sy < -100 || sy > vpH + 100) continue;
-
-            const shadowOffsetX = 14;
-            const shadowOffsetY = 18;
-            const puffs = p.puffs;
-            for (let j = 0; j < puffs.length; j++) {
-              const puff = puffs[j];
-              ctx.beginPath();
-              ctx.ellipse(
-                p.x + puff.dx + shadowOffsetX, 
-                p.y + puff.dy + shadowOffsetY, 
-                puff.w, 
-                puff.h, 
-                0, 0, Math.PI * 2
-              );
-              ctx.fill();
-            }
-          }
-        }
-        ctx.restore();
-      }
+      // 1.5. Xóa bỏ hiệu ứng thời tiết và bóng mây
 
       // 2. Frustum Culling
       const tileSizePx = TILE_PIXEL_SIZE * zoom;
@@ -976,56 +920,7 @@ export default function App() {
         });
       }
 
-      // 3. Hiệu ứng Hào quang Thủ Đô (Capital Aura Rings)
-      const pulseTime = timestamp / 800;
-      nations.forEach(nation => {
-        if (nation.id === 0 || nation.isEliminated) return;
-        const cx = nation.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-        const cy = nation.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-
-        if (cx * zoom + currentCamera.x >= -60 && cx * zoom + currentCamera.x <= vpW + 60 &&
-            cy * zoom + currentCamera.y >= -60 && cy * zoom + currentCamera.y <= vpH + 60) {
-          const isMajor = nation.isPlayer || nation.tier === 'BOSS';
-          if (isMajor) {
-            const auraRadius = (16 + Math.sin(pulseTime) * 4);
-            ctx.strokeStyle = nation.isPlayer ? 'rgba(56, 189, 248, 0.45)' : 'rgba(244, 63, 94, 0.45)';
-            ctx.lineWidth = 2.0;
-            ctx.beginPath();
-            ctx.arc(cx, cy, auraRadius, 0, Math.PI * 2);
-            ctx.stroke();
-          }
-        }
-      });
-
-      // 3.8. Vẽ Phòng Tuyến Chiến Hào (Tính năng 1 - Trenches & Supply Lines)
-      ctx.save();
-      ctx.lineWidth = 1.5;
-      for (let y = minTileY; y <= maxTileY; y++) {
-        for (let x = minTileX; x <= maxTileX; x++) {
-          const t = tiles[y]?.[x];
-          if (!t || t.owner === 0 || t.terrain === 'WATER') continue;
-          const cx = x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const cy = y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-
-          // Kết nối chiến hào sang ô bên phải nếu cùng chủ sở hữu
-          if (x + 1 < size && tiles[y][x + 1]?.owner === t.owner) {
-            ctx.strokeStyle = t.owner === 1 ? 'rgba(56, 189, 248, 0.28)' : 'rgba(239, 68, 68, 0.22)';
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(cx + TILE_PIXEL_SIZE, cy);
-            ctx.stroke();
-          }
-          // Kết nối chiến hào xuống ô bên dưới nếu cùng chủ sở hữu
-          if (y + 1 < size && tiles[y + 1]?.[x]?.owner === t.owner) {
-            ctx.strokeStyle = t.owner === 1 ? 'rgba(56, 189, 248, 0.28)' : 'rgba(239, 68, 68, 0.22)';
-            ctx.beginPath();
-            ctx.moveTo(cx, cy);
-            ctx.lineTo(cx, cy + TILE_PIXEL_SIZE);
-            ctx.stroke();
-          }
-        }
-      }
-      ctx.restore();
+      // 3. (Xóa bỏ aura và chiến hào)
 
       // 4. Vẽ Vùng Đất Cháy & Công Trình trong màn hình
       for (let y = minTileY; y <= maxTileY; y++) {
@@ -1035,75 +930,37 @@ export default function App() {
           const px = x * TILE_PIXEL_SIZE;
           const py = y * TILE_PIXEL_SIZE;
 
-          // 4.1. Hiệu ứng Vùng Đất Cháy / Chiến Địa (Tính năng 4 - Scorched Earth)
-          if (t.scorchedTimer && t.scorchedTimer > 0) {
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.82)';
-            ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
-            // Đốm than đỏ & tro xám
-            ctx.fillStyle = 'rgba(239, 68, 68, 0.65)';
-            ctx.fillRect(px + 4, py + 4, 3, 3);
-            ctx.fillStyle = 'rgba(249, 115, 22, 0.5)';
-            ctx.fillRect(px + 14, py + 12, 2, 2);
-          }
+          // 4.1. (Đã xóa bỏ hiệu ứng Vùng Đất Cháy)
 
-          // 4.2. Vẽ Công Trình
+          // 4.2. Vẽ Công Trình (Icon đơn giản)
           if (t.building !== 'NONE') {
-            ctx.fillStyle = '#fbbf24';
+            ctx.fillStyle = '#1e293b'; 
+            
             if (t.building === 'CITY') {
-              ctx.fillRect(px + 6, py + 8, 12, 10);
-              ctx.fillStyle = '#ef4444';
-              ctx.fillRect(px + 4, py + 4, 16, 5);
+              ctx.fillRect(px + 4, py + 4, 16, 16);
             } else if (t.building === 'BARRACKS') {
-              ctx.fillStyle = '#dc2626';
-              ctx.fillRect(px + 4, py + 8, 16, 12);
+              ctx.beginPath();
+              ctx.arc(px + 12, py + 12, 8, 0, Math.PI * 2);
+              ctx.fill();
             } else if (t.building === 'FORTRESS') {
-              ctx.fillStyle = '#475569';
-              ctx.fillRect(px + 4, py + 4, 16, 16);
+              ctx.beginPath();
+              ctx.moveTo(px + 12, py + 4);
+              ctx.lineTo(px + 4, py + 20);
+              ctx.lineTo(px + 20, py + 20);
+              ctx.closePath();
+              ctx.fill();
             } else if (t.building === 'PORT') {
-              ctx.fillStyle = '#38bdf8';
-              ctx.fillRect(px + 4, py + 10, 16, 10);
-            } else if (t.building === 'ARTILLERY') {
-              // Đại Pháo Tầm Xa (Tính năng 5): Bệ thép xám + Khối năng lượng cam + Nòng đôi
-              ctx.fillStyle = '#334155';
-              ctx.fillRect(px + 3, py + 12, 18, 8);
-              ctx.fillStyle = '#ea580c';
-              ctx.fillRect(px + 7, py + 8, 10, 5);
-              ctx.fillStyle = '#cbd5e1';
-              ctx.fillRect(px + 9, py + 2, 2, 8);
-              ctx.fillRect(px + 13, py + 2, 2, 8);
-            } else if (t.building === 'MISSILE_SILO') {
-              // Bệ Tên Lửa (Silo)
-              const isCooldown = (t.missileCooldown || 0) > 0;
-              if (isCooldown) {
-                // Đang hồi chiêu: Hiện màu đỏ rực cảnh báo kèm số giây
-                ctx.fillStyle = '#dc2626';
-                ctx.fillRect(px + 3, py + 3, 18, 18);
-                ctx.fillStyle = '#7f1d1d';
-                ctx.fillRect(px + 4, py + 4, 16, 16);
-                ctx.fillStyle = '#f87171';
-                ctx.fillRect(px + 10, py + 8, 4, 8);
-                ctx.fillStyle = '#ffffff';
-                ctx.font = 'bold 8px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.fillText(`${t.missileCooldown}s`, px + 12, py + 7);
-              } else {
-                // Sẵn sàng bắn
-                ctx.fillStyle = '#881337';
-                ctx.fillRect(px + 4, py + 4, 16, 16);
-                ctx.fillStyle = '#f43f5e';
-                ctx.fillRect(px + 10, py + 6, 4, 12);
-                ctx.fillStyle = '#ffb703';
-                ctx.fillRect(px + 11, py + 2, 2, 5);
-              }
-            } else if (t.building === 'AIR_DEFENSE') {
-              // Trạm Phòng Không
-              ctx.fillStyle = '#065f46';
-              ctx.fillRect(px + 4, py + 4, 16, 16);
-              ctx.fillStyle = '#10b981';
               ctx.fillRect(px + 8, py + 8, 8, 8);
-              ctx.fillStyle = '#ffffff';
-              ctx.fillRect(px + 11, py + 5, 2, 6);
+            } else if (t.building === 'ARTILLERY') {
+              ctx.beginPath();
+              ctx.arc(px + 12, py + 12, 6, 0, Math.PI * 2);
+              ctx.fill();
+            } else if (t.building === 'MISSILE_SILO') {
+              ctx.fillRect(px + 6, py + 6, 12, 12);
+            } else if (t.building === 'AIR_DEFENSE') {
+              ctx.strokeRect(px + 6, py + 6, 12, 12);
             }
+          }
 
             // Hiển thị nhãn cấp độ xây chồng công trình (L2, L3...)
             const lvl = t.buildingLevel || 1;
@@ -1115,7 +972,6 @@ export default function App() {
               ctx.textAlign = 'center';
               ctx.fillText(`L${lvl}`, px + TILE_PIXEL_SIZE - 6, py + 8);
             }
-          }
         }
       }
 
@@ -1253,39 +1109,19 @@ export default function App() {
             iconPrefix = '🛡️ ';
           }
 
-          const nameStr = `${iconPrefix}${nation.name}`;
-          const popStr = `👥 ${formatPopulation(nation.population || 0)}`;
-
-          ctx.font = isMajorNation ? 'bold 11px sans-serif' : '10px sans-serif';
-          const nameWidth = getCachedWidth(ctx, nameStr, ctx.font);
-          ctx.font = '9px sans-serif';
-          const popWidth = getCachedWidth(ctx, popStr, ctx.font);
-          const boxWidth = Math.max(nameWidth, popWidth) + (isMajorNation ? 16 : 12);
-          const boxHeight = isMajorNation ? 28 : 24;
-
-          ctx.fillStyle = isMajorNation ? 'rgba(15, 23, 42, 0.92)' : 'rgba(30, 41, 59, 0.85)';
-          ctx.strokeStyle = nation.color;
-          ctx.lineWidth = isMajorNation ? 2.0 : 1.2;
-
-          ctx.beginPath();
-          if (typeof ctx.roundRect === 'function') {
-            ctx.roundRect(pos.px - boxWidth / 2, pos.py - boxHeight / 2, boxWidth, boxHeight, 6);
-          } else {
-            ctx.rect(pos.px - boxWidth / 2, pos.py - boxHeight / 2, boxWidth, boxHeight);
-          }
-          ctx.fill();
-          ctx.stroke();
+          const nameStr = nation.name;
+          const popStr = `${formatPopulation(nation.population || 0)}`;
 
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
 
-          ctx.fillStyle = isMajorNation ? '#ffffff' : '#cbd5e1';
-          ctx.font = isMajorNation ? 'bold 10px sans-serif' : '9px sans-serif';
-          ctx.fillText(nameStr, pos.px, pos.py - (isMajorNation ? 6 : 5));
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 10px sans-serif';
+          ctx.fillText(nameStr, pos.px, pos.py - 5);
 
-          ctx.fillStyle = isMajorNation ? '#cbd5e1' : '#94a3b8';
+          ctx.fillStyle = '#e2e8f0';
           ctx.font = '9px sans-serif';
-          ctx.fillText(popStr, pos.px, pos.py + (isMajorNation ? 6 : 5));
+          ctx.fillText(popStr, pos.px, pos.py + 6);
         });
       }
 
