@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Volume2, VolumeX, Pause, Play, Map, LogOut, X, AlertTriangle, Settings, Cloud, CloudRain, Sun, EyeOff, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Volume2, VolumeX, Pause, Play, Map, LogOut, X, AlertTriangle, Settings, Cloud, CloudRain, Sun, EyeOff, Eye, Maximize2 } from 'lucide-react';
 import { WeatherType } from '../types';
 
 interface SettingsModalProps {
@@ -38,6 +38,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onQuitToTitle,
 }) => {
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  const [uiScale, setUiScale] = useState(() => localStorage.getItem('uiScale') || '95%');
+
+  useEffect(() => {
+    document.documentElement.style.fontSize = uiScale;
+    localStorage.setItem('uiScale', uiScale);
+  }, [uiScale]);
+
 
   if (!isOpen) return null;
 

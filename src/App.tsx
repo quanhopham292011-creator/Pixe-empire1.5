@@ -280,6 +280,7 @@ export default function App() {
 
   // Hiệu ứng rung màn hình, AI Coalition & Thành tựu
   const screenShakeRef = useRef<{ intensity: number; duration: number }>({ intensity: 0, duration: 0 });
+  const tileCountCacheRef = useRef<{ t: number; counts: number[] }>({ t: -1, counts: [] });
   const coalitionFormedRef = useRef<boolean>(false);
   const unlockedAchievementsRef = useRef<Set<string>>(new Set());
 
@@ -4239,6 +4240,58 @@ export default function App() {
     return false;
   }
 
+  function smartAttackTile(tile: Tile): boolean {
+    const data = gameDataRef.current;
+    const tiles = data.tiles;
+    const player = data.nations[1];
+    const size = tiles.length;
+    const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
+    const say = (text: string) => {
+      data.particles.push({ x: tile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2, y: tile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2, color: '#f87171', size: 0, life: 55, maxLife: 55, vx: 0, vy: -0.7, type: 'FLOAT_TEXT', text });
+    };
+    if (tile.owner === 1 || tile.terrain === 'WATER') return false;
+    if (player.troops < 5) { say('Không đủ quân (cần ít nhất 5)'); return false; }
+    if (tile.owner !== 0 && player.diplomacy[tile.owner]?.status !== 'WAR') { say('Chưa tuyên chiến với nước này'); return false; }
+    let launch: Tile | null = null;
+    let best = Infinity;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const t = tiles[y][x];
+        if (t.owner !== tile.owner || t.terrain === 'WATER') continue;
+        if (!DIRS.some(([dx, dy]) => tiles[y + dy]?.[x + dx]?.owner === 1)) continue;
+        const d = Math.hypot(x - tile.x, y - tile.y);
+        if (d < best) { best = d; launch = t; }
+      }
+    }
+    if (launch && tile.owner === 0 && best > 12) launch = null;
+    if (!launch) {
+      if (player.hasPort && tile.hasHarborAccess) launch = tile;
+      else { say(tile.owner === 0 ? 'Đất hoang quá xa biên giới' : 'Chưa giáp biên giới (cần cảng để đánh qua biển)'); return false; }
+    }
+    let source: Tile | null = null;
+    for (const [dx, dy] of DIRS) {
+      const t = tiles[launch.y + dy]?.[launch.x + dx];
+      if (t && t.owner === 1) { source = t; break; }
+    }
+    if (!source) {
+      let md = Infinity;
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          if (tiles[y][x].owner === 1) {
+            const d = Math.hypot(x - launch.x, y - launch.y);
+            if (d < md) { md = d; source = tiles[y][x]; }
+          }
+        }
+      }
+    }
+    if (!source) return false;
+    const troopsToSend = Math.max(5, Math.floor(player.troops * (attackPercent / 100)));
+    launchAttackWave(1, tile.owner, source, launch, troopsToSend);
+    const w = data.attackWaves[data.attackWaves.length - 1];
+    if (w && w.fromNation === 1 && w.targetX === launch.x && w.targetY === launch.y) { w.focusX = tile.x; w.focusY = tile.y; }
+    return true;
+  }
+
   const handleMapTap = (mapX: number, mapY: number, screenX: number, screenY: number) => {
     tapRipplesRef.current.push({
       x: mapX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
@@ -4253,13 +4306,10 @@ export default function App() {
 
     // Double tap attack
     const now = Date.now();
-    if (
-      lastTapRef.current.x === mapX && 
-      lastTapRef.current.y === mapY && 
-      (now - lastTapRef.current.time < 350) && 
-      targetTile.owner !== 1 && targetTile.terrain !== 'WATER' && !missileAimingModeRef.current
-    ) {
-      if (quickAttackTile(targetTile)) {
+    const last = lastTapRef.current;
+    const isDouble = (now - last.time < 500) && Math.max(Math.abs(last.x - mapX), Math.abs(last.y - mapY)) <= 2;
+    if (isDouble && targetTile.owner !== 1 && targetTile.terrain !== 'WATER' && !missileAimingModeRef.current) {
+      if (smartAttackTile(targetTile)) {
         setSelectedTile(null);
         selectedTileRef.current = null;
         lastTapRef.current = { x: -1, y: -1, time: 0 };
@@ -4673,6 +4723,37 @@ export default function App() {
       const defMult = defender.techLevels.defense === 1 ? 1.10 : defender.techLevels.defense === 2 ? 1.18 : 1.25;
       cost = Math.round(cost * defMult);
     }
+    if (defender && tgt.owner > 0) {
+      const cache = tileCountCacheRef.current;
+      if (cache.t !== data.gameTimeSeconds) {
+        const counts: number[] = [];
+        for (const row of data.tiles) for (const t of row) counts[t.owner] = (counts[t.owner] || 0) + 1;
+        cache.t = data.gameTimeSeconds; cache.counts = counts;
+      }
+      const density = defender.troops / Math.max(1, cache.counts[tgt.owner] || 1);
+      cost = Math.round(cost * Math.min(3, Math.max(0.7, 0.7 + density / 10)));
+    }
+    if (defender && tgt.owner > 0) {
+      const cache = tileCountCacheRef.current;
+      if (cache.t !== data.gameTimeSeconds) {
+        const counts: number[] = [];
+        for (const row of data.tiles) for (const t of row) counts[t.owner] = (counts[t.owner] || 0) + 1;
+        cache.t = data.gameTimeSeconds; cache.counts = counts;
+      }
+      const density = defender.troops / Math.max(1, cache.counts[tgt.owner] || 1);
+      cost = Math.round(cost * Math.min(3, Math.max(0.7, 0.7 + density / 10)));
+    }
+
+    if (defender && tgt.owner > 0) {
+      const cache = tileCountCacheRef.current;
+      if (cache.t !== data.gameTimeSeconds) {
+        const counts: number[] = [];
+        for (const row of data.tiles) for (const t of row) counts[t.owner] = (counts[t.owner] || 0) + 1;
+        cache.t = data.gameTimeSeconds; cache.counts = counts;
+      }
+      const density = defender.troops / Math.max(1, cache.counts[tgt.owner] || 1);
+      cost = Math.round(cost * Math.min(3, Math.max(0.7, 0.7 + density / 10)));
+    }
 
     // Kỹ năng 3: "Khiên Sắt Biên Giới" của Đại Tướng Thiết Bích (+40% phòng thủ ô biên giới, Boss +50%)
     if (!attackerHasShadowRaid && defender?.general?.skillId === 'IRON_BORDER_SHIELD' && (defender.general.skillActiveTimer || 0) > 0 && tgt.isBorder) {
@@ -4698,6 +4779,7 @@ export default function App() {
       tgt.owner = wave.fromNation;
       tgt.building = 'NONE';
       tgt.buildingLevel = 1;
+      if (defender && prevOwner > 0) defender.troops = Math.max(0, defender.troops - Math.round(cost * 0.5));
       offscreenTerritoryDirtyRef.current = true;
       fogBaseDirtyRef.current = true;
       dirtyTerritoryTilesRef.current.push({ x: tgt.x, y: tgt.y });
@@ -7138,7 +7220,7 @@ export default function App() {
 
       {/* TOAST THÔNG BÁO LỖI NẠP VÁN */}
       {loadErrorToast && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white font-bold px-4 py-2.5 rounded-2xl shadow-2xl text-xs flex items-center gap-2 border border-rose-400 animate-in slide-in-from-top">
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white font-bold px-4 py-2.5 rounded-2xl shadow-2xl text-xs flex items-center gap-2 border border-rose-400 animate-in slide-in-from-top pointer-events-none">
           <AlertTriangle className="w-4 h-4 shrink-0 text-white" />
           <span>{loadErrorToast}</span>
         </div>
@@ -7146,7 +7228,7 @@ export default function App() {
 
       {/* TOAST THÔNG BÁO TÊN LỬA / NGẮM BẮN */}
       {missileFeedbackToast && (
-        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-rose-500 text-rose-300 font-black px-4 py-3 rounded-2xl shadow-2xl text-xs flex items-center gap-2 backdrop-blur-md animate-in slide-in-from-top">
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-rose-500 text-rose-300 font-black px-4 py-3 rounded-2xl shadow-2xl text-xs flex items-center gap-2 backdrop-blur-md animate-in slide-in-from-top pointer-events-none">
           <Rocket className="w-4 h-4 text-rose-400 shrink-0 animate-bounce" />
           <span>{missileFeedbackToast}</span>
         </div>
@@ -7154,7 +7236,7 @@ export default function App() {
 
       {/* BANNER HƯỚNG DẪN KHI ĐANG Ở CHẾ ĐỘ NGẮM BẮN TÊN LỬA */}
       {missileAimingMode && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-rose-950/90 via-slate-900/95 to-amber-950/90 border border-rose-500/80 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md animate-in slide-in-from-top">
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-rose-950/90 via-slate-900/95 to-amber-950/90 border border-rose-500/80 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md animate-in slide-in-from-top pointer-events-none">
           <Rocket className="w-5 h-5 text-rose-400 animate-pulse shrink-0" />
           <div className="text-left">
             <div className="text-xs font-black text-amber-300">
