@@ -55,6 +55,21 @@ export type ClientMessage =
       buildingType: BuildingType;
       count: number;
     }
+  | {
+      type: 'STATE_SYNC';
+      nations: Array<{
+        id: number;
+        gold: number;
+        goldIncome: number;
+        troops: number;
+        maxTroops: number;
+        population: number;
+        territoryCount: number;
+        isEliminated: boolean;
+      }>;
+      darkTitans?: any[];
+      gameTimeSeconds?: number;
+    }
   | { type: 'CHAT'; text: string };
 
 export type ServerMessage =
@@ -79,6 +94,21 @@ export type ServerMessage =
       targetY: number;
       buildingType: BuildingType;
       count: number;
+    }
+  | {
+      type: 'STATE_SYNC';
+      nations: Array<{
+        id: number;
+        gold: number;
+        goldIncome: number;
+        troops: number;
+        maxTroops: number;
+        population: number;
+        territoryCount: number;
+        isEliminated: boolean;
+      }>;
+      darkTitans?: any[];
+      gameTimeSeconds?: number;
     }
   | { type: 'PLAYER_DISCONNECTED'; playerId: string; nationId: number; message: string }
   | { type: 'ERROR'; message: string };

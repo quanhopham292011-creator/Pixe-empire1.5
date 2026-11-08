@@ -14,7 +14,7 @@ interface MinimapProps {
   playerNationId?: number;
 }
 
-export const Minimap: React.FC<MinimapProps> = ({
+export const Minimap: React.FC<MinimapProps> = React.memo(({
   tiles,
   nations,
   mapSize,
@@ -48,9 +48,9 @@ export const Minimap: React.FC<MinimapProps> = ({
 
     offCtx.clearRect(0, 0, size, size);
 
-    // Tính toán vùng tầm nhìn người chơi cho Minimap
-    const visibleMap: boolean[][] | null = fogOfWarEnabled
-      ? Array.from({ length: mapSize }, () => new Array(mapSize).fill(false))
+    // Tính toán vùng tầm nhìn người chơi cho Minimap (Tối ưu dùng Uint8Array phẳng)
+    const visibleMap: Uint8Array | null = fogOfWarEnabled
+      ? new Uint8Array(mapSize * mapSize)
       : null;
 
     if (visibleMap) {
@@ -59,14 +59,15 @@ export const Minimap: React.FC<MinimapProps> = ({
           const t = tiles[y]?.[x];
           if (t && t.owner === playerNationId) {
             const rad = t.building === 'AIR_DEFENSE' ? 7.5 : t.building === 'MISSILE_SILO' ? 6.5 : 4.5;
+            const radSq = rad * rad;
             const rCeil = Math.ceil(rad);
             for (let dy = -rCeil; dy <= rCeil; dy++) {
               for (let dx = -rCeil; dx <= rCeil; dx++) {
-                const vx = x + dx;
-                const vy = y + dy;
-                if (vx >= 0 && vx < mapSize && vy >= 0 && vy < mapSize) {
-                  if (Math.hypot(dx, dy) <= rad) {
-                    visibleMap[vy][vx] = true;
+                if (dx * dx + dy * dy <= radSq) {
+                  const vx = x + dx;
+                  const vy = y + dy;
+                  if (vx >= 0 && vx < mapSize && vy >= 0 && vy < mapSize) {
+                    visibleMap[vy * mapSize + vx] = 1;
                   }
                 }
               }
@@ -76,21 +77,27 @@ export const Minimap: React.FC<MinimapProps> = ({
       }
     }
 
+    // Pre-build color lookup table per nation ID for fast tile rendering
+    const nationColorMap: string[] = [];
+    nations.forEach(n => {
+      if (n) nationColorMap[n.id] = n.color;
+    });
+
     // Vẽ địa hình & lãnh thổ vào offscreen cache
     for (let y = 0; y < mapSize; y++) {
+      const rowOffset = y * mapSize;
       for (let x = 0; x < mapSize; x++) {
         const t = tiles[y]?.[x];
         if (!t) continue;
 
-        const isVisible = !visibleMap || visibleMap[y][x];
+        const isVisible = !visibleMap || visibleMap[rowOffset + x] === 1;
 
         if (!isVisible) {
           offCtx.fillStyle = '#0b1120'; // Mù sương chiến tranh trên Minimap
         } else if (t.terrain === 'WATER') {
           offCtx.fillStyle = '#1e3a8a';
         } else if (t.owner > 0) {
-          const nat = nations.find(n => n.id === t.owner);
-          offCtx.fillStyle = nat?.color || '#cbd5e1';
+          offCtx.fillStyle = nationColorMap[t.owner] || '#cbd5e1';
         } else if (t.terrain === 'MOUNTAIN') {
           offCtx.fillStyle = '#475569';
         } else if (t.terrain === 'FOREST') {
@@ -238,4 +245,4 @@ export const Minimap: React.FC<MinimapProps> = ({
       />
     </div>
   );
-};
+});

@@ -127,19 +127,19 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
 }> = {
   CITY: {
     name: 'Thành Thị',
-    desc: 'Tăng mạnh thu nhập vàng và +40 trần dân số. Hỗ trợ xây chồng nâng cấp!',
+    desc: 'Tăng thu nhập vàng và tăng trần dân số.',
     baseCost: 120,
     icon: 'Building2',
   },
   BARRACKS: {
     name: 'Doanh Trại',
-    desc: 'Tăng tốc độ sinh quân và +80 trần dân số. Hỗ trợ xây chồng nâng cấp!',
+    desc: 'Tăng tốc độ sinh quân và tăng giới hạn quân tối đa. Hỗ trợ xây chồng nâng cấp!',
     baseCost: 140,
     icon: 'Swords',
   },
   FORTRESS: {
     name: 'Pháo Đài',
-    desc: 'Tăng 2.5x phòng thủ. Xây chồng để tăng thêm cấp phòng thủ vững chắc!',
+    desc: 'Tăng độ khó chiếm ô trong bán kính 4 ô.',
     baseCost: 90,
     icon: 'Shield',
   },
@@ -164,7 +164,7 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
   AIR_DEFENSE: {
     name: 'Phòng Không (SAM)',
     desc: 'Hệ thống tên lửa đất đối không: 75% cơ hội bắn hạ tên lửa Atom và Hydro của kẻ thù trong tầm bảo vệ!',
-    baseCost: 50_000,
+    baseCost: 6_000,
     icon: 'ShieldAlert',
   },
   LASER: {
@@ -177,9 +177,9 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
 
 /**
  * BẢNG CẤU HÌNH TÊN LỬA CHIẾN LƯỢC
- * 1. Atom (Nguyên Tử): 7.500 vàng
- * 2. Hydro (Nhiệt Hạch): 10.000 vàng
- * 3. MIRV (Đa Đầu Đạn): 250.000 vàng
+ * 1. Atom (Nguyên Tử): 3.500 vàng
+ * 2. Hydro (Nhiệt Hạch): 7.000 vàng
+ * 3. MIRV (Đa Đầu Đạn): 50.000 vàng
  */
 export interface MissileConfigItem {
   id: MissileType;
@@ -196,7 +196,7 @@ export const MISSILE_CONFIG: Record<MissileType, MissileConfigItem> = {
   ATOM: {
     id: 'ATOM',
     name: 'Atom (Nguyên Tử)',
-    cost: 7_500, // 7.500 vàng
+    cost: 3_500, // 3.500 vàng
     radius: 2.4,
     description: 'Bán kính nổ nhỏ, phá hủy toàn bộ công trình và quét sạch quân phòng thủ trong phạm vi.',
     color: '#eab308',
@@ -204,7 +204,7 @@ export const MISSILE_CONFIG: Record<MissileType, MissileConfigItem> = {
   HYDRO: {
     id: 'HYDRO',
     name: 'Hydro (Nhiệt Hạch)',
-    cost: 10_000, // 10.000 vàng
+    cost: 7_000, // 7.000 vàng
     radius: 5.4,
     description: 'Bán kính nổ khổng lồ, xóa sổ hoàn toàn căn cứ và quét sạch lãnh thổ đối phương thành đất trống!',
     color: '#f97316',
@@ -212,19 +212,19 @@ export const MISSILE_CONFIG: Record<MissileType, MissileConfigItem> = {
   MIRV: {
     id: 'MIRV',
     name: 'MIRV (Đa Đầu Đạn)',
-    cost: 250_000, // 250.000 vàng
-    radius: 1.8,
-    mirvCount: 7,
-    mirvSpreadRadius: 6.5,
-    description: 'Rải 7 đầu đạn hạt nhân lên lãnh thổ đối phương. Không thể bị hệ thống phòng không SAM đánh chặn!',
+    cost: 50_000, // 50.000 vàng
+    radius: 2.4,
+    mirvCount: 12,
+    mirvSpreadRadius: 9.0,
+    description: 'Rải 12 đầu đạn hạt nhân lên lãnh thổ đối phương. Không thể bị hệ thống phòng không SAM đánh chặn!',
     color: '#ec4899',
   },
 };
 
 export const MISSILE_SETTINGS = {
   SILO_BUILD_COST: 1_000, // Chi phí xây bệ phóng: 1.000 vàng
-  COOLDOWN_SECONDS: 8, // Bệ phóng hồi chiêu khoảng 8 giây (hiện màu đỏ)
-  DEFAULT_FLIGHT_DURATION_SECONDS: 8, // Thời gian tên lửa bay mặc định là 8 giây tới đích
+  COOLDOWN_SECONDS: 30, // Bệ phóng hồi chiêu khoảng 30 giây (hiện màu đỏ)
+  DEFAULT_FLIGHT_DURATION_SECONDS: 12, // Thời gian tên lửa bay mặc định là 12 giây tới đích
   SAM_INTERCEPT_CHANCE: 0.75, // 75% cơ hội bắn hạ Atom và Hydro
   SAM_INTERCEPT_RANGE: 5.0, // Tầm bảo vệ của trạm phòng không SAM (5 ô)
 };
@@ -240,16 +240,23 @@ export const DARK_TITAN_CONFIG = {
   DURATION_SECONDS: 300,
   // Báo trước khi biến mất: 30s
   WARNING_BEFORE_DESPAWN: 30,
-  // Tốc độ di chuyển: Cứ mỗi 8 giây di chuyển 1 ô
-  MOVE_INTERVAL_SECONDS: 8,
-  // Sát thương quân đội: Giảm 25 quân của quốc gia ở ô nó đi qua
-  DAMAGE_TROOPS: 25,
-  // Lượng Máu khủng của Tà Thần: 1200 HP
-  MAX_HP: 1200,
-  // Thưởng Vàng hậu lĩnh khi đánh gục Tà Thần: 2,000 Vàng
-  BOUNTY_GOLD: 2000,
+  // Tốc độ di chuyển: Cứ mỗi 3 giây di chuyển 1 ô
+  MOVE_INTERVAL_SECONDS: 3,
+  // Sát thương quân đội: Giảm 100 quân của quốc gia ở ô nó đi qua
+  DAMAGE_TROOPS: 100,
+  // Lượng Máu khủng của Tà Thần: 3000 HP
+  MAX_HP: 3000,
+  // Thưởng Vàng hậu lĩnh khi đánh gục Tà Thần: 5,000 Vàng
+  BOUNTY_GOLD: 5000,
   // Thời gian nhận Buff sức mạnh +30%: 180s = 3 phút
   BUFF_DURATION_SECONDS: 180,
+  Q_COOLDOWN: 8,
+  W_COOLDOWN: 14,
+  E_COOLDOWN: 18,
+  ULT_COOLDOWN: 30,
+  ULT_CHARGE_SECONDS: 3,
+  RAGE_HP_RATIO: 0.5,
+  ULT_RADIUS: 8,
 };
 
 export function formatGameTime(seconds: number): string {
@@ -266,6 +273,9 @@ export interface GeneralRosterItem {
   duration: number; // giây hiệu ứng
   cooldown: number; // giây hồi chiêu
   emoji: string;
+  unlockType: 'DEFAULT' | 'LEVEL' | 'PURCHASE';
+  unlockLevel?: number;
+  price?: number;
 }
 
 export const GENERAL_ROSTER: GeneralRosterItem[] = [
@@ -277,15 +287,7 @@ export const GENERAL_ROSTER: GeneralRosterItem[] = [
     duration: 10,
     cooldown: 60,
     emoji: '📯',
-  },
-  {
-    name: 'Đại Tướng Hỏa Long',
-    skillId: 'MISSILE_BARRAGE',
-    skillName: 'Mưa Tên Lửa Chiến Thuật',
-    description: 'Bắn 5 quả tên lửa nhỏ quét sạch quân và dọn đường biên giới địch (Tốn 150 vàng).',
-    duration: 0,
-    cooldown: 90,
-    emoji: '🚀',
+    unlockType: 'DEFAULT',
   },
   {
     name: 'Đại Tướng Thiết Bích',
@@ -295,6 +297,8 @@ export const GENERAL_ROSTER: GeneralRosterItem[] = [
     duration: 12,
     cooldown: 75,
     emoji: '🛡️',
+    unlockType: 'LEVEL',
+    unlockLevel: 5,
   },
   {
     name: 'Đại Tướng Kim Ưng',
@@ -304,6 +308,8 @@ export const GENERAL_ROSTER: GeneralRosterItem[] = [
     duration: 0,
     cooldown: 80,
     emoji: '🦅',
+    unlockType: 'PURCHASE',
+    price: 100,
   },
   {
     name: 'Đại Tướng Dạ Ảnh',
@@ -313,6 +319,19 @@ export const GENERAL_ROSTER: GeneralRosterItem[] = [
     duration: 8,
     cooldown: 70,
     emoji: '🌙',
+    unlockType: 'PURCHASE',
+    price: 150,
+  },
+  {
+    name: 'Đại Tướng Hỏa Long',
+    skillId: 'MISSILE_BARRAGE',
+    skillName: 'Mưa Tên Lửa Chiến Thuật',
+    description: 'Bắn 5 quả tên lửa nhỏ quét sạch quân và dọn đường biên giới địch (Tốn 150 vàng).',
+    duration: 0,
+    cooldown: 90,
+    emoji: '🚀',
+    unlockType: 'LEVEL',
+    unlockLevel: 10,
   },
 ];
 

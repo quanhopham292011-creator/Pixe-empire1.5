@@ -60,6 +60,7 @@ export interface General {
   skillId: GeneralSkillId;
   skillCooldown: number; // giây hồi còn lại
   skillActiveTimer: number; // giây hiệu ứng còn lại
+  marchingWaveId?: string;
 }
 
 export interface Nation {
@@ -76,6 +77,8 @@ export interface Nation {
   troops: number;
   maxTroops: number;
   population: number; // Dân số quốc gia (mô phỏng dữ liệu nền)
+  popRemainder?: number; // Phần dẻ tích lũy tăng trưởng dân số nhỏ hơn 1
+  populationCap?: number; // Trần dân số tối đa dựa trên lãnh thổ & Thành Thị
   territoryCount: number;
   isEliminated: boolean;
   capitalX: number;
@@ -110,6 +113,8 @@ export interface AttackWave {
   speed: number;
   hasGeneral?: boolean; // Tướng dẫn dắt đợt tiến công (+30% sức mạnh)
   targetsQueue?: { x: number; y: number }[]; // Danh sách ô sẽ tràn qua
+  focusX?: number;
+  focusY?: number;
 }
 
 export type MissileType = 'ATOM' | 'HYDRO' | 'MIRV';
@@ -217,6 +222,12 @@ export interface DarkTitan {
   maxHp: number; // Máu tối đa
   moveTimer: number;
   hasWarnedDespawn?: boolean;
+  cd?: { q: number; w: number; e: number; r: number };
+  ultCharge?: number;
+  ultX?: number;
+  ultY?: number;
+  slowTimer?: number;
+  rage?: boolean;
 }
 
 export interface CoalitionData {
@@ -228,10 +239,23 @@ export interface CoalitionData {
   lastCoordinationTimer: number;
 }
 
+export type HybridMasteryId = 'ECONOMY_MILITARY' | 'ECONOMY_HERO' | 'MILITARY_HERO';
+
+export interface PlayerSkillTree {
+  economyLevel: number; // 0 đến 10
+  militaryLevel: number; // 0 đến 10
+  heroLevel: number; // 0 đến 10
+  chosenHybrid: HybridMasteryId | null; // Chỉ được chọn 1 trong 3 mốc kết hợp
+}
+
 export interface PlayerProfile {
   level: number;
   exp: number;
   pixelCoins: number;
+  purchasedGenerals: GeneralSkillId[];
+  selectedGeneral: GeneralSkillId;
+  skillPoints: number; // Điểm kỹ năng hiện có
+  skillTree: PlayerSkillTree;
 }
 
 export interface VictoryReward {

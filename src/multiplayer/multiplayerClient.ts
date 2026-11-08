@@ -28,6 +28,20 @@ class MultiplayerClient {
     buildingType: BuildingType;
     count: number;
   }> | null = null;
+  public onStateSync: Listener<{
+    nations: Array<{
+      id: number;
+      gold: number;
+      goldIncome: number;
+      troops: number;
+      maxTroops: number;
+      population: number;
+      territoryCount: number;
+      isEliminated: boolean;
+    }>;
+    darkTitans?: any[];
+    gameTimeSeconds?: number;
+  }> | null = null;
   public onPlayerDisconnected: Listener<{ playerId: string; nationId: number; message: string }> | null = null;
   public onError: Listener<string> | null = null;
   public onConnectionChange: Listener<boolean> | null = null;
@@ -120,6 +134,9 @@ class MultiplayerClient {
       case 'ACTION_BUILD':
         if (this.onActionBuild) this.onActionBuild(msg);
         break;
+      case 'STATE_SYNC':
+        if (this.onStateSync) this.onStateSync(msg);
+        break;
       case 'PLAYER_DISCONNECTED':
         if (this.onPlayerDisconnected) this.onPlayerDisconnected(msg);
         break;
@@ -171,6 +188,28 @@ class MultiplayerClient {
       targetY,
       buildingType,
       count,
+    });
+  }
+
+  public sendStateSync(
+    nations: Array<{
+      id: number;
+      gold: number;
+      goldIncome: number;
+      troops: number;
+      maxTroops: number;
+      population: number;
+      territoryCount: number;
+      isEliminated: boolean;
+    }>,
+    darkTitans?: any[],
+    gameTimeSeconds?: number
+  ) {
+    this.send({
+      type: 'STATE_SYNC',
+      nations,
+      darkTitans,
+      gameTimeSeconds,
     });
   }
 }

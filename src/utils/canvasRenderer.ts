@@ -42,8 +42,12 @@ function waterColor(depth: number): [number, number, number] {
 }
 
 export function drawTerrainBuffer(offCanvas: HTMLCanvasElement, tiles: Tile[][], size: number) {
-  offCanvas.width = size * TILE_PIXEL_SIZE;
-  offCanvas.height = size * TILE_PIXEL_SIZE;
+  const targetW = size * TILE_PIXEL_SIZE;
+  const targetH = size * TILE_PIXEL_SIZE;
+  if (offCanvas.width !== targetW || offCanvas.height !== targetH) {
+    offCanvas.width = targetW;
+    offCanvas.height = targetH;
+  }
   const ctx = offCanvas.getContext('2d');
   if (!ctx) return;
 
@@ -148,46 +152,139 @@ export function drawTerrainBuffer(offCanvas: HTMLCanvasElement, tiles: Tile[][],
   ctx.drawImage(tmp, 0, 0, size * TILE_PIXEL_SIZE, size * TILE_PIXEL_SIZE);
 }
 
+const darkenedCache: Record<string, string> = {};
 function darken(hex: string): string {
+  if (darkenedCache[hex]) return darkenedCache[hex];
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return '#000000';
   const n = parseInt(m[1], 16);
   const r = Math.floor(((n >> 16) & 255) * 0.55);
   const g = Math.floor(((n >> 8) & 255) * 0.55);
   const b = Math.floor((n & 255) * 0.55);
-  return `rgb(${r},${g},${b})`;
+  const res = `rgb(${r},${g},${b})`;
+  darkenedCache[hex] = res;
+  return res;
 }
 
-export function drawTerritoryBuffer(offCanvas: HTMLCanvasElement, tiles: Tile[][], nations: Nation[], size: number) {
-  offCanvas.width = size * TILE_PIXEL_SIZE;
-  offCanvas.height = size * TILE_PIXEL_SIZE;
+export function drawTerritoryBuffer(
+  offCanvas: HTMLCanvasElement, 
+  tiles: Tile[][], 
+  nations: Nation[], 
+  size: number,
+  dirtyTiles?: { x: number; y: number }[]
+) {
+  const targetW = size * TILE_PIXEL_SIZE;
+  const targetH = size * TILE_PIXEL_SIZE;
+  let forceFull = false;
+
+  if (offCanvas.width !== targetW || offCanvas.height !== targetH) {
+    offCanvas.width = targetW;
+    offCanvas.height = targetH;
+    forceFull = true;
+  }
+
   const ctx = offCanvas.getContext('2d');
   if (!ctx) return;
-
-  ctx.clearRect(0, 0, offCanvas.width, offCanvas.height);
   ctx.imageSmoothingEnabled = false;
 
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
+  // Tối ưu cập nhật cục bộ: nếu chỉ có vài ô thay đổi, chỉ vẽ lại các ô đó cùng 4 ô lân cận
+  if (!forceFull && dirtyTiles && dirtyTiles.length > 0 && dirtyTiles.length <= 128) {
+    const patchMap = new Map<number, { x: number; y: number }>();
+    for (let i = 0; i < dirtyTiles.length; i++) {
+      const pt = dirtyTiles[i];
+      if (pt.x >= 0 && pt.x < size && pt.y >= 0 && pt.y < size) {
+        patchMap.set(pt.y * size + pt.x, pt);
+        // Cần cập nhật 4 ô lân cận để vẽ lại đường viền tiếp giáp chính xác
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = pt.x + dx;
+          const ny = pt.y + dy;
+          if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
+            patchMap.set(ny * size + nx, { x: nx, y: ny });
+          }
+        }
+      }
+    }
+
+    // 1. Xóa vùng đệm các ô đất thay đổi
+    patchMap.forEach(({ x, y }) => {
+      ctx.clearRect(x * TILE_PIXEL_SIZE, y * TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
+    });
+
+    // 2. Vẽ lại màu nền & viền biên giới chuẩn cho từng ô thay đổi
+    patchMap.forEach(({ x, y }) => {
       const t = tiles[y]?.[x];
-      if (!t || t.terrain === 'WATER' || t.owner <= 0) continue;
+      if (!t || t.terrain === 'WATER' || t.owner <= 0) return;
       const nation = nations[t.owner];
-      if (!nation) continue;
+      if (!nation) return;
 
       const px = x * TILE_PIXEL_SIZE;
       const py = y * TILE_PIXEL_SIZE;
 
+      // Tô màu lãnh thổ
       ctx.globalAlpha = 0.55;
       ctx.fillStyle = nation.color;
       ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
-      ctx.globalAlpha = 1.0;
 
+      // Vẽ tường biên giới
+      ctx.globalAlpha = 1.0;
       ctx.fillStyle = darken(nation.color);
       const e = 2;
-      if (y === 0 || tiles[y - 1][x].owner !== t.owner) ctx.fillRect(px, py, TILE_PIXEL_SIZE, e);
-      if (y === size - 1 || tiles[y + 1][x].owner !== t.owner) ctx.fillRect(px, py + TILE_PIXEL_SIZE - e, TILE_PIXEL_SIZE, e);
-      if (x === 0 || tiles[y][x - 1].owner !== t.owner) ctx.fillRect(px, py, e, TILE_PIXEL_SIZE);
-      if (x === size - 1 || tiles[y][x + 1].owner !== t.owner) ctx.fillRect(px + TILE_PIXEL_SIZE - e, py, e, TILE_PIXEL_SIZE);
+      if (y === 0 || tiles[y - 1]?.[x]?.owner !== t.owner) ctx.fillRect(px, py, TILE_PIXEL_SIZE, e);
+      if (y === size - 1 || tiles[y + 1]?.[x]?.owner !== t.owner) ctx.fillRect(px, py + TILE_PIXEL_SIZE - e, TILE_PIXEL_SIZE, e);
+      if (x === 0 || tiles[y]?.[x - 1]?.owner !== t.owner) ctx.fillRect(px, py, e, TILE_PIXEL_SIZE);
+      if (x === size - 1 || tiles[y]?.[x + 1]?.owner !== t.owner) ctx.fillRect(px + TILE_PIXEL_SIZE - e, py, e, TILE_PIXEL_SIZE);
+    });
+
+    return;
+  }
+
+  // Toàn bộ bản đồ cần vẽ lại (Lần đầu khởi tạo hoặc thay đổi kích thước)
+  ctx.clearRect(0, 0, offCanvas.width, offCanvas.height);
+
+  // Nhóm ô đất sở hữu theo từng quốc gia để batch fill 1 lần per nation
+  const nationTiles: Map<number, { x: number; y: number }[]> = new Map();
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const t = tiles[y]?.[x];
+      if (t && t.terrain !== 'WATER' && t.owner > 0) {
+        let list = nationTiles.get(t.owner);
+        if (!list) {
+          list = [];
+          nationTiles.set(t.owner, list);
+        }
+        list.push({ x, y });
+      }
     }
   }
+
+  nationTiles.forEach((list, ownerId) => {
+    const nation = nations[ownerId];
+    if (!nation) return;
+
+    // 1. Tô màu lãnh thổ quốc gia trong 1 nhịp canvas batch
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = nation.color;
+    ctx.beginPath();
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
+      ctx.rect(p.x * TILE_PIXEL_SIZE, p.y * TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
+    }
+    ctx.fill();
+
+    // 2. Tường đường viền biên giới quốc gia trong 1 nhịp canvas batch
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = darken(nation.color);
+    ctx.beginPath();
+    const e = 2;
+    for (let i = 0; i < list.length; i++) {
+      const { x, y } = list[i];
+      const px = x * TILE_PIXEL_SIZE;
+      const py = y * TILE_PIXEL_SIZE;
+      if (y === 0 || tiles[y - 1]?.[x]?.owner !== ownerId) ctx.rect(px, py, TILE_PIXEL_SIZE, e);
+      if (y === size - 1 || tiles[y + 1]?.[x]?.owner !== ownerId) ctx.rect(px, py + TILE_PIXEL_SIZE - e, TILE_PIXEL_SIZE, e);
+      if (x === 0 || tiles[y]?.[x - 1]?.owner !== ownerId) ctx.rect(px, py, e, TILE_PIXEL_SIZE);
+      if (x === size - 1 || tiles[y]?.[x + 1]?.owner !== ownerId) ctx.rect(px + TILE_PIXEL_SIZE - e, py, e, TILE_PIXEL_SIZE);
+    }
+    ctx.fill();
+  });
 }

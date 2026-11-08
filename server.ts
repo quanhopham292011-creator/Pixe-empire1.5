@@ -58,6 +58,12 @@ type ClientMessage =
       buildingType: string;
       count: number;
     }
+  | {
+      type: 'STATE_SYNC';
+      nations: any[];
+      darkTitans?: any[];
+      gameTimeSeconds?: number;
+    }
   | { type: 'CHAT'; text: string };
 
 type ServerMessage =
@@ -82,6 +88,12 @@ type ServerMessage =
       targetY: number;
       buildingType: string;
       count: number;
+    }
+  | {
+      type: 'STATE_SYNC';
+      nations: any[];
+      darkTitans?: any[];
+      gameTimeSeconds?: number;
     }
   | { type: 'PLAYER_DISCONNECTED'; playerId: string; nationId: number; message: string }
   | { type: 'ERROR'; message: string };
@@ -308,6 +320,17 @@ class RoomManager {
           targetY: msg.targetY,
           buildingType: msg.buildingType,
           count: msg.count,
+        }, ws);
+        break;
+      }
+
+      case 'STATE_SYNC': {
+        if (!client.roomCode) return;
+        this.broadcastToRoom(client.roomCode, {
+          type: 'STATE_SYNC',
+          nations: msg.nations,
+          darkTitans: msg.darkTitans,
+          gameTimeSeconds: msg.gameTimeSeconds,
         }, ws);
         break;
       }

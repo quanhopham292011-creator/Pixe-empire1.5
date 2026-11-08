@@ -18,7 +18,8 @@ import {
 } from './utils/constants';
 import { 
   loadPlayerProfile, savePlayerProfile, calculateVictoryReward, 
-  getRequiredExpForNextLevel, MAX_PLAYER_LEVEL 
+  getRequiredExpForNextLevel, MAX_PLAYER_LEVEL,
+  isGeneralUnlocked, purchaseGeneral, selectGeneral
 } from './utils/progression';
 import { generateWeatherParticles } from './utils/weatherUtils';
 import { drawTerrainBuffer, drawTerritoryBuffer } from './utils/canvasRenderer';
@@ -35,6 +36,23 @@ import { MatchLeaderboard } from './components/MatchLeaderboard';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { MultiplayerModal } from './components/MultiplayerModal';
+import { GeneralSelectModal } from './components/GeneralSelectModal';
+import { GeneralModel } from './components/GeneralModel';
+import { AuthModal } from './components/AuthModal';
+import { AdminPanelModal } from './components/AdminPanelModal';
+import { UserAccountBadge } from './components/UserAccountBadge';
+import { SkillTreeModal } from './components/SkillTreeModal';
+import { getSkillTreeBonuses } from './utils/skillTreeConfig';
+import { 
+  auth, 
+  onAuthStateChanged, 
+  fbSignOut, 
+  loadProfileFromFirestore, 
+  syncProfileToFirestore, 
+  isUserAdmin,
+  ADMIN_EMAIL 
+} from './firebase';
+import { User as FirebaseUser } from 'firebase/auth';
 import { multiplayerClient } from './multiplayer/multiplayerClient';
 import { RoomState } from './multiplayer/types';
 
@@ -58,8 +76,21 @@ export default function App() {
   const [gameMode, setGameMode] = useState<GameMode>('STANDARD');
   const gameModeRef = useRef<GameMode>('STANDARD');
   const [isCreativeOpen, setIsCreativeOpen] = useState<boolean>(false);
+  const [isGeneralSelectOpen, setIsGeneralSelectOpen] = useState<boolean>(false);
+  const [isSkillTreeOpen, setIsSkillTreeOpen] = useState<boolean>(false);
   const [godModeLocked, setGodModeLocked] = useState<boolean>(false);
   const godModeLockedRef = useRef<boolean>(false);
+
+  // Hệ Thống Tài Khoản Firebase & Quyền Quản Trị Viên (Admin)
+  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState<boolean>(false);
+  const [infiniteResources, setInfiniteResources] = useState<boolean>(false);
+  const infiniteResourcesRef = useRef<boolean>(false);
+  infiniteResourcesRef.current = infiniteResources;
+  const [noCooldown, setNoCooldown] = useState<boolean>(false);
+  const noCooldownRef = useRef<boolean>(false);
+  noCooldownRef.current = noCooldown;
 
   // Hệ Thống Cấp Độ (Level), Điểm EXP & Tiền Xu Pixel
   const [playerProfile, setPlayerProfile] = useState<PlayerProfile>(() => loadPlayerProfile());
@@ -67,6 +98,24 @@ export default function App() {
   playerProfileRef.current = playerProfile;
   const [victoryReward, setVictoryReward] = useState<VictoryReward | null>(null);
   const victoryAwardedRef = useRef<boolean>(false);
+
+  // Lắng nghe đăng nhập Firebase và đồng bộ tiến trình tự động
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        try {
+          const { profile } = await loadProfileFromFirestore(user, playerProfileRef.current);
+          setPlayerProfile(profile);
+          playerProfileRef.current = profile;
+          savePlayerProfile(profile);
+        } catch (err) {
+          console.error('Lỗi tải tiến trình từ Firestore:', err);
+        }
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // Hệ Thống Thời Tiết (Mây trôi bồng bềnh, Mưa lất phất)
   const [weather, setWeather] = useState<WeatherType>('CLOUDY');
@@ -95,6 +144,7 @@ export default function App() {
   });
   const fogOfWarEnabledRef = useRef<boolean>(fogOfWarEnabled);
   fogOfWarEnabledRef.current = fogOfWarEnabled;
+  const fogGridRef = useRef<Uint8Array | null>(null);
 
   const handleToggleFogOfWar = useCallback(() => {
     setFogOfWarEnabled(prev => {
@@ -139,6 +189,10 @@ export default function App() {
       setMissileFeedbackToast(prev => (prev === msg ? null : prev));
     }, 4000);
   }, []);
+
+  const tapRipplesRef = useRef<{x: number, y: number, startTime: number}[]>([]);
+  const captureFlashRef = useRef<{x: number, y: number, color: string, startTime: number}[]>([]);
+  const lastTapRef = useRef({ x: -1, y: -1, time: 0 });
 
   // Nhiệm vụ trong game
   const [currentQuest, setCurrentQuest] = useState<QuestStep>(1);
@@ -203,6 +257,11 @@ export default function App() {
   const offscreenTerritoryCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const offscreenTerrainDirtyRef = useRef<boolean>(true);
   const offscreenTerritoryDirtyRef = useRef<boolean>(true);
+  const dirtyTerritoryTilesRef = useRef<{ x: number; y: number }[]>([]);
+
+  // Tối ưu Fog of War: Cache tầm nhìn tĩnh từ lãnh thổ & công trình (chỉ cập nhật khi đổi ô đất/công trình)
+  const fogBaseGridRef = useRef<Uint8Array | null>(null);
+  const fogBaseDirtyRef = useRef<boolean>(true);
 
   // Cache vị trí trung tâm các quốc gia
   const nationCentersRef = useRef<Record<number, { px: number; py: number }>>({});
@@ -212,10 +271,12 @@ export default function App() {
   const pointerStartRef = useRef<{ id: number; x: number; y: number; time: number } | null>(null);
   const startCamRef = useRef({ x: 0, y: 0, zoom: 1.25 });
   
-  // Pinch-to-zoom mượt mà với damping factor chống nhảy/giật
+  // Pinch-to-zoom mượt mà với damping factor chống nhảy/giật & chống chọn nhầm ô đất
   const lastPinchDistRef = useRef<number | null>(null);
   const lastPinchMidRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef<boolean>(false);
+  const isMultiTouchActiveRef = useRef<boolean>(false);
+  const totalDragDistRef = useRef<number>(0);
 
   // Hiệu ứng rung màn hình, AI Coalition & Thành tựu
   const screenShakeRef = useRef<{ intensity: number; duration: number }>({ intensity: 0, duration: 0 });
@@ -563,9 +624,22 @@ export default function App() {
       nation.gold -= 150;
     }
 
-    // Thiết lập thời gian hồi chiêu và thời gian hiệu lực kỹ năng
-    gen.skillCooldown = rosterItem.cooldown;
-    gen.skillActiveTimer = rosterItem.duration;
+    // Thiết lập thời gian hồi chiêu và thời gian hiệu lực kỹ năng theo Cây Kỹ Năng
+    const skillBonuses = nation.isPlayer ? getSkillTreeBonuses(playerProfileRef.current.skillTree) : null;
+    gen.skillCooldown = Math.max(4, Math.round(rosterItem.cooldown * (skillBonuses ? skillBonuses.generalCooldownMult : 1.0)));
+    gen.skillActiveTimer = Math.round(rosterItem.duration * (skillBonuses && playerProfileRef.current.skillTree?.heroLevel >= 5 ? 1.3 : 1.0));
+
+    // Mốc kết hợp Kinh Tế + Anh Hùng: Thưởng ngay 15% kho vàng mỗi khi xuất chiêu
+    if (nation.isPlayer && skillBonuses?.isEconomyHeroHybrid) {
+      const bonusGold = Math.max(3000, Math.floor(nation.gold * 0.15));
+      nation.gold += bonusGold;
+      data.particles.push({
+        x: nation.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        y: nation.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        color: '#fbbf24', size: 0, life: 40, maxLife: 40, vx: 0, vy: -0.7,
+        type: 'FLOAT_TEXT', text: `👑 Chiêu Hiền: +${bonusGold.toLocaleString()} Vàng!`
+      });
+    }
 
     // Âm thanh kèn xuất kích
     if (nation.isPlayer) {
@@ -732,6 +806,13 @@ export default function App() {
     setGameMode(chosenMode);
     gameModeRef.current = chosenMode;
     const { tiles, nations } = generateWorldMap(chosenSize, chosenDiff, customName);
+    if (nations[1] && nations[1].general) {
+      const selectedRosterItem = GENERAL_ROSTER.find(g => g.skillId === playerProfileRef.current.selectedGeneral) || GENERAL_ROSTER[0];
+      nations[1].general.name = selectedRosterItem.name;
+      nations[1].general.skillId = selectedRosterItem.skillId;
+      nations[1].general.skillCooldown = 0;
+      nations[1].general.skillActiveTimer = 0;
+    }
     setAutoExpand(chosenDiff === 'EASY');
     totalLandCountRef.current = tiles.flat().filter(t => t.terrain !== 'WATER').length;
 
@@ -773,6 +854,8 @@ export default function App() {
 
     offscreenTerrainDirtyRef.current = true;
     offscreenTerritoryDirtyRef.current = true;
+    fogBaseDirtyRef.current = true;
+    dirtyTerritoryTilesRef.current = [];
     coalitionFormedRef.current = false;
     unlockedAchievementsRef.current.clear();
     victoryAwardedRef.current = false;
@@ -794,6 +877,7 @@ export default function App() {
   // --- HỆ THỐNG LƯU VÀ TIẾP TỤC VÁN CHƠI (SAVE / CONTINUE GAME) ---
   const saveGame = useCallback(() => {
     try {
+      if (isMultiplayerRef.current) return; // Không ghi đè ván chơi đơn bằng dữ liệu phòng online
       const data = gameDataRef.current;
       if (!data || !data.tiles || data.tiles.length === 0) return;
 
@@ -923,6 +1007,8 @@ export default function App() {
       totalLandCountRef.current = gameData.tiles.flat().filter((t: Tile) => t.terrain !== 'WATER').length;
       offscreenTerrainDirtyRef.current = true;
       offscreenTerritoryDirtyRef.current = true;
+      fogBaseDirtyRef.current = true;
+      dirtyTerritoryTilesRef.current = [];
       setSelectedTile(null);
       selectedTileRef.current = null;
       needsCenterCameraRef.current = true;
@@ -1001,6 +1087,183 @@ export default function App() {
     }
   }, [gameState, checkSavedGame]);
 
+  // --- ADMIN PANEL HANDLERS (ĐẶC QUYỀN QUẢN TRỊ VIÊN) ---
+  const refreshHudStats = useCallback(() => {
+    const data = gameDataRef.current;
+    if (!data || !data.nations?.[1]) return;
+    const player = data.nations[1];
+    const totalLand = totalLandCountRef.current || 1;
+    const landPercent = totalLand > 0 ? Math.round((player.territoryCount / totalLand) * 100) : 0;
+    setHudStats({
+      gold: player.gold,
+      goldIncome: player.goldIncome,
+      troops: player.troops,
+      maxTroops: player.maxTroops,
+      landPercent,
+      territoryCount: player.territoryCount,
+      titanBuffTimer: player.titanBuffTimer || 0,
+    });
+  }, []);
+
+  const handleResetCooldowns = useCallback(() => {
+    const data = gameDataRef.current;
+    if (!data || !data.tiles) return;
+    const size = data.tiles.length;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        if (data.tiles[y][x]?.missileCooldown) {
+          data.tiles[y][x].missileCooldown = 0;
+        }
+      }
+    }
+    data.nations?.forEach((n: Nation) => {
+      if (n.general) {
+        n.general.skillCooldown = 0;
+      }
+    });
+    data.darkTitans?.forEach((titan: any) => {
+      titan.cd = { q: 0, w: 0, e: 0, r: 0 };
+    });
+  }, []);
+
+  const handleAddSilos = useCallback((count: number) => {
+    const data = gameDataRef.current;
+    if (!data || !data.tiles) return;
+    const size = data.tiles.length;
+    let added = 0;
+    for (let y = 0; y < size && added < count; y++) {
+      for (let x = 0; x < size && added < count; x++) {
+        const t = data.tiles[y][x];
+        if (t && t.owner === 1 && t.terrain === 'LAND' && t.building !== 'MISSILE_SILO') {
+          t.building = 'MISSILE_SILO';
+          t.missileCooldown = 0;
+          added++;
+        }
+      }
+    }
+    offscreenTerritoryDirtyRef.current = true;
+    soundManager.playBuild();
+  }, []);
+
+  const handleAddMissiles = useCallback((type: MissileType, count: number) => {
+    const data = gameDataRef.current;
+    if (!data || !data.nations?.[1]) return;
+    const player = data.nations[1];
+    const enemy = data.nations.find((n: Nation) => n && !n.isPlayer && !n.isEliminated);
+    if (!enemy) return;
+
+    for (let i = 0; i < count; i++) {
+      const targetX = enemy.capitalX + (Math.floor(Math.random() * 5) - 2);
+      const targetY = enemy.capitalY + (Math.floor(Math.random() * 5) - 2);
+      const boundedX = Math.max(0, Math.min(data.tiles.length - 1, targetX));
+      const boundedY = Math.max(0, Math.min(data.tiles.length - 1, targetY));
+
+      data.flyingMissiles.push({
+        id: Math.random().toString(),
+        type,
+        sourceX: player.capitalX,
+        sourceY: player.capitalY,
+        targetX: boundedX,
+        targetY: boundedY,
+        progress: 0,
+        speed: 1 / 12,
+        fromNation: 1,
+      });
+    }
+    soundManager.playMissileLaunch();
+  }, []);
+
+  const handleAddBot = useCallback(() => {
+    const data = gameDataRef.current;
+    if (!data || !data.tiles) return;
+    const size = data.tiles.length;
+    const neutralLand: { x: number; y: number }[] = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        if (data.tiles[y][x].owner === 0 && data.tiles[y][x].terrain === 'LAND') {
+          neutralLand.push({ x, y });
+        }
+      }
+    }
+    if (neutralLand.length === 0) return;
+    const spot = neutralLand[Math.floor(Math.random() * neutralLand.length)];
+    const newId = data.nations.length;
+    const BOT_COLORS = ['#f43f5e', '#a855f7', '#06b6d4', '#10b981', '#f59e0b', '#ec4899', '#8b5cf6'];
+    const chosenColor = BOT_COLORS[newId % BOT_COLORS.length];
+
+    const newBot: Nation = {
+      id: newId,
+      name: `Bot Thử Nghiệm #${newId}`,
+      color: chosenColor,
+      isPlayer: false,
+      personality: 'AGGRESSIVE',
+      tier: 'TIER_2_TRIBE',
+      gold: 5000,
+      goldIncome: 20,
+      troops: 3000,
+      maxTroops: 10000,
+      population: 4000,
+      territoryCount: 1,
+      isEliminated: false,
+      capitalX: spot.x,
+      capitalY: spot.y,
+      hasPort: false,
+      techLevels: { economy: 1, military: 1, defense: 1 },
+      diplomacy: {},
+    };
+
+    data.tiles[spot.y][spot.x].owner = newId;
+    data.tiles[spot.y][spot.x].building = 'CITY';
+
+    const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1]];
+    DIRS.forEach(([dx, dy]) => {
+      const nx = spot.x + dx, ny = spot.y + dy;
+      if (data.tiles[ny]?.[nx] && data.tiles[ny][nx].owner === 0 && data.tiles[ny][nx].terrain === 'LAND') {
+        data.tiles[ny][nx].owner = newId;
+        newBot.territoryCount++;
+      }
+    });
+
+    data.nations.push(newBot);
+    offscreenTerritoryDirtyRef.current = true;
+    refreshHudStats();
+  }, [refreshHudStats]);
+
+  const handleRemoveBot = useCallback((botId: number) => {
+    const data = gameDataRef.current;
+    if (!data || !data.nations?.[botId]) return;
+    const bot = data.nations[botId];
+    bot.isEliminated = true;
+    bot.troops = 0;
+    bot.gold = 0;
+    const size = data.tiles.length;
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        if (data.tiles[y][x].owner === botId) {
+          data.tiles[y][x].owner = 0;
+          data.tiles[y][x].building = 'NONE';
+        }
+      }
+    }
+    data.attackWaves = data.attackWaves.filter((w: AttackWave) => w.fromNation !== botId && w.toNation !== botId);
+    offscreenTerritoryDirtyRef.current = true;
+    refreshHudStats();
+  }, [refreshHudStats]);
+
+  const handleAdjustBotPower = useCallback((botId: number, multiplier: number) => {
+    const data = gameDataRef.current;
+    if (!data || !data.nations?.[botId]) return;
+    const bot = data.nations[botId];
+    bot.troops = Math.max(10, Math.floor(bot.troops * multiplier));
+    bot.maxTroops = Math.max(100, Math.floor(bot.maxTroops * multiplier));
+    bot.gold = Math.max(0, Math.floor(bot.gold * multiplier));
+    if (multiplier >= 2.5) {
+      bot.tier = 'BOSS';
+      bot.personality = 'AGGRESSIVE';
+    }
+    refreshHudStats();
+  }, [refreshHudStats]);
+
   // Kiểm tra liên kết phòng từ URL (?room=XXXXXX) khi bạn bè mở link mời
   useEffect(() => {
     try {
@@ -1066,13 +1329,15 @@ export default function App() {
     drawTerrainBuffer(offscreenTerrainCanvasRef.current, gameDataRef.current.tiles, size);
   }, []);
 
-  // Buffer 2: Render Đồ Họa Chuẩn OpenFront (Đường viền Neon chói & Nét căng)
+  // Buffer 2: Render Đồ Họa Chuẩn OpenFront (Đường viền Neon chói & Nét căng, hỗ trợ selective patch)
   const renderTerritoryBuffer = useCallback((size: number) => {
     if (!offscreenTerritoryCanvasRef.current) {
       offscreenTerritoryCanvasRef.current = document.createElement('canvas');
     }
     const { tiles, nations } = gameDataRef.current;
-    drawTerritoryBuffer(offscreenTerritoryCanvasRef.current, tiles, nations, size);
+    const dirtyList = dirtyTerritoryTilesRef.current;
+    drawTerritoryBuffer(offscreenTerritoryCanvasRef.current, tiles, nations, size, dirtyList.length > 0 ? dirtyList : undefined);
+    dirtyTerritoryTilesRef.current = [];
   }, []);
 
   // Khởi tạo Text Width Cache đơn giản
@@ -1175,11 +1440,11 @@ export default function App() {
         return;
       }
 
-      // Tự động cập nhật tiến trình tên lửa bay mượt mà 60 FPS (Mặc định 8 giây tới nơi)
+      // Tự động cập nhật tiến trình tên lửa bay mượt mà 60 FPS (Mặc định 12 giây tới nơi)
       if (gameStateRef.current === 'PLAYING' && !isPaused && deltaSec > 0) {
         if (gameDataRef.current.flyingMissiles) {
           gameDataRef.current.flyingMissiles.forEach(m => {
-            const spd = m.speed || (1 / (MISSILE_SETTINGS.DEFAULT_FLIGHT_DURATION_SECONDS || 8));
+            const spd = m.speed || (1 / (MISSILE_SETTINGS.DEFAULT_FLIGHT_DURATION_SECONDS || 12));
             m.progress = Math.min(1.0, m.progress + spd * deltaSec * gameSpeed);
           });
         }
@@ -1252,6 +1517,43 @@ export default function App() {
         ctx.drawImage(offscreenTerritoryCanvasRef.current, 0, 0);
       }
 
+      // Vẽ Tap Ripples
+      const now = performance.now();
+      tapRipplesRef.current = tapRipplesRef.current.filter(ripple => {
+        const elapsed = now - ripple.startTime;
+        if (elapsed > 350) return false;
+        const progress = elapsed / 350;
+        const opacity = 0.8 * (1 - progress);
+        const radius = 4 + (24 * progress);
+        
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(ripple.x, ripple.y, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${opacity})`;
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+        return true;
+      });
+
+      // Vẽ Capture Flashes
+      captureFlashRef.current = captureFlashRef.current.filter(flash => {
+        const elapsed = now - flash.startTime;
+        if (elapsed > 400) return false;
+        const progress = elapsed / 400;
+        const opacity = 0.7 * (1 - progress);
+        
+        ctx.save();
+        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
+        ctx.fillRect(flash.x * TILE_PIXEL_SIZE, flash.y * TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
+        ctx.strokeStyle = flash.color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(flash.x * TILE_PIXEL_SIZE, flash.y * TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
+        ctx.restore();
+        return true;
+      });
+
+
       // 1.5. Xóa bỏ hiệu ứng thời tiết và bóng mây
 
       // 2. Frustum Culling
@@ -1261,36 +1563,100 @@ export default function App() {
       const minTileY = Math.max(0, Math.floor(-currentCamera.y / tileSizePx));
       const maxTileY = Math.min(size - 1, Math.ceil((vpH - currentCamera.y) / tileSizePx));
 
-      // 2.5. Tính toán Lưới Tầm Nhìn Sương Mù Chiến Tranh (Fog of War)
-      let visibleGrid: boolean[][] | null = null;
+      // 2.5. Tính toán Lưới Tầm Nhìn Sương Mù Chiến Tranh (Fog of War) (Tối ưu Caching Tĩnh + Dynamic Stamp)
+      let visibleGrid: Uint8Array | null = null;
       if (fogOfWarEnabledRef.current) {
-        const vGrid: boolean[][] = Array.from({ length: size }, () => new Array(size).fill(false));
-        visibleGrid = vGrid;
+        const totalTiles = size * size;
         const myNationId = isMultiplayerRef.current ? myNationIdRef.current : 1;
 
-        // a. Tầm nhìn từ tất cả thổ cư & công trình thuộc sở hữu người chơi
-        for (let y = 0; y < size; y++) {
-          for (let x = 0; x < size; x++) {
-            const t = tiles[y]?.[x];
-            if (t && t.owner === myNationId) {
-              let visionRad = 3.5;
-              if (t.building === 'CITY') visionRad = 5.0;
-              else if (t.building === 'BARRACKS') visionRad = 4.5;
-              else if (t.building === 'FORTRESS') visionRad = 5.5;
-              else if (t.building === 'PORT') visionRad = 5.0;
-              else if (t.building === 'ARTILLERY') visionRad = 6.0;
-              else if (t.building === 'MISSILE_SILO') visionRad = 6.5;
-              else if (t.building === 'AIR_DEFENSE') visionRad = 7.5; // Radar phòng không quét xa nhất
-              else if (t.building === 'LASER') visionRad = 6.5;
+        // a. Tầm nhìn tĩnh từ lãnh thổ và công trình (Chỉ tính lại khi có đất/công trình thay đổi)
+        if (fogBaseDirtyRef.current || !fogBaseGridRef.current || fogBaseGridRef.current.length !== totalTiles) {
+          if (!fogBaseGridRef.current || fogBaseGridRef.current.length !== totalTiles) {
+            fogBaseGridRef.current = new Uint8Array(totalTiles);
+          } else {
+            fogBaseGridRef.current.fill(0);
+          }
+          const bGrid = fogBaseGridRef.current;
 
-              const rCeil = Math.ceil(visionRad);
-              for (let dy = -rCeil; dy <= rCeil; dy++) {
-                for (let dx = -rCeil; dx <= rCeil; dx++) {
-                  const vx = x + dx;
-                  const vy = y + dy;
-                  if (vx >= 0 && vx < size && vy >= 0 && vy < size) {
-                    if (Math.hypot(dx, dy) <= visionRad) {
-                      vGrid[vy][vx] = true;
+          for (let y = 0; y < size; y++) {
+            for (let x = 0; x < size; x++) {
+              const t = tiles[y]?.[x];
+              if (t && t.owner === myNationId) {
+                let visionRad = 3.5;
+                if (t.building === 'CITY') visionRad = 5.0;
+                else if (t.building === 'BARRACKS') visionRad = 4.5;
+                else if (t.building === 'FORTRESS') visionRad = 5.5;
+                else if (t.building === 'PORT') visionRad = 5.0;
+                else if (t.building === 'ARTILLERY') visionRad = 6.0;
+                else if (t.building === 'MISSILE_SILO') visionRad = 6.5;
+                else if (t.building === 'AIR_DEFENSE') visionRad = 7.5; // Radar phòng không quét xa nhất
+                else if (t.building === 'LASER') visionRad = 6.5;
+
+                const radSq = visionRad * visionRad;
+                const rCeil = Math.ceil(visionRad);
+                for (let dy = -rCeil; dy <= rCeil; dy++) {
+                  for (let dx = -rCeil; dx <= rCeil; dx++) {
+                    if (dx * dx + dy * dy <= radSq) {
+                      const vx = x + dx;
+                      const vy = y + dy;
+                      if (vx >= 0 && vx < size && vy >= 0 && vy < size) {
+                        bGrid[vy * size + vx] = 1;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          fogBaseDirtyRef.current = false;
+        }
+
+        // b. Sao chép nhanh bộ đệm tĩnh (C-level memcpy cực nhanh)
+        if (!fogGridRef.current || fogGridRef.current.length !== totalTiles) {
+          fogGridRef.current = new Uint8Array(totalTiles);
+        }
+        if (fogBaseGridRef.current) {
+          fogGridRef.current.set(fogBaseGridRef.current);
+        }
+        const vGrid = fogGridRef.current;
+        visibleGrid = vGrid;
+
+        // c. Đánh dấu tầm nhìn động từ Tướng người chơi đang di chuyển / trú ngụ
+        const playerNat = nations[myNationId];
+        if (playerNat && playerNat.general) {
+          const gen = playerNat.general;
+          const gx = Math.floor(gen.x);
+          const gy = Math.floor(gen.y);
+          const genRadSq = 25.0; // 5.0 * 5.0
+          const rCeil = 5;
+          for (let dy = -rCeil; dy <= rCeil; dy++) {
+            for (let dx = -rCeil; dx <= rCeil; dx++) {
+              if (dx * dx + dy * dy <= genRadSq) {
+                const vx = gx + dx;
+                const vy = gy + dy;
+                if (vx >= 0 && vx < size && vy >= 0 && vy < size) {
+                  vGrid[vy * size + vx] = 1;
+                }
+              }
+            }
+          }
+        }
+
+        // d. Đánh dấu tầm nhìn động từ các đợt tiến công đang di chuyển
+        if (attackWaves.length > 0) {
+          for (let wi = 0; wi < attackWaves.length; wi++) {
+            const wave = attackWaves[wi];
+            if (wave.fromNation === myNationId) {
+              const wx = Math.floor(wave.sourceX + (wave.targetX - wave.sourceX) * wave.progress);
+              const wy = Math.floor(wave.sourceY + (wave.targetY - wave.sourceY) * wave.progress);
+              const waveRadSq = 12.25; // 3.5 * 3.5
+              for (let dy = -4; dy <= 4; dy++) {
+                for (let dx = -4; dx <= 4; dx++) {
+                  if (dx * dx + dy * dy <= waveRadSq) {
+                    const vx = wx + dx;
+                    const vy = wy + dy;
+                    if (vx >= 0 && vx < size && vy >= 0 && vy < size) {
+                      vGrid[vy * size + vx] = 1;
                     }
                   }
                 }
@@ -1298,47 +1664,6 @@ export default function App() {
             }
           }
         }
-
-        // b. Tầm nhìn từ Tướng người chơi đang di chuyển / trú ngụ
-        const playerNat = nations[myNationId];
-        if (playerNat && playerNat.general) {
-          const gen = playerNat.general;
-          const gx = Math.floor(gen.x);
-          const gy = Math.floor(gen.y);
-          const genRad = 5.0;
-          const rCeil = Math.ceil(genRad);
-          for (let dy = -rCeil; dy <= rCeil; dy++) {
-            for (let dx = -rCeil; dx <= rCeil; dx++) {
-              const vx = gx + dx;
-              const vy = gy + dy;
-              if (vx >= 0 && vx < size && vy >= 0 && vy < size) {
-                if (Math.hypot(dx, dy) <= genRad) {
-                  vGrid[vy][vx] = true;
-                }
-              }
-            }
-          }
-        }
-
-        // c. Tầm nhìn từ các đợt tiến công đang di chuyển
-        attackWaves.forEach(wave => {
-          if (wave.fromNation === myNationId) {
-            const wx = Math.floor(wave.sourceX + (wave.targetX - wave.sourceX) * wave.progress);
-            const wy = Math.floor(wave.sourceY + (wave.targetY - wave.sourceY) * wave.progress);
-            const waveRad = 3.5;
-            for (let dy = -4; dy <= 4; dy++) {
-              for (let dx = -4; dx <= 4; dx++) {
-                const vx = wx + dx;
-                const vy = wy + dy;
-                if (vx >= 0 && vx < size && vy >= 0 && vy < size) {
-                  if (Math.hypot(dx, dy) <= waveRad) {
-                    vGrid[vy][vx] = true;
-                  }
-                }
-              }
-            }
-          }
-        });
       }
 
       // 3. (Xóa bỏ aura và chiến hào)
@@ -1496,25 +1821,20 @@ export default function App() {
         ctx.restore();
       }
 
-      // 4.6. Phủ Lớp Sương Mù Chiến Tranh (Fog of War Overlay)
+      // 4.6. Phủ Lớp Sương Mù Chiến Tranh (Fog of War Overlay) (Batch 1 nhịp canvas)
       if (visibleGrid) {
         ctx.save();
+        ctx.fillStyle = 'rgba(10, 15, 29, 0.85)';
+        ctx.beginPath();
         for (let y = minTileY; y <= maxTileY; y++) {
+          const rowOffset = y * size;
           for (let x = minTileX; x <= maxTileX; x++) {
-            if (!visibleGrid[y][x]) {
-              const px = x * TILE_PIXEL_SIZE;
-              const py = y * TILE_PIXEL_SIZE;
-
-              // Lớp màu sương mù mờ tối chiến thuật
-              ctx.fillStyle = 'rgba(10, 15, 29, 0.82)';
-              ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
-
-              // Họa tiết ô vuông sương mờ pixel
-              ctx.fillStyle = 'rgba(15, 23, 42, 0.35)';
-              ctx.fillRect(px + 4, py + 4, 16, 16);
+            if (visibleGrid[rowOffset + x] === 0) {
+              ctx.rect(x * TILE_PIXEL_SIZE, y * TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
             }
           }
         }
+        ctx.fill();
         ctx.restore();
       }
 
@@ -1662,7 +1982,7 @@ export default function App() {
         const nation = nations[wave.fromNation];
 
         // Nếu đợt quân được Tướng trực tiếp chỉ huy, cập nhật vị trí Tướng theo đợt quân!
-        if (wave.hasGeneral && nation?.general && nation.general.status === 'MARCHING') {
+        if (wave.hasGeneral && nation?.general && nation.general.status === 'MARCHING' && (!nation.general.marchingWaveId || nation.general.marchingWaveId === wave.id)) {
           nation.general.x = wave.sourceX + (wave.targetX - wave.sourceX) * wave.progress;
           nation.general.y = wave.sourceY + (wave.targetY - wave.sourceY) * wave.progress;
         }
@@ -1719,8 +2039,8 @@ export default function App() {
           ctx.lineWidth = 2;
           ctx.stroke();
 
-          // 4. Nhãn đếm ngược thời gian bay (vd: 8s, 7s... 1s)
-          const flightDuration = MISSILE_SETTINGS.DEFAULT_FLIGHT_DURATION_SECONDS || 8;
+          // 4. Nhãn đếm ngược thời gian bay (vd: 12s, 11s... 1s)
+          const flightDuration = MISSILE_SETTINGS.DEFAULT_FLIGHT_DURATION_SECONDS || 12;
           const remainingSec = Math.max(0, Math.ceil((1.0 - prog) * flightDuration));
           ctx.fillStyle = '#fef08a';
           ctx.font = 'bold 10px sans-serif';
@@ -1847,7 +2167,62 @@ export default function App() {
         ctx.textAlign = 'center';
         ctx.fillText(`${currentHp}/${maxHp} HP`, tx, barY + 11);
 
+        // Kỹ năng Tà Thần: Q W E R dots
+        const c = titan.cd || { q: 10, w: 16, e: 22, r: 40 };
+        const skills = [
+          { key: 'Q', ready: c.q <= 0 },
+          { key: 'W', ready: c.w <= 0 },
+          { key: 'E', ready: c.e <= 0 },
+          { key: 'R', ready: c.r <= 0 },
+        ];
+        let dotX = tx - 15;
+        const dotY = barY + 22;
+        skills.forEach(s => {
+          ctx.fillStyle = s.ready ? '#ef4444' : 'rgba(239, 68, 68, 0.3)';
+          ctx.beginPath();
+          ctx.arc(dotX, dotY, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '6px sans-serif';
+          ctx.fillText(s.key, dotX, dotY + 8);
+          dotX += 10;
+        });
+
         ctx.restore();
+
+        // 1. Nếu titan.ultCharge > 0: vẽ vòng tròn đỏ nhấp nháy, bán kính 6 ô, tâm ở (ultX, ultY), kèm số giây
+        if (titan.ultCharge && titan.ultCharge > 0) {
+          const ux = (titan.ultX ?? titan.x) * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const uy = (titan.ultY ?? titan.y) * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const uRadius = DARK_TITAN_CONFIG.ULT_RADIUS * TILE_PIXEL_SIZE;
+          ctx.save();
+          ctx.strokeStyle = '#ef4444';
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          ctx.arc(ux, uy, uRadius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+          ctx.fill();
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`☄️ ${titan.ultCharge}s`, ux, uy);
+          ctx.restore();
+        }
+
+        // 2. Nếu titan.rage: vẽ quầng đỏ nhấp nháy quanh Tà Thần
+        if (titan.rage) {
+          ctx.save();
+          ctx.strokeStyle = '#dc2626';
+          ctx.lineWidth = 3.0;
+          ctx.beginPath();
+          ctx.arc(tx, ty, 34 + Math.sin(timestamp * 0.012) * 6, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
       });
 
       // 6.8. Render Tuyến Đường Giao Thương Biển (Sea Trade Routes) & Tàu Buôn Hải Cảng (Sea Trade Ships)
@@ -1936,8 +2311,10 @@ export default function App() {
         if (p.type === 'FLOAT_TEXT' && p.text) {
           ctx.save();
           ctx.font = 'bold 11px sans-serif';
-          const metrics = ctx.measureText(p.text);
-          const textW = metrics.width + 16;
+          if ((p as any).textWidth === undefined) {
+            (p as any).textWidth = ctx.measureText(p.text).width;
+          }
+          const textW = (p as any).textWidth + 16;
           const textH = 20;
           
           const offsetY = idx * 22;
@@ -2039,6 +2416,7 @@ export default function App() {
 
     const intervalTime = 1000 / gameSpeed;
     const interval = setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
       const data = gameDataRef.current;
       const { tiles, nations } = data;
       if (!tiles || tiles.length === 0) return;
@@ -2049,6 +2427,27 @@ export default function App() {
       // Tự động lưu game mỗi 30 giây khi đang chơi
       if (data.gameTimeSeconds > 0 && data.gameTimeSeconds % 30 === 0) {
         saveGameRef.current();
+      }
+
+      // ĐẶC QUYỀN ADMIN: Không giới hạn tài nguyên (Infinite Resources)
+      if (infiniteResourcesRef.current && nations[1]) {
+        nations[1].gold = 9999999;
+        nations[1].troops = Math.max(nations[1].troops, nations[1].maxTroops);
+      }
+
+      // ĐẶC QUYỀN ADMIN: Khóa không cooldown (No Cooldown Mode)
+      if (noCooldownRef.current) {
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            if (tiles[y][x]?.missileCooldown) tiles[y][x].missileCooldown = 0;
+          }
+        }
+        nations.forEach((n: Nation) => {
+          if (n.general) n.general.skillCooldown = 0;
+        });
+        data.darkTitans?.forEach((titan: any) => {
+          titan.cd = { q: 0, w: 0, e: 0, r: 0 };
+        });
       }
 
       // Đếm ngược hồi chiêu Bệ Phóng Tên Lửa
@@ -2257,9 +2656,108 @@ export default function App() {
 
           titan.isActive = false;
         } else {
+          // ===== KỸ NĂNG TÀ THẦN (kiểu Liên Quân) =====
+          const TS = TILE_PIXEL_SIZE;
+          const cd = (titan.cd = titan.cd || { q: 4, w: 8, e: 14, r: 25 });
+          if (titan.slowTimer && titan.slowTimer > 0) titan.slowTimer -= 1;
+          if (!titan.rage && titan.hp / titan.maxHp <= DARK_TITAN_CONFIG.RAGE_HP_RATIO) {
+            titan.rage = true;
+            soundManager.playThunder();
+            data.events.unshift({ id: Math.random().toString(), title: '🔥 TÀ THẦN CUỒNG NỘ', description: 'Tà Thần dưới 50% máu: di chuyển nhanh hơn, hồi chiêu nhanh hơn, sát thương +50%!', type: 'PLAGUE', targetNationId: 0, timestamp: formatGameTime(data.gameTimeSeconds) });
+          }
+          const cdStep = titan.rage ? 1.5 : 1;
+          cd.q -= cdStep; cd.w -= cdStep; cd.e -= cdStep; cd.r -= cdStep;
+          const dmgMul = titan.rage ? 1.5 : 1;
+          const say = (text: string, color: string) => {
+            data.particles.push({ x: titan.x * TS + TS / 2, y: titan.y * TS + TS / 2, color, size: 0, life: 45, maxLife: 45, vx: 0, vy: -0.8, type: 'FLOAT_TEXT', text });
+          };
+          const hitArea = (cx: number, cy: number, radius: number, loss: number, isPercent: boolean, destroyAll: boolean, eat: number = 0) => {
+            const victims = new Set<number>();
+            for (let yy = Math.max(0, cy - radius); yy <= Math.min(size - 1, cy + radius); yy++) {
+              for (let xx = Math.max(0, cx - radius); xx <= Math.min(size - 1, cx + radius); xx++) {
+                if (Math.hypot(xx - cx, yy - cy) > radius) continue;
+                const t = tiles[yy][xx];
+                if (t.owner > 0) {
+                  victims.add(t.owner);
+                  if (t.building !== 'NONE') t.building = (!destroyAll && t.building === 'FORTRESS') ? 'CITY' : 'NONE';
+                  if (destroyAll) t.scorchedTimer = 30;
+                  if (eat > 0 && Math.random() < eat) { t.owner = 0; t.building = 'NONE'; t.scorchedTimer = 30; }
+                }
+              }
+            }
+            victims.forEach(id => {
+              const n = nations[id];
+              if (!n) return;
+              const l = isPercent ? Math.floor(n.troops * loss) : Math.round(loss);
+              n.troops = Math.max(0, n.troops - l);
+              data.particles.push({ x: cx * TS + TS / 2, y: cy * TS + TS / 2, color: '#dc2626', size: 0, life: 35, maxLife: 35, vx: 0, vy: -0.5, type: 'FLOAT_TEXT', text: `☠️ -${l} Quân (${n.name})` });
+            });
+            offscreenTerritoryDirtyRef.current = true;
+          };
+          const nearestOwned = (radius: number) => {
+            let best: { x: number; y: number } | null = null;
+            let bd = Infinity;
+            for (let yy = Math.max(0, titan.y - radius); yy <= Math.min(size - 1, titan.y + radius); yy++) {
+              for (let xx = Math.max(0, titan.x - radius); xx <= Math.min(size - 1, titan.x + radius); xx++) {
+                if (tiles[yy][xx].owner > 0) {
+                  const d = Math.hypot(xx - titan.x, yy - titan.y);
+                  if (d <= radius && d < bd) { bd = d; best = { x: xx, y: yy }; }
+                }
+              }
+            }
+            return best;
+          };
+
+          if (titan.ultCharge && titan.ultCharge > 0) {
+            titan.ultCharge -= 1;
+            if (titan.ultCharge <= 0) {
+              const ux = titan.ultX ?? titan.x, uy = titan.ultY ?? titan.y;
+              soundManager.playThunder();
+              hitArea(ux, uy, DARK_TITAN_CONFIG.ULT_RADIUS, 0.4 * dmgMul, true, true, 1);
+              data.attackWaves = data.attackWaves.filter(w => Math.hypot(w.targetX - ux, w.targetY - uy) > DARK_TITAN_CONFIG.ULT_RADIUS);
+              say('☄️ THIÊN THẠCH HẮC ÁM!', '#f97316');
+            }
+          } else {
+            const near = nearestOwned(10);
+            const wavesNear = data.attackWaves.filter(w => Math.hypot(w.targetX - titan.x, w.targetY - titan.y) <= 7);
+            if (cd.r <= 0 && near) {
+              titan.ultCharge = DARK_TITAN_CONFIG.ULT_CHARGE_SECONDS;
+              titan.ultX = near.x; titan.ultY = near.y;
+              cd.r = DARK_TITAN_CONFIG.ULT_COOLDOWN;
+              soundManager.playThunder();
+              say('☄️ Thiên Thạch sắp giáng xuống!', '#f97316');
+            } else if (cd.q <= 0 && nearestOwned(2)) {
+              hitArea(titan.x, titan.y, 3, 80 * dmgMul, false, true, 0.4);
+              titan.hp = Math.min(titan.maxHp, titan.hp + Math.floor(titan.maxHp * 0.02));
+              cd.q = DARK_TITAN_CONFIG.Q_COOLDOWN;
+              say('🩸 Móng Vuốt Hủy Diệt', '#ef4444');
+            } else if (cd.w <= 0 && wavesNear.length > 0) {
+              wavesNear.forEach(w => { w.troops = Math.floor(w.troops * 0.85); });
+              titan.slowTimer = 6;
+              cd.w = DARK_TITAN_CONFIG.W_COOLDOWN;
+              say('⛓️ Xiềng Xích Bóng Tối', '#a855f7');
+            } else if (cd.e <= 0) {
+              const spots: { x: number; y: number }[] = [];
+              for (let yy = Math.max(0, titan.y - 10); yy <= Math.min(size - 1, titan.y + 10); yy++) {
+                for (let xx = Math.max(0, titan.x - 10); xx <= Math.min(size - 1, titan.x + 10); xx++) {
+                  const d = Math.hypot(xx - titan.x, yy - titan.y);
+                  if (d >= 3 && d <= 10 && tiles[yy][xx].owner > 0 && tiles[yy][xx].building !== 'NONE') spots.push({ x: xx, y: yy });
+                }
+              }
+              if (spots.length > 0) {
+                const spot = spots[Math.floor(Math.random() * spots.length)];
+                titan.x = spot.x; titan.y = spot.y; titan.moveTimer = 0;
+                cd.e = DARK_TITAN_CONFIG.E_COOLDOWN;
+                say('🌀 Dịch Chuyển Bóng Đêm', '#8b5cf6');
+                hitArea(titan.x, titan.y, 2, 60 * dmgMul, false, true, 0.5);
+              }
+            }
+          }
+
           // Di chuyển theo chu kỳ cấu hình (mặc định 8 giây / ô)
-          titan.moveTimer += 1;
-          if (titan.moveTimer >= DARK_TITAN_CONFIG.MOVE_INTERVAL_SECONDS) {
+          if (!(titan.ultCharge && titan.ultCharge > 0)) titan.moveTimer += 1;
+          const moveInterval = titan.rage ? Math.max(2, DARK_TITAN_CONFIG.MOVE_INTERVAL_SECONDS - 2) : DARK_TITAN_CONFIG.MOVE_INTERVAL_SECONDS;
+          if (titan.moveTimer >= moveInterval) {
             titan.moveTimer = 0;
 
             const neighbors = [
@@ -2301,17 +2799,19 @@ export default function App() {
               if (currentTile.owner > 0) {
                 const victim = nations[currentTile.owner];
                 if (victim) {
-                  victim.troops = Math.max(0, victim.troops - DARK_TITAN_CONFIG.DAMAGE_TROOPS);
+                  const dmgTroops = Math.round(DARK_TITAN_CONFIG.DAMAGE_TROOPS * dmgMul);
+                  victim.troops = Math.max(0, victim.troops - dmgTroops);
                   data.particles.push({
                     x: titan.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
                     y: titan.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
                     color: '#dc2626',
                     size: 0, life: 35, maxLife: 35, vx: 0, vy: -0.5,
                     type: 'FLOAT_TEXT',
-                    text: `☠️ -${DARK_TITAN_CONFIG.DAMAGE_TROOPS} Quân (${victim.name})`,
+                    text: `☠️ -${dmgTroops} Quân (${victim.name})`,
                   });
                 }
               }
+              hitArea(titan.x, titan.y, 2, Math.round(DARK_TITAN_CONFIG.DAMAGE_TROOPS * dmgMul), false, true, 0.5);
             }
           }
         }
@@ -2359,21 +2859,25 @@ export default function App() {
       nationCentersRef.current = newCenters;
 
       // 2. Cập nhật Dân số, Quân đội & Vàng
-      let botMet = false;
-      for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-          if (tiles[y][x].owner === 1) {
-            const neighbors = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
-            if (neighbors.some(([nx, ny]) => tiles[ny]?.[nx]?.owner > 1)) {
-              botMet = true;
-              break;
+      if (!data.hasMetBot) {
+        let botMet = false;
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            if (tiles[y][x].owner === 1) {
+              const neighbors = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
+              if (neighbors.some(([nx, ny]) => tiles[ny]?.[nx]?.owner > 1)) {
+                botMet = true;
+                break;
+              }
             }
           }
+          if (botMet) break;
         }
-        if (botMet) break;
+        if (botMet) {
+          data.hasMetBot = true;
+          setHasMetBot(true);
+        }
       }
-      data.hasMetBot = botMet;
-      setHasMetBot(botMet);
 
       nations.forEach(n => {
         if (n.id === 0 || n.isEliminated) return;
@@ -2384,23 +2888,49 @@ export default function App() {
 
         n.territoryCount = territoryCounts[n.id] || 0;
         const b = buildingCounts[n.id];
+        const cityCount = b?.CITY || 0;
+        const barracksCount = b?.BARRACKS || 0;
         n.hasPort = (b?.PORT || 0) > 0;
 
-        n.population += Math.floor((n.territoryCount * 0.05 + (b?.CITY || 0) * 1) * titanBuff);
+        // 1. TRẦN DÂN SỐ & TĂNG TRƯỞNG DÂN SỐ MỖI GIÂY (THEO CÂY KỸ NĂNG)
+        const skillBonuses = n.isPlayer ? getSkillTreeBonuses(playerProfileRef.current.skillTree) : null;
+        const botSkillMult = n.isPlayer ? 1.0 : (difficulty === 'HARD' ? 1.15 : difficulty === 'NORMAL' ? 1.08 : 1.03);
 
+        const basePopCap = 20 + (n.territoryCount * 6) + (cityCount * 30);
+        const popCap = Math.round(basePopCap * (skillBonuses ? skillBonuses.popCapMult : botSkillMult));
+        n.populationCap = popCap;
+
+        if (n.population < popCap) {
+          const popRatio = Math.min(1, n.population / popCap);
+          const basePopGrowth = (n.territoryCount * 0.03 + cityCount * 0.6) * (1 - popRatio);
+          const popGrowthSec = Math.max(0, basePopGrowth * titanBuff * (skillBonuses ? skillBonuses.popGrowthMult : 1.0));
+          n.popRemainder = (n.popRemainder || 0) + popGrowthSec;
+          if (n.popRemainder >= 1) {
+            const addedPop = Math.floor(n.popRemainder);
+            n.population = Math.min(popCap, n.population + addedPop);
+            n.popRemainder -= addedPop;
+          }
+        }
+
+        // 2. QUÂN ĐỘI & VÀNG (THEO CÂY KỸ NĂNG)
         const diffMult = difficulty === 'HARD' ? 1.3 : difficulty === 'NORMAL' ? 1.15 : 1.0;
         const milTechTroopBonus = n.techLevels?.military >= 2 ? 30 : 0;
-        n.maxTroops = Math.max(15, Math.floor((n.population * 3 + n.territoryCount * 4 + (b?.BARRACKS || 0) * 40 + milTechTroopBonus) * (n.id > 1 ? diffMult : 1.0) * titanBuff));
+        const baseMaxTroops = n.population * 1.5 + n.territoryCount * 4 + barracksCount * 40 + milTechTroopBonus;
+        n.maxTroops = Math.max(15, Math.floor(baseMaxTroops * (n.id > 1 ? diffMult * botSkillMult : skillBonuses ? skillBonuses.troopsMaxMult : 1.0) * titanBuff));
         
-        const growth = Math.max(1, Math.floor((n.population * 0.1 + (b?.BARRACKS || 0) * 3) * (n.id > 1 ? diffMult : 1.0) * titanBuff));
+        // Hiệu ứng mốc kết hợp Kinh Tế + Quân Đội: Thành thị cấp quân đội (+6 quân/s)
+        const hybridCityTroops = (n.isPlayer && skillBonuses?.isEconomyMilitaryHybrid) ? (cityCount * 6) : 0;
+        const growth = Math.max(1, Math.floor(((n.population * 0.04 + barracksCount * 3 + hybridCityTroops) * (n.id > 1 ? diffMult * botSkillMult : skillBonuses ? skillBonuses.troopsRegenMult : 1.0) * titanBuff)));
         if (n.troops < n.maxTroops) {
           n.troops = Math.min(n.maxTroops, Math.round(n.troops + growth));
         }
 
-        // Giảm sức mạnh công nghệ kinh tế: Level 1 (+8%), Level 2 (+15%), Level 3 (+25%)
+        // Hiệu ứng mốc kết hợp Kinh Tế + Quân Đội: Doanh trại hỗ trợ ngân khố (+20 vàng/s)
+        const hybridBarracksGold = (n.isPlayer && skillBonuses?.isEconomyMilitaryHybrid) ? (barracksCount * 20) : 0;
         const ecoMult = n.techLevels?.economy === 1 ? 1.08 : n.techLevels?.economy === 2 ? 1.15 : n.techLevels?.economy === 3 ? 1.25 : 1.0;
         const seasonMult = data.activeSeasonEvent?.type === 'GOLDEN_HARVEST' ? 2.0 : data.activeSeasonEvent?.type === 'DROUGHT' ? 0.5 : 1.0;
-        n.goldIncome = Math.max(1, Math.floor((n.population * 0.12 + n.territoryCount * 0.08 + (b?.CITY || 0) * 3) * (n.id > 1 ? diffMult : 1.0) * ecoMult * titanBuff * seasonMult));
+        const baseGold = n.population * 0.05 + n.territoryCount * 0.05 + cityCount * 2 + hybridBarracksGold;
+        n.goldIncome = Math.max(1, Math.floor(baseGold * (n.id > 1 ? diffMult * botSkillMult : ecoMult * (skillBonuses ? skillBonuses.goldMult : 1.0)) * titanBuff * seasonMult));
         n.gold += n.goldIncome;
 
         // Quản lý Tướng đại diện quốc gia & Đếm ngược kỹ năng chủ động
@@ -2427,12 +2957,16 @@ export default function App() {
                 });
               }
             }
-          } else if (n.general.status === 'MARCHING') {
-            const activeWave = data.attackWaves.find(w => w.fromNation === n.id);
+          } else if (n.general && n.general.status === 'MARCHING') {
+            const gen = n.general;
+            const activeWave = gen.marchingWaveId 
+              ? data.attackWaves.find(w => w.id === gen.marchingWaveId)
+              : data.attackWaves.find(w => w.fromNation === n.id && w.hasGeneral);
             if (!activeWave) {
-              n.general.status = 'IDLE';
-              n.general.x = n.capitalX;
-              n.general.y = n.capitalY;
+              gen.status = 'IDLE';
+              gen.marchingWaveId = undefined;
+              gen.x = n.capitalX;
+              gen.y = n.capitalY;
             }
           }
         }
@@ -2445,9 +2979,6 @@ export default function App() {
             n.colonyCategory = undefined;
             const cleanName = n.name.replace(/\[Dân Tộc\]|\[Thuộc Địa\]/g, '').trim();
             n.name = `${cleanName} (Đế Quốc)`;
-            if (n.general) {
-              n.general.name = `Đại Tướng ${cleanName}`;
-            }
             n.gold += 150;
             n.troops += 25;
             data.events.unshift({
@@ -2466,6 +2997,21 @@ export default function App() {
           n.isEliminated = true;
         }
       });
+
+      // 2.5. ĐỒNG BỘ TRẠNG THÁI PHÒNG CHƠI MULTIPLAYER (HOST phát sóng cho các máy khác mỗi 3 giây)
+      if (isMultiplayerRef.current && myNationIdRef.current === 1 && data.gameTimeSeconds % 3 === 0) {
+        const syncNations = nations.map(n => ({
+          id: n.id,
+          gold: n.gold,
+          goldIncome: n.goldIncome,
+          troops: n.troops,
+          maxTroops: n.maxTroops,
+          population: n.population,
+          territoryCount: n.territoryCount,
+          isEliminated: n.isEliminated,
+        }));
+        multiplayerClient.sendStateSync(syncNations, data.darkTitans, data.gameTimeSeconds);
+      }
 
       // 3. Nghiên cứu công nghệ
       if (data.researching) {
@@ -2759,10 +3305,11 @@ export default function App() {
         }
       }
 
-      // 11. AI Bot tự động dùng bệ phóng tên lửa nếu đủ vàng (tối đa 1 lần mỗi 60 giây mỗi nước)
+      // 11. AI Bot tự động dùng bệ phóng tên lửa nếu đủ vàng (tối đa 1 lần mỗi 15 giây mỗi nước)
       if (data.gameTimeSeconds > 0 && data.gameTimeSeconds % 15 === 0) {
         nations.forEach(bot => {
-          if (bot.id <= 1 || bot.isEliminated || bot.colonyCategory === 'FOREST') return;
+          if (bot.id <= 1 || bot.isEliminated || bot.colonyCategory === 'FOREST' || bot.gold < 3500) return;
+          if (isMultiplayerRef.current && (myNationIdRef.current !== 1 || (multiplayerRoom && multiplayerRoom.players.some(p => p.connected && p.nationId === bot.id)))) return;
           // Kiểm tra xem bot có bệ phóng nào sẵn sàng không
           let botSilo: Tile | null = null;
           for (let y = 0; y < size; y++) {
@@ -2776,7 +3323,7 @@ export default function App() {
             if (botSilo) break;
           }
 
-          if (botSilo && bot.gold >= 750000) {
+          if (botSilo && bot.gold >= 3500) {
             // Tìm mục tiêu kẻ thù gần nhất
             let bestEnemyTile: Tile | null = null;
             let minDist = 999;
@@ -2801,7 +3348,7 @@ export default function App() {
             }
 
             if (bestEnemyTile) {
-              const missileType: MissileType = bot.gold >= 10000000 ? 'HYDRO' : 'ATOM';
+              const missileType: MissileType = bot.gold >= 50000 ? (Math.random() < 0.4 ? 'MIRV' : 'HYDRO') : bot.gold >= 7000 ? 'HYDRO' : 'ATOM';
               const cfg = MISSILE_CONFIG[missileType];
               if (bot.gold >= cfg.cost) {
                 bot.gold -= cfg.cost;
@@ -2816,14 +3363,14 @@ export default function App() {
                   targetX: bestEnemyTile.x,
                   targetY: bestEnemyTile.y,
                   progress: 0,
-                  speed: 1 / (MISSILE_SETTINGS.DEFAULT_FLIGHT_DURATION_SECONDS || 8),
+                  speed: 1 / (MISSILE_SETTINGS.DEFAULT_FLIGHT_DURATION_SECONDS || 12),
                   fromNation: bot.id,
                 });
 
                 data.events.unshift({
                   id: Math.random().toString(),
                   title: '🚀 CẢNH BÁO TÊN LỬA',
-                  description: `${bot.name} đã khai hỏa tên lửa ${cfg.name} hướng tới tọa độ (${bestEnemyTile.x}, ${bestEnemyTile.y})! Tên lửa sẽ chạm đất sau 8 giây!`,
+                  description: `${bot.name} đã khai hỏa tên lửa ${cfg.name} hướng tới tọa độ (${bestEnemyTile.x}, ${bestEnemyTile.y})! Tên lửa sẽ chạm đất sau ${MISSILE_SETTINGS.DEFAULT_FLIGHT_DURATION_SECONDS} giây!`,
                   type: 'PLAGUE',
                   targetNationId: bestEnemyTile.owner,
                   timestamp: formatGameTime(data.gameTimeSeconds),
@@ -2834,7 +3381,7 @@ export default function App() {
                   y: bestEnemyTile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
                   color: cfg.color, size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.8,
                   type: 'FLOAT_TEXT',
-                  text: `🚀 ${bot.name} Phóng ${cfg.name} (8s)!`
+                  text: `🚀 ${bot.name} Phóng ${cfg.name} (${MISSILE_SETTINGS.DEFAULT_FLIGHT_DURATION_SECONDS}s)!`
                 });
               }
             }
@@ -2842,14 +3389,34 @@ export default function App() {
         });
       }
 
-      // 4. AI Bot & Thuộc Địa nhỏ phát triển
-      const canBotsAct = data.gameTimeSeconds >= 4;
+      // 4. AI Bot & Thuộc Địa nhỏ phát triển (Tối ưu đơn nhịp quét + tra cứu O(1))
+      const canBotsAct = data.gameTimeSeconds >= 4 && (!isMultiplayerRef.current || myNationIdRef.current === 1);
       if (canBotsAct) {
         const totalLand = totalLandCountRef.current || 1;
         const playerLandPct = totalLand > 0 ? (nations[1]?.territoryCount / totalLand) : 0;
 
+        // Xây dựng bản đồ tra cứu đợt tấn công O(1) thay vì filter mảng lặp
+        const incomingWaveTargetMap = new Map<number, number>();
+        if (data.attackWaves && data.attackWaves.length > 0) {
+          for (let wi = 0; wi < data.attackWaves.length; wi++) {
+            const w = data.attackWaves[wi];
+            const k = w.targetY * size + w.targetX;
+            incomingWaveTargetMap.set(k, (incomingWaveTargetMap.get(k) || 0) + w.troops);
+          }
+        }
+
+        // Xác định các quốc gia do con người điều khiển trong phòng nhiều người
+        const humanNationIds = new Set<number>();
+        if (isMultiplayerRef.current && multiplayerRoom) {
+          multiplayerRoom.players.forEach(p => {
+            if (p.connected) humanNationIds.add(p.nationId);
+          });
+        } else {
+          humanNationIds.add(1);
+        }
+
         nations.forEach(bot => {
-          if (bot.id <= 1 || bot.isEliminated) return;
+          if (bot.id <= 1 || bot.isEliminated || humanNationIds.has(bot.id)) return;
 
           // Rừng hoang dã ([Rừng]) hoàn toàn tĩnh lặng, không tham chiến hay đi xâm chiếm
           if (bot.colonyCategory === 'FOREST') return;
@@ -2857,7 +3424,7 @@ export default function App() {
           // Bot tự động dùng kỹ năng chủ động của Tướng
           botUseGeneralSkill(bot);
 
-          // --- 1. ĐÁNH GIÁ MỨC ĐỘ ĐE DỌA & GIÁ TRỊ CHIẾN LƯỢC CỦA TỪNG Ô ĐẤT ---
+          // --- 1. ĐÁNH GIÁ MỨC ĐỘ ĐE DỌA & GIÁ TRỊ CHIẾN LƯỢC TRONG 1 LẦN QUÉT DUY NHẤT ---
           const borderThreats: { 
             tile: Tile; 
             threatScore: number; 
@@ -2866,6 +3433,7 @@ export default function App() {
             isCapital: boolean;
             hasKeyBuilding: boolean;
           }[] = [];
+          const neutralTargets: { source: Tile; target: Tile; isPlayer: boolean; priority: number }[] = [];
 
           for (let y = 0; y < size; y++) {
             for (let x = 0; x < size; x++) {
@@ -2879,28 +3447,33 @@ export default function App() {
                 let threat = 0;
                 let enemySrc: Tile | null = null;
 
-                neighbors.forEach(([nx, ny]) => {
+                for (let ni = 0; ni < 4; ni++) {
+                  const [nx, ny] = neighbors[ni];
                   if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
                     const neighborTile = tiles[ny][nx];
-                    if (neighborTile.terrain !== 'WATER' && neighborTile.owner !== bot.id) {
-                      const dip = bot.diplomacy[neighborTile.owner]?.status;
-                      if (dip !== 'ALLIANCE' && dip !== 'TRUCE') {
-                        if (neighborTile.owner === 1) {
-                          threat += (difficulty === 'HARD' ? 45 : 25);
-                          enemySrc = neighborTile;
-                        } else if (neighborTile.owner > 1 && dip === 'WAR') {
-                          threat += 20;
-                          if (!enemySrc) enemySrc = neighborTile;
+                    if (neighborTile.terrain !== 'WATER') {
+                      if (neighborTile.owner === 0) {
+                        neutralTargets.push({ source: t, target: neighborTile, isPlayer: false, priority: 10 });
+                      } else if (neighborTile.owner !== bot.id) {
+                        const dip = bot.diplomacy[neighborTile.owner]?.status;
+                        if (dip !== 'ALLIANCE' && dip !== 'TRUCE') {
+                          if (neighborTile.owner === 1) {
+                            threat += (difficulty === 'HARD' ? 45 : 25);
+                            enemySrc = neighborTile;
+                          } else if (neighborTile.owner > 1 && dip === 'WAR') {
+                            threat += 20;
+                            if (!enemySrc) enemySrc = neighborTile;
+                          }
                         }
                       }
                     }
                   }
-                });
+                }
 
-                const incomingWaves = data.attackWaves.filter(w => w.targetX === t.x && w.targetY === t.y);
-                if (incomingWaves.length > 0) {
-                  const totalIncomingTroops = incomingWaves.reduce((sum, w) => sum + w.troops, 0);
-                  threat += 65 + totalIncomingTroops;
+                // Tra cứu O(1) đợt tấn công từ Map
+                const incomingTroops = incomingWaveTargetMap.get(y * size + x);
+                if (incomingTroops !== undefined && incomingTroops > 0) {
+                  threat += 65 + incomingTroops;
                 }
 
                 // Tính điểm giá trị chiến lược của ô đất
@@ -2955,6 +3528,8 @@ export default function App() {
                   tileToBuild.building = buildType;
                   tileToBuild.buildingLevel = 1;
                   offscreenTerritoryDirtyRef.current = true;
+                  fogBaseDirtyRef.current = true;
+                  dirtyTerritoryTilesRef.current.push({ x: tileToBuild.x, y: tileToBuild.y });
                 }
               } else if (tileToBuild.building === 'FORTRESS' || tileToBuild.building === 'BARRACKS') {
                 // Nâng cấp cấp độ pháo đài/trại quân để tăng hiệu quả phòng thủ
@@ -2963,6 +3538,8 @@ export default function App() {
                   bot.gold -= upgradeCost;
                   tileToBuild.buildingLevel = (tileToBuild.buildingLevel || 1) + 1;
                   offscreenTerritoryDirtyRef.current = true;
+                  fogBaseDirtyRef.current = true;
+                  dirtyTerritoryTilesRef.current.push({ x: tileToBuild.x, y: tileToBuild.y });
                 }
               }
             }
@@ -2991,23 +3568,10 @@ export default function App() {
               }
             });
 
-            // Ưu tiên 2: Mở rộng sang ô trung lập ven biên nếu không bị đe dọa trực tiếp
+            // Ưu tiên 2: Mở rộng sang ô trung lập ven biên đã thu thập sẵn trong cùng nhịp quét
             if (validTargets.length === 0 || (bot.personality !== 'DEFENSIVE' && Math.random() < 0.35)) {
-              for (let y = 0; y < size; y++) {
-                for (let x = 0; x < size; x++) {
-                  const src = tiles[y][x];
-                  if (src.owner === bot.id) {
-                    const neighbors = [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]];
-                    neighbors.forEach(([nx, ny]) => {
-                      if (nx >= 0 && nx < size && ny >= 0 && ny < size) {
-                        const tgt = tiles[ny][nx];
-                        if (tgt.terrain !== 'WATER' && tgt.owner === 0) {
-                          validTargets.push({ source: src, target: tgt, isPlayer: false, priority: 10 });
-                        }
-                      }
-                    });
-                  }
-                }
+              if (neutralTargets.length > 0) {
+                validTargets.push(...neutralTargets);
               }
             }
 
@@ -3170,10 +3734,10 @@ export default function App() {
           };
 
           if (m.type === 'MIRV') {
-            // MIRV rải 7 đầu đạn con phân tán ngẫu nhiên trong bán kính
+            // MIRV rải 12 đầu đạn con phân tán ngẫu nhiên trong bán kính
             triggerExplosion(targetTile.x, targetTile.y, cfg.radius, false);
-            const subCount = cfg.mirvCount || 6;
-            const spread = cfg.mirvSpreadRadius || 5.0;
+            const subCount = cfg.mirvCount || 12;
+            const spread = cfg.mirvSpreadRadius || 9.0;
             for (let s = 0; s < subCount; s++) {
               const angle = Math.random() * Math.PI * 2;
               const r = (0.3 + Math.random() * 0.7) * spread;
@@ -3295,9 +3859,9 @@ export default function App() {
       });
       data.attackWaves = data.attackWaves.filter((_, idx) => !finishedWaves.includes(idx));
 
-      // 7. Cập nhật particles
+      // 7. Cập nhật particles (Floating text giảm nhanh hơn để biến mất sau ~1.5 - 2s)
       data.particles.forEach(p => {
-        p.life -= 1;
+        p.life -= (p.type === 'FLOAT_TEXT' ? 20 : 5);
         p.x += p.vx;
         p.y += p.vy;
       });
@@ -3412,6 +3976,10 @@ export default function App() {
           );
           setPlayerProfile(updatedProfile);
           playerProfileRef.current = updatedProfile;
+          savePlayerProfile(updatedProfile);
+          if (auth.currentUser) {
+            syncProfileToFirestore(auth.currentUser, updatedProfile).catch(console.error);
+          }
           setVictoryReward(reward);
           if (reward.leveledUp) {
             soundManager.playGeneralHorn();
@@ -3627,11 +4195,78 @@ export default function App() {
   // Xử lý chạm trên bản đồ:
   // Luôn lập tức hiển thị bảng thông tin ô đất bên dưới.
   // Xóa hoàn toàn việc đi chiếm đất khi click lần 2 trên bản đồ!
+  function quickAttackTile(tile: Tile): boolean {
+    const data = gameDataRef.current;
+    const player = data.nations[1];
+    if (player.troops < 5) return false;
+
+    // Điều kiện tấn công
+    if (tile.owner === 1) return false;
+    const status = player.diplomacy[tile.owner]?.status;
+    if (tile.owner !== 0 && status !== 'WAR') return false;
+
+    // Tìm nguồn quân gần nhất
+    let bestSource: Tile | null = null;
+    let minDistance = Infinity;
+    const tiles = data.tiles;
+    for (let y = 0; y < tiles.length; y++) {
+      for (let x = 0; x < tiles.length; x++) {
+        const t = tiles[y][x];
+        if (t.owner === 1) {
+          const dist = Math.hypot(t.x - tile.x, t.y - tile.y);
+          if (dist < minDistance) {
+            minDistance = dist;
+            bestSource = t;
+          }
+        }
+      }
+    }
+
+    if (bestSource) {
+      // Logic attack: check adjacency or port
+      const neighborTiles = [
+        [tile.x + 1, tile.y], [tile.x - 1, tile.y],
+        [tile.x, tile.y + 1], [tile.x, tile.y - 1]
+      ];
+      const isAdjacent = neighborTiles.some(([nx, ny]) => tiles[ny]?.[nx]?.owner === 1);
+      
+      if (!isAdjacent && (!player.hasPort || !tile.hasHarborAccess)) return false;
+
+      const troopsToSend = Math.max(5, Math.floor(player.troops * (attackPercent / 100)));
+      launchAttackWave(1, tile.owner, bestSource, tile, troopsToSend);
+      return true;
+    }
+    return false;
+  }
+
   const handleMapTap = (mapX: number, mapY: number, screenX: number, screenY: number) => {
+    tapRipplesRef.current.push({
+      x: mapX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+      y: mapY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+      startTime: performance.now()
+    });
+
     const data = gameDataRef.current;
     const { tiles, nations } = data;
     const targetTile = tiles[mapY]?.[mapX];
     if (!targetTile) return;
+
+    // Double tap attack
+    const now = Date.now();
+    if (
+      lastTapRef.current.x === mapX && 
+      lastTapRef.current.y === mapY && 
+      (now - lastTapRef.current.time < 350) && 
+      targetTile.owner !== 1 && targetTile.terrain !== 'WATER' && !missileAimingModeRef.current
+    ) {
+      if (quickAttackTile(targetTile)) {
+        setSelectedTile(null);
+        selectedTileRef.current = null;
+        lastTapRef.current = { x: -1, y: -1, time: 0 };
+        return;
+      }
+    }
+    lastTapRef.current = { x: mapX, y: mapY, time: now };
 
     // Kiểm tra cướp bóc Tàu Buôn Hải Cảng nếu chạm vào vị trí tàu đang giăng buồm trên biển
     if (data.tradeShips && data.tradeShips.length > 0) {
@@ -3815,10 +4450,12 @@ export default function App() {
     attacker.troops -= troops;
     data.stats.battlesCount += 1;
 
-    // Nếu đang trong phòng nhiều người và đợt quân do chính người chơi này phát động -> gửi qua WebSocket
-    if (isMultiplayerRef.current && from === myNationIdRef.current) {
+    // Nếu đang trong phòng nhiều người và đợt quân do chính người chơi phát động hoặc do Host AI phát động -> gửi qua WebSocket
+    if (isMultiplayerRef.current && (from === myNationIdRef.current || (myNationIdRef.current === 1 && from > 1))) {
       multiplayerClient.sendAttack(from, to, source.x, source.y, target.x, target.y, troops);
     }
+
+    const waveId = Math.random().toString();
 
     // Tướng xuất chiến dẫn dắt đợt quân (Tướng chiếm 30% sức mạnh)
     let hasGeneral = false;
@@ -3826,6 +4463,7 @@ export default function App() {
       if ((from === 1 && playerGeneralDeployMode) || (from > 1 && (attacker.tier === 'BOSS' || troops >= 10))) {
         hasGeneral = true;
         attacker.general.status = 'MARCHING';
+        attacker.general.marchingWaveId = waveId;
         attacker.general.x = source.x;
         attacker.general.y = source.y;
         if (from === 1) {
@@ -3863,7 +4501,7 @@ export default function App() {
     const waveSpeed = isSupplyRoute ? 0.46 : 0.38;
 
     data.attackWaves.push({
-      id: Math.random().toString(),
+      id: waveId,
       fromNation: from,
       toNation: to,
       sourceX: source.x,
@@ -3871,10 +4509,12 @@ export default function App() {
       targetX: target.x,
       targetY: target.y,
       troops,
-      progress: 0,
+      progress: Math.hypot(source.x - target.x, source.y - target.y) <= 1.5 ? 0.97 : 0,
       speed: waveSpeed,
       hasGeneral,
       targetsQueue: queue,
+      focusX: target.x,
+      focusY: target.y,
     });
 
     if ((from === 1 || from === myNationIdRef.current) && !hasGeneral) soundManager.playAttack();
@@ -3900,26 +4540,69 @@ export default function App() {
         tgt.building = action.buildingType;
         tgt.buildingLevel = (tgt.buildingLevel || 1) + (action.count || 1);
         offscreenTerritoryDirtyRef.current = true;
+        fogBaseDirtyRef.current = true;
+        dirtyTerritoryTilesRef.current.push({ x: tgt.x, y: tgt.y });
+      }
+    };
+
+    multiplayerClient.onStateSync = (syncData) => {
+      if (myNationIdRef.current === 1) return; // Host has authoritative state
+      const data = gameDataRef.current;
+      if (!data || !data.nations) return;
+
+      syncData.nations.forEach(nSync => {
+        const n = data.nations[nSync.id];
+        if (n) {
+          n.gold = nSync.gold;
+          n.goldIncome = nSync.goldIncome;
+          n.troops = nSync.troops;
+          n.maxTroops = nSync.maxTroops;
+          n.population = nSync.population;
+          n.territoryCount = nSync.territoryCount;
+          n.isEliminated = nSync.isEliminated;
+        }
+      });
+
+      if (syncData.darkTitans && data.darkTitans) {
+        data.darkTitans = syncData.darkTitans;
+      }
+      if (typeof syncData.gameTimeSeconds === 'number') {
+        data.gameTimeSeconds = syncData.gameTimeSeconds;
+      }
+      refreshHudStats();
+    };
+
+    multiplayerClient.onRoomUpdated = (updatedRoom) => {
+      setMultiplayerRoom(updatedRoom);
+    };
+
+    multiplayerClient.onConnectionChange = (connected) => {
+      if (!connected) {
+        setMultiplayerBanner('⚠️ Mất kết nối tới máy chủ phòng. Đang tự động kết nối lại...');
+      } else {
+        setMultiplayerBanner('Đã kết nối lại thành công!');
+        setTimeout(() => setMultiplayerBanner(null), 3000);
       }
     };
 
     multiplayerClient.onPlayerDisconnected = (info) => {
       setMultiplayerBanner(info.message);
       setTimeout(() => setMultiplayerBanner(null), 6000);
-      
-      // Nếu host thoát, server sẽ tự động cập nhật ROOM_UPDATED với host mới.
-      // Chỉ cần cập nhật trạng thái local nếu cần.
     };
 
     return () => {
       multiplayerClient.onActionAttack = null;
       multiplayerClient.onActionBuild = null;
+      multiplayerClient.onStateSync = null;
+      multiplayerClient.onRoomUpdated = null;
+      multiplayerClient.onConnectionChange = null;
       multiplayerClient.onPlayerDisconnected = null;
     };
   }, [isMultiplayer]);
 
   // Giải quyết đợt tấn công
-  const resolveAttackCapture = (wave: AttackWave) => {
+  const resolveAttackCapture = (wave: AttackWave, depth: number = 0) => {
+    let continued = false;
     const data = gameDataRef.current;
     const tgt = data.tiles[wave.targetY]?.[wave.targetX];
     if (!tgt) return;
@@ -4016,6 +4699,16 @@ export default function App() {
       tgt.building = 'NONE';
       tgt.buildingLevel = 1;
       offscreenTerritoryDirtyRef.current = true;
+      fogBaseDirtyRef.current = true;
+      dirtyTerritoryTilesRef.current.push({ x: tgt.x, y: tgt.y });
+      
+      captureFlashRef.current.push({
+        x: tgt.x,
+        y: tgt.y,
+        color: attacker.color,
+        startTime: performance.now()
+      });
+      if (captureFlashRef.current.length > 150) captureFlashRef.current.shift();
 
       // Công nghệ kinh tế cấp 3: Thưởng +20 vàng khi chiếm ô đất
       if (attacker && attacker.techLevels?.economy >= 3) {
@@ -4050,30 +4743,110 @@ export default function App() {
         soundManager.playCapture();
       }
 
-      if (wave.targetsQueue && wave.targetsQueue.length > 1 && wave.troops >= 5) {
-        wave.targetsQueue.shift();
-        const next = wave.targetsQueue[0];
-        if (next) {
-          const nextTile = data.tiles[next.y]?.[next.x];
-          if (nextTile && nextTile.owner !== wave.fromNation && nextTile.terrain !== 'WATER') {
-            const nextOwner = nextTile.owner;
-            const isAlly = nextOwner > 0 && (attacker.diplomacy[nextOwner]?.status === 'ALLIANCE' || attacker.diplomacy[nextOwner]?.status === 'TRUCE');
-            if (!isAlly) {
-              wave.sourceX = tgt.x;
-              wave.sourceY = tgt.y;
-              wave.targetX = next.x;
-              wave.targetY = next.y;
-              wave.progress = 0;
+      if (wave.targetsQueue && (attacker.isPlayer || wave.troops >= 5)) {
+        if (data.attackWaves.length < 60 || attacker.isPlayer) {
+          const limit = attacker.isPlayer ? 80 : (attacker.tier === 'BOSS' ? 60 : 30);
+          const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
+          const fx = wave.focusX ?? tgt.x;
+          const fy = wave.focusY ?? tgt.y;
+          const size2 = data.tiles.length;
+          // điểm càng thấp càng được ưu tiên: nhiều đất mình bao quanh (lan tròn, lấp đầy), gần điểm chạm
+          const score = (x: number, y: number) => {
+            let own = 0;
+            for (const [dx, dy] of DIRS) {
+              const t = data.tiles[y + dy]?.[x + dx];
+              if (t && t.owner === wave.fromNation) own++;
+            }
+            return 0.3 * Math.hypot(x - fx, y - fy) - 1.5 * own + Math.random() * 0.6;
+          };
+          const blocked = (owner: number) => {
+            if (owner > 0) {
+              const st = attacker.diplomacy?.[owner]?.status;
+              return st === 'ALLIANCE' || st === 'TRUCE';
+            }
+            return false;
+          };
+          const canHit = (t: Tile | undefined) =>
+            !!t && t.terrain !== 'WATER' && t.owner !== wave.fromNation && t.owner === wave.toNation && !blocked(t.owner);
+
+          wave.targetsQueue = wave.targetsQueue.filter(q => !(q.x === tgt.x && q.y === tgt.y));
+          for (const [dx, dy] of DIRS) {
+            const nx = tgt.x + dx, ny = tgt.y + dy;
+            if (!canHit(data.tiles[ny]?.[nx])) continue;
+            if (wave.targetsQueue.some(q => q.x === nx && q.y === ny)) continue;
+            if (wave.targetsQueue.length >= limit) {
+              let worst = -1, worstScore = -Infinity;
+              wave.targetsQueue.forEach((q, i) => {
+                const s = score(q.x, q.y);
+                if (s > worstScore) { worstScore = s; worst = i; }
+              });
+              if (worst >= 0 && score(nx, ny) < worstScore) wave.targetsQueue[worst] = { x: nx, y: ny };
+              continue;
+            }
+            wave.targetsQueue.push({ x: nx, y: ny });
+          }
+          const pickBest = () => {
+            let idx = -1, best = Infinity;
+            wave.targetsQueue!.forEach((q, i) => {
+              if (!canHit(data.tiles[q.y]?.[q.x])) return;
+              const s = score(q.x, q.y);
+              if (s < best) { best = s; idx = i; }
+            });
+            return idx;
+          };
+          let bestIdx = pickBest();
+
+          // QUÂN TỰ ĐÁNH CÁC VÙNG KHÁC CỦA ĐỊCH: hết ô kề thì quét cả bản đồ tìm mọi ô của đúng nước địch đang giáp đất mình
+          if (bestIdx < 0 && wave.toNation > 0 && !blocked(wave.toNation)) {
+            const found: { x: number; y: number }[] = [];
+            for (let yy = 0; yy < size2; yy++) {
+              for (let xx = 0; xx < size2; xx++) {
+                if (!canHit(data.tiles[yy][xx])) continue;
+                let touch = false;
+                for (const [dx, dy] of DIRS) {
+                  if (data.tiles[yy + dy]?.[xx + dx]?.owner === wave.fromNation) { touch = true; break; }
+                }
+                if (touch) found.push({ x: xx, y: yy });
+              }
+            }
+            found.sort((a, b) => score(a.x, a.y) - score(b.x, b.y));
+            wave.targetsQueue = found.slice(0, limit);
+            bestIdx = pickBest();
+          }
+
+          if (bestIdx >= 0) {
+            const next = wave.targetsQueue[bestIdx];
+            let src = { x: tgt.x, y: tgt.y };
+            for (const [dx, dy] of DIRS) {
+              const t = data.tiles[next.y + dy]?.[next.x + dx];
+              if (t && t.owner === wave.fromNation) { src = { x: t.x, y: t.y }; break; }
+            }
+            const playerSkillBonuses = attacker.isPlayer ? getSkillTreeBonuses(playerProfileRef.current.skillTree) : null;
+            wave.speed = attacker.isPlayer ? (1.1 * (playerSkillBonuses?.marchSpeedMult || 1.0)) : (attacker.tier === 'BOSS' ? 0.9 : 0.7);
+            wave.sourceX = src.x;
+            wave.sourceY = src.y;
+            wave.targetX = next.x;
+            wave.targetY = next.y;
+            wave.progress = 0;
+            const burst = attacker.isPlayer ? (12 + (playerSkillBonuses?.burstCaptureBonus || 0)) : (attacker.tier === 'BOSS' ? 6 : 3);
+            continued = true;
+            if (depth + 1 < burst && wave.troops > 0) {
+              resolveAttackCapture(wave, depth + 1);
+            } else {
               data.attackWaves.push(wave);
             }
           }
         }
       }
     }
+    if (!continued && wave.troops > 0) {
+      attacker.troops += wave.troops; // quân còn dư quay về nhà
+      wave.troops = 0;
+    }
     offscreenTerritoryDirtyRef.current = true;
   };
 
-  // Pointer Handlers: Thu phóng và di chuyển mượt mà trên điện thoại
+  // Pointer Handlers: Thu phóng và di chuyển mượt mà trên điện thoại, triệt tiêu chọn nhầm ô đất
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     // 1. Nếu người dùng chạm vào các nút UI, bảng thông tin, minimap, ticker, banner (không phải canvas)
     // thì bỏ qua không xử lý map touch/drag để các nút bấm trên màn hình nhận click 100%.
@@ -4094,16 +4867,19 @@ export default function App() {
       pointerStartRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY, time: Date.now() };
       startCamRef.current = { ...cameraRef.current };
       isDraggingRef.current = false;
+      isMultiTouchActiveRef.current = false;
+      totalDragDistRef.current = 0;
       lastPinchDistRef.current = null;
       lastPinchMidRef.current = null;
     } else if (map.size >= 2) {
+      isMultiTouchActiveRef.current = true;
+      isDraggingRef.current = true;
       const pts = Array.from(map.values());
       lastPinchDistRef.current = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
       lastPinchMidRef.current = {
         x: (pts[0].x + pts[1].x) / 2 - rect.left,
         y: (pts[0].y + pts[1].y) / 2 - rect.top,
       };
-      isDraggingRef.current = true;
     }
   };
 
@@ -4117,6 +4893,7 @@ export default function App() {
     const rect = canvas.getBoundingClientRect();
 
     if (map.size >= 2 && lastPinchDistRef.current !== null && lastPinchDistRef.current > 0) {
+      isMultiTouchActiveRef.current = true;
       isDraggingRef.current = true;
       const pts = Array.from(map.values());
       const currentDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
@@ -4153,8 +4930,11 @@ export default function App() {
     } else if (map.size === 1 && pointerStartRef.current) {
       const dx = e.clientX - pointerStartRef.current.x;
       const dy = e.clientY - pointerStartRef.current.y;
+      const dist = Math.hypot(dx, dy);
 
-      if (Math.hypot(dx, dy) > 8) {
+      totalDragDistRef.current += Math.hypot(e.movementX || 0, e.movementY || 0);
+
+      if (dist > 8 || totalDragDistRef.current > 10) {
         isDraggingRef.current = true;
       }
 
@@ -4171,13 +4951,21 @@ export default function App() {
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
     const map = pointersMapRef.current;
 
-    if (map.size === 1 && pointerStartRef.current && pointerStartRef.current.id === e.pointerId && !isDraggingRef.current) {
+    // Chỉ nhận tap khi ngón duy nhất, không di chuyển, không đa điểm và thời gian chạm ngắn gọn
+    const canTap = map.size === 1 && 
+      pointerStartRef.current && 
+      pointerStartRef.current.id === e.pointerId && 
+      !isDraggingRef.current && 
+      !isMultiTouchActiveRef.current &&
+      totalDragDistRef.current < 10;
+
+    if (canTap && pointerStartRef.current) {
       const dx = e.clientX - pointerStartRef.current.x;
       const dy = e.clientY - pointerStartRef.current.y;
       const dist = Math.hypot(dx, dy);
       const duration = Date.now() - pointerStartRef.current.time;
 
-      if (dist < 12 && duration < 320) {
+      if (dist < 8 && duration < 280) {
         const canvas = canvasRef.current;
         if (canvas) {
           const rect = canvas.getBoundingClientRect();
@@ -4213,11 +5001,28 @@ export default function App() {
         };
         startCamRef.current = { ...cameraRef.current };
       }
+      isDraggingRef.current = true; // Ngón còn lại sau zoom không thể biến thành click ô đất
       lastPinchDistRef.current = null;
       lastPinchMidRef.current = null;
     } else if (map.size === 0) {
       pointerStartRef.current = null;
       isDraggingRef.current = false;
+      isMultiTouchActiveRef.current = false;
+      totalDragDistRef.current = 0;
+      lastPinchDistRef.current = null;
+      lastPinchMidRef.current = null;
+    }
+  };
+
+  const handlePointerLeave = (e: React.PointerEvent<HTMLDivElement>) => {
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch {}
+    const map = pointersMapRef.current;
+    map.delete(e.pointerId);
+    if (map.size === 0) {
+      pointerStartRef.current = null;
+      isDraggingRef.current = false;
+      isMultiTouchActiveRef.current = false;
+      totalDragDistRef.current = 0;
       lastPinchDistRef.current = null;
       lastPinchMidRef.current = null;
     }
@@ -4411,6 +5216,37 @@ export default function App() {
               Bản đồ Trái Đất chuẩn OpenFront. Xuất phát tại Việt Nam, thu phục thuộc địa & chinh phục thế giới!
             </p>
 
+            {/* HỆ THỐNG TÀI KHOẢN CLOUD & ADMIN PANEL */}
+            <div className="mb-4">
+              <UserAccountBadge
+                currentUser={currentUser}
+                playerProfile={playerProfile}
+                onOpenAuth={() => setIsAuthModalOpen(true)}
+                onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
+                onSignOut={async () => {
+                  await fbSignOut(auth);
+                  setCurrentUser(null);
+                }}
+              />
+            </div>
+
+            {/* NÚT ADMIN PANEL (CHỈ HIỂN THỊ KHI ĐĂNG NHẬP ADMIN) */}
+            {isUserAdmin(currentUser) && (
+              <button
+                type="button"
+                onClick={() => setIsAdminPanelOpen(true)}
+                className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 hover:from-amber-500 hover:to-amber-600 text-white font-black rounded-2xl border border-amber-400/80 shadow-xl shadow-amber-950/60 mb-3 flex items-center justify-between text-xs active:scale-95 transition-all"
+              >
+                <div className="flex items-center gap-2">
+                  <Crown className="w-4 h-4 text-amber-300 animate-pulse" />
+                  <span>BẢNG ĐIỀU KHIỂN ADMIN (ADMIN PANEL)</span>
+                </div>
+                <span className="text-[10px] bg-black/40 text-amber-300 border border-amber-400/40 px-2 py-0.5 rounded-full font-bold">
+                  ⚡ Mở Panel
+                </span>
+              </button>
+            )}
+
             {/* THẺ HỒ SƠ NGƯỜI CHƠI: CẤP ĐỘ, TIẾN TRÌNH EXP VÀ TIỀN XU PIXEL */}
             {(() => {
               const reqExp = getRequiredExpForNextLevel(playerProfile.level);
@@ -4558,6 +5394,60 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* NÚT CHỌN TƯỚNG SẢNH CHÍNH */}
+            <button
+              type="button"
+              onClick={() => setIsGeneralSelectOpen(true)}
+              className="w-full py-3 px-4 bg-gradient-to-r from-amber-600/90 via-amber-700/90 to-amber-800/90 hover:from-amber-500 hover:to-amber-600 text-white font-bold rounded-2xl border border-amber-500/50 shadow-lg shadow-amber-950/40 transition-all flex items-center justify-between gap-2 text-sm active:scale-95 mb-3"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="bg-amber-950/80 p-1.5 rounded-xl border border-amber-500/40 shrink-0">
+                  <GeneralModel skillId={playerProfile.selectedGeneral} size={30} />
+                </div>
+                <div className="text-left truncate">
+                  <div className="text-xs text-amber-200 font-bold">🎖️ Chọn Tướng</div>
+                  <div className="text-xs text-amber-100/90 truncate">
+                    Đang chọn: <span className="font-bold text-white">{GENERAL_ROSTER.find(g => g.skillId === playerProfile.selectedGeneral)?.name || 'Đại Tướng Hắc Phong'}</span>
+                  </div>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold bg-amber-500/30 text-amber-200 px-2.5 py-1 rounded-xl border border-amber-500/40 shrink-0">
+                Đổi Tướng ❯
+              </span>
+            </button>
+
+            {/* NÚT CÂY KỸ NĂNG ĐẾ CHẾ (SẢNH CHÍNH) */}
+            <button
+              type="button"
+              onClick={() => {
+                setIsSkillTreeOpen(true);
+                soundManager.playClick();
+              }}
+              className="w-full py-3 px-4 bg-gradient-to-r from-emerald-700/90 via-teal-700/90 to-cyan-800/90 hover:from-emerald-600 hover:to-teal-600 text-white font-bold rounded-2xl border border-emerald-500/50 shadow-lg shadow-emerald-950/40 transition-all flex items-center justify-between gap-2 text-sm active:scale-95 mb-3"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="bg-emerald-950/80 p-2 rounded-xl border border-emerald-500/40 shrink-0 text-lg">
+                  🌳
+                </div>
+                <div className="text-left truncate">
+                  <div className="text-xs text-emerald-200 font-bold flex items-center gap-1.5">
+                    <span>Cây Kỹ Năng Đế Chế</span>
+                    {playerProfile.skillPoints > 0 && (
+                      <span className="text-[10px] bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded-full font-black animate-pulse">
+                        +{playerProfile.skillPoints} Điểm
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-emerald-100/80 truncate">
+                    Nâng cấp 3 nhánh: Kinh Tế, Quân Đội, Anh Hùng
+                  </div>
+                </div>
+              </div>
+              <span className="text-[11px] font-bold bg-emerald-500/30 text-emerald-200 px-2.5 py-1 rounded-xl border border-emerald-500/40 shrink-0">
+                Mở Cây ❯
+              </span>
+            </button>
 
             {savedGameInfo ? (
               <div className="space-y-3">
@@ -4719,6 +5609,39 @@ export default function App() {
                   <span className="font-mono text-[11px]">Sáng Tạo</span>
                 </button>
               )}
+
+              {/* NÚT ADMIN PANEL TRONG TRẬN ĐẤU (CHỈ ADMIN THẤY) */}
+              {isUserAdmin(currentUser) && (
+                <button
+                  onClick={() => {
+                    setIsAdminPanelOpen(true);
+                    soundManager.playClick();
+                  }}
+                  className="px-2 py-1.5 bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 hover:from-amber-500 hover:to-amber-600 active:scale-95 text-white font-black rounded-lg text-xs flex items-center gap-1 border border-amber-400/80 shadow-md shadow-amber-950/40 min-h-[36px]"
+                  title="Mở Bảng Điều Khiển Admin (Chỉ Admin thấy)"
+                >
+                  <Crown className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
+                  <span className="font-mono text-[11px] hidden xs:inline">Admin</span>
+                </button>
+              )}
+
+              {/* NÚT CÂY KỸ NĂNG TRONG TRẬN ĐẤU */}
+              <button
+                onClick={() => {
+                  setIsSkillTreeOpen(true);
+                  soundManager.playClick();
+                }}
+                className="relative px-2 py-1.5 bg-gradient-to-r from-emerald-800 to-teal-800 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-emerald-100 font-bold rounded-lg text-xs flex items-center gap-1 border border-emerald-500/60 shadow-md shadow-emerald-950/40 min-h-[36px]"
+                title="Mở Cây Kỹ Năng Đế Chế (3 Nhánh & Kết Hợp)"
+              >
+                <span className="text-sm">🌳</span>
+                <span className="font-mono text-[11px] hidden xs:inline">Kỹ Năng</span>
+                {playerProfile.skillPoints > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 bg-amber-400 text-slate-950 font-black text-[10px] w-4 h-4 rounded-full flex items-center justify-center animate-bounce shadow">
+                    {playerProfile.skillPoints}
+                  </span>
+                )}
+              </button>
 
               <button
                 onClick={() => setGameSpeed(s => s === 1 ? 2 : s === 2 ? 4 : 1)}
@@ -4930,6 +5853,7 @@ export default function App() {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
+            onPointerLeave={handlePointerLeave}
             onWheel={handleWheel}
             className="relative flex-1 overflow-hidden bg-slate-950 touch-none select-none cursor-grab active:cursor-grabbing w-full h-full"
           >
@@ -5536,7 +6460,7 @@ export default function App() {
                   <div className="flex flex-col gap-1.5 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 text-slate-300 shadow">
                     <div className="flex items-center justify-between text-[11px] gap-2">
                       <div className="flex items-center gap-1.5 font-bold text-amber-400 truncate">
-                        <Crown className="w-4 h-4 text-amber-400 shrink-0" />
+                        <GeneralModel skillId={pGen.skillId} size={24} />
                         <span className="truncate">{pGen.name}</span>
                       </div>
 
@@ -6279,6 +7203,90 @@ export default function App() {
           showMissileToast(`Đã chọn ${MISSILE_CONFIG[type].name}. Hãy chạm vào vùng đất kẻ thù trên bản đồ!`);
         }}
         onOpenBuildModal={() => setIsBuildOpen(true)}
+      />
+
+      {/* MODAL CHỌN TƯỚNG SẢNH CHÍNH */}
+      <GeneralSelectModal
+        isOpen={isGeneralSelectOpen}
+        onClose={() => setIsGeneralSelectOpen(false)}
+        playerProfile={playerProfile}
+        onUpdateProfile={(updated) => {
+          setPlayerProfile(updated);
+          playerProfileRef.current = updated;
+          savePlayerProfile(updated);
+          if (auth.currentUser) {
+            syncProfileToFirestore(auth.currentUser, updated).catch(console.error);
+          }
+        }}
+      />
+
+      {/* MODAL ĐĂNG NHẬP / ĐĂNG KÝ TÀI KHOẢN FIREBASE */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        playerProfile={playerProfile}
+        onProfileLoaded={(loadedProfile) => {
+          setPlayerProfile(loadedProfile);
+          playerProfileRef.current = loadedProfile;
+          savePlayerProfile(loadedProfile);
+        }}
+      />
+
+      {/* MODAL ADMIN PANEL (CHỈ QUẢN TRỊ VIÊN MỚI TRUY CẬP ĐƯỢC) */}
+      {isUserAdmin(currentUser) && (
+        <AdminPanelModal
+          isOpen={isAdminPanelOpen}
+          onClose={() => setIsAdminPanelOpen(false)}
+          currentUser={currentUser}
+          playerProfile={playerProfile}
+          onUpdateProfile={(updated) => {
+            setPlayerProfile(updated);
+            playerProfileRef.current = updated;
+            savePlayerProfile(updated);
+            if (currentUser) {
+              syncProfileToFirestore(currentUser, updated).catch(console.error);
+            }
+          }}
+          gameDataRef={gameDataRef}
+          gameSpeed={gameSpeed}
+          setGameSpeed={setGameSpeed}
+          infiniteResources={infiniteResources}
+          setInfiniteResources={setInfiniteResources}
+          noCooldown={noCooldown}
+          setNoCooldown={setNoCooldown}
+          onResetCooldowns={handleResetCooldowns}
+          onAddMissiles={handleAddMissiles}
+          onAddSilos={handleAddSilos}
+          onAddBot={handleAddBot}
+          onRemoveBot={handleRemoveBot}
+          onAdjustBotPower={handleAdjustBotPower}
+          onRefreshGameStats={refreshHudStats}
+        />
+      )}
+
+      {/* MODAL CÂY KỸ NĂNG ĐẾ CHẾ (SKILL TREE) */}
+      <SkillTreeModal
+        isOpen={isSkillTreeOpen}
+        onClose={() => setIsSkillTreeOpen(false)}
+        playerProfile={playerProfile}
+        currentGold={gameDataRef.current ? (gameDataRef.current.nations.find(n => n.isPlayer)?.gold || 0) : 0}
+        onDeductGold={(goldAmount) => {
+          if (gameDataRef.current) {
+            const player = gameDataRef.current.nations.find(n => n.isPlayer);
+            if (player) {
+              player.gold = Math.max(0, player.gold - goldAmount);
+              refreshHudStats();
+            }
+          }
+        }}
+        onUpdateProfile={(updated) => {
+          setPlayerProfile(updated);
+          playerProfileRef.current = updated;
+          savePlayerProfile(updated);
+          if (currentUser) {
+            syncProfileToFirestore(currentUser, updated).catch(console.error);
+          }
+        }}
       />
 
     </div>

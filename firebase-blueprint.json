@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile, progression, and credentials",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "displayName": { "type": "string", "maxLength": 64 },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "level": { "type": "number" },
+        "exp": { "type": "number" },
+        "pixelCoins": { "type": "number" },
+        "purchasedGenerals": { "type": "array" },
+        "selectedGeneral": { "type": "string", "maxLength": 64 },
+        "skillPoints": { "type": "number" },
+        "skillTree": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "email", "displayName", "role", "level", "exp", "pixelCoins", "purchasedGenerals", "selectedGeneral"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted admin whitelist records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "grantedAt": { "type": "string" }
+      },
+      "required": ["id", "email"]
+    },
+    "AdminConfig": {
+      "title": "AdminConfig",
+      "description": "Admin game overrides and server verified configurations",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "updatedBy": { "type": "string", "maxLength": 128 },
+        "updatedAt": { "type": "string" },
+        "infiniteResources": { "type": "boolean" },
+        "gameSpeed": { "type": "number" },
+        "noCooldown": { "type": "boolean" }
+      },
+      "required": ["id", "updatedBy"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles and progression"
+    },
+    "/admins/{adminId}": {
+      "schema": "AdminRecord",
+      "description": "Collection of admin IDs verified on server"
+    },
+    "/admin_configs/{configId}": {
+      "schema": "AdminConfig",
+      "description": "Admin server configurations protected by admin security rules"
+    }
+  }
+}
