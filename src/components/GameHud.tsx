@@ -12,7 +12,7 @@ interface GameHudProps {
     goldIncome: number;
     troops: number;
     maxTroops: number;
-    population: number;
+    population?: number;
     landPercent: number;
     titanBuffTimer: number;
   };
@@ -88,6 +88,15 @@ export const GameHud: React.FC<GameHudProps> = ({
     }
   }, [gameDataRef.current?.events?.length]);
 
+  // Auto-hide selected tile card after 4 seconds
+  useEffect(() => {
+    if (!selectedTile) return;
+    const timer = setTimeout(() => {
+      setSelectedTile(null);
+    }, 4000);
+    return () => clearTimeout(timer);
+  }, [selectedTile?.x, selectedTile?.y, selectedTile?.owner, setSelectedTile]);
+
   const pGen = gameDataRef.current?.nations?.[1]?.general;
   const rosterItem = pGen ? GENERAL_ROSTER.find(r => r.skillId === pGen.skillId) || GENERAL_ROSTER[0] : null;
   const isMarching = pGen?.status === 'MARCHING';
@@ -112,7 +121,7 @@ export const GameHud: React.FC<GameHudProps> = ({
           {/* Dân số */}
           <div className="flex items-center gap-1 bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 rounded-lg shrink-0">
             <Users className="w-3.5 h-3.5 text-blue-400" />
-            <span className="font-bold text-blue-200 font-mono">{formatPopulation(hudStats.population)}</span>
+            <span className="font-bold text-blue-200 font-mono">{formatPopulation(hudStats.population ?? (gameDataRef.current?.nations?.[1]?.population || 0))}</span>
           </div>
 
           {/* % Đất */}
@@ -180,10 +189,10 @@ export const GameHud: React.FC<GameHudProps> = ({
       {/* 4. BẢNG THÔNG TIN Ô ĐẤT: Thẻ gọn 2 dòng phía trên thanh dưới */}
       {selectedTile && (
         <div 
-          className="pointer-events-auto mx-3 mb-2 bg-slate-900/95 border border-slate-700 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-150 max-h-[15vh] overflow-y-auto"
+          className="pointer-events-auto left-2 right-2 mx-auto mb-2 max-w-sm w-auto box-border bg-slate-900/95 border border-slate-700 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-150 max-h-[15vh] overflow-y-auto"
         >
-          <div className="flex items-center justify-between pb-1 border-b border-slate-800 text-xs">
-            <div className="flex items-center gap-1.5 font-bold text-white truncate">
+          <div className="flex items-center justify-between pb-1 border-b border-slate-800 text-xs gap-1">
+            <div className="flex items-center gap-1.5 font-bold text-white min-w-0 flex-1 truncate">
               {selectedTile.owner === 1 ? <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
               <span className="truncate">
                 {selectedTile.owner === 1 ? `${playerName} (Lãnh thổ của bạn)` : selectedTile.owner > 1 ? gameDataRef.current.nations[selectedTile.owner]?.name || 'Đất địch' : 'Đất hoang trung lập'}
@@ -191,14 +200,14 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
             <button 
               onClick={() => setSelectedTile(null)}
-              className="p-1 text-slate-400 hover:text-white rounded-lg shrink-0"
+              className="p-1 text-slate-400 hover:text-white rounded-lg shrink-0 ml-1"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <div className="flex items-center justify-between gap-2 mt-1.5 text-[11px]">
-            <div className="text-slate-300 truncate">
+            <div className="text-slate-300 min-w-0 flex-1 truncate">
               📍 ({selectedTile.x}, {selectedTile.y}) • <strong className="text-white">{selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi'}</strong>
               {selectedTile.building !== 'NONE' && <span className="text-amber-400 ml-1">[{BUILDING_INFO[selectedTile.building].name}]</span>}
             </div>
