@@ -43,6 +43,7 @@ import { AdminPanelModal } from './components/AdminPanelModal';
 import { UserAccountBadge } from './components/UserAccountBadge';
 import { SkillTreeModal } from './components/SkillTreeModal';
 import { TitleMenu } from './components/TitleMenu';
+import { GameHud } from './components/GameHud';
 import { getSkillTreeBonuses } from './utils/skillTreeConfig';
 import { 
   auth, 
