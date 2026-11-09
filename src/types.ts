@@ -45,12 +45,26 @@ export type SettlementTier = 'TIER_1_FOREST' | 'TIER_2_TRIBE' | 'TIER_3_ETHNIC' 
 export type ColonyCategory = 'FOREST' | 'TRIBE' | 'ETHNIC';
 export type GeneralStatus = 'IDLE' | 'MARCHING' | 'INJURED' | 'RECOVERING' | 'FALLEN';
 export type GeneralSkillId = 'INSPIRE_AURA' | 'MISSILE_BARRAGE' | 'IRON_BORDER_SHIELD' | 'SUPPLY_REINFORCE' | 'SHADOW_RAID';
+export type GeneralHealthState = 'HEALTHY' | 'INJURED' | 'RECOVERING';
+export type GeneralRole = 'ACTIVE' | 'RESERVE' | 'CAPTIVE';
 
 export interface General {
   id: string;
   nationId: number;
   name: string;
   status: GeneralStatus;
+  role: GeneralRole; // 'ACTIVE' | 'RESERVE' | 'CAPTIVE'
+  healthState: GeneralHealthState; // 'HEALTHY' | 'INJURED' | 'RECOVERING'
+
+  // Hệ thống Chỉ số Chiến đấu & Sinh tồn v1.1
+  hp: number; // HP hiện tại (mặc định 1000)
+  maxHp: number; // HP tối đa (mặc định 1000, tăng từ level/tech tối đa +25% = 1250)
+  baseHp: number; // HP cơ bản (1000)
+  armor: number; // Giáp hiện tại (tỉ lệ giảm sát thương 0.20 = 20%, tối đa 60%)
+  baseArmor: number; // Giáp cơ bản (0.20 = 20%)
+  attack: number; // Sát thương hiện tại (mặc định 90, tăng tối đa +20% = 108)
+  baseAttack: number; // Sát thương cơ bản (90)
+
   x: number;
   y: number;
   targetX?: number;
@@ -62,6 +76,12 @@ export interface General {
   skillCooldown: number; // giây hồi còn lại
   skillActiveTimer: number; // giây hiệu ứng còn lại
   marchingWaveId?: string;
+
+  // Chuẩn bị tương thích kiến trúc v1.2 (Dự bị, EXP, Loyalty)
+  level?: number;
+  exp?: number;
+  loyalty?: number;
+  history?: string[];
 }
 
 export interface Nation {
@@ -85,7 +105,8 @@ export interface Nation {
   capitalX: number;
   capitalY: number;
   hasPort: boolean;
-  general?: General; // Mỗi quốc gia có 1 tướng đại diện
+  general?: General; // Mỗi quốc gia có tối đa 1 Đại Tướng ACTIVE
+  reserveGenerals?: General[]; // Danh sách Đại Tướng dự bị (chuẩn bị v1.2)
   titanBuffTimer?: number; // Đếm ngược Buff Tà Thần (+30% Sức mạnh, Vàng, Dân số trong 180s)
   techLevels: {
     economy: number;

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Tile, Nation, PlayerProfile } from '../types';
 import { formatPopulation, BUILDING_INFO, GENERAL_ROSTER } from '../utils/constants';
+import { canDeployGeneral } from '../utils/generalCombat';
 import { GeneralModel } from './GeneralModel';
 import { 
   Coins, Users, Flag, Building2, Sparkles, Swords, Play, Pause, Settings, X, Shield, Crosshair, Handshake, Crown, Rocket, Sliders, Cpu
@@ -100,7 +101,10 @@ export const GameHud: React.FC<GameHudProps> = ({
   const pGen = gameDataRef.current?.nations?.[1]?.general;
   const rosterItem = pGen ? GENERAL_ROSTER.find(r => r.skillId === pGen.skillId) || GENERAL_ROSTER[0] : null;
   const isMarching = pGen?.status === 'MARCHING';
-  const isInjured = pGen?.status === 'RECOVERING';
+  const isInjured = pGen?.status === 'INJURED' || pGen?.healthState === 'INJURED';
+  const isRecovering = pGen?.healthState === 'RECOVERING';
+  const canDeploy = canDeployGeneral(pGen);
+  const hpPercent = pGen ? Math.round(((pGen.hp ?? 1000) / (pGen.maxHp || 1000)) * 100) : 100;
   const isSkillActive = (pGen?.skillActiveTimer || 0) > 0;
   const isSkillOnCooldown = (pGen?.skillCooldown || 0) > 0;
   const canUseSkill = pGen && !isInjured && !isSkillOnCooldown;
@@ -296,26 +300,56 @@ export const GameHud: React.FC<GameHudProps> = ({
         {/* 6. TƯỚNG VÀ KỸ NĂNG: Thu thành 1 hàng nhỏ gọn */}
         {pGen && rosterItem && (
           <div className="flex items-center justify-between bg-slate-950/80 px-2.5 py-1.5 rounded-xl border border-slate-800 text-xs gap-2">
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 flex-1">
               <div className="shrink-0 scale-90">
                 <GeneralModel skillId={pGen.skillId} size={28} />
               </div>
-              <div className="text-left truncate">
-                <div className="font-bold text-amber-300 truncate text-[11px]">{pGen.name}</div>
-                <div className="text-[10px] text-slate-400">
-                  {isMarching ? '⚔️ Ra Trận' : isInjured ? `🤕 Hồi (${pGen.reviveTimer}s)` : '🛡️ Thủ Đô'}
+              <div className="text-left truncate min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 font-bold text-amber-300 text-[11px] truncate">
+                  <span className="truncate">{pGen.name}</span>
+                  <span className="text-[10px] text-slate-400 font-mono font-normal shrink-0">
+                    {pGen.hp ?? 1000}/{pGen.maxHp || 1000}
+                  </span>
+                </div>
+                {/* Thanh HP mỏng tinh gọn */}
+                <div className="w-24 max-w-full bg-slate-800 rounded-full h-1 mt-0.5 overflow-hidden">
+                  <div 
+                    className={`h-full transition-all duration-300 ${
+                      hpPercent >= 60 ? 'bg-emerald-500' : hpPercent > 20 ? 'bg-amber-500' : 'bg-red-500 animate-pulse'
+                    }`}
+                    style={{ width: `${Math.min(100, Math.max(0, hpPercent))}%` }}
+                  />
+                </div>
+                <div className="text-[9px] text-slate-400 mt-0.5 truncate">
+                  {isMarching ? (
+                    <span className="text-amber-300 font-semibold">⚔️ Đang Xuất Trận</span>
+                  ) : isInjured ? (
+                    <span className="text-red-400 font-semibold">🚨 Trọng Thương (0 HP • Hồi 3%/s)</span>
+                  ) : isRecovering ? (
+                    <span className="text-amber-400 font-semibold">⏳ Hồi Phục ({hpPercent}% • Cần 60%)</span>
+                  ) : (
+                    <span>🛡️ Thủ Đô (Giáp: {Math.round((pGen.armor || 0.20) * 100)}% • Atk: {pGen.attack || 90})</span>
+                  )}
                 </div>
               </div>
             </div>
 
             <div className="flex items-center gap-1.5 shrink-0">
-              {!isInjured && (
+              {canDeploy ? (
                 <button
                   onClick={() => setPlayerGeneralDeployMode(prev => !prev)}
-                  className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${playerGeneralDeployMode ? 'bg-amber-500/20 border-amber-500/60 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
-                  title={playerGeneralDeployMode ? 'Đang xuất kèm tướng' : 'Đang giữ thủ'}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${playerGeneralDeployMode ? 'bg-amber-500/20 border-amber-500/60 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
+                  title={playerGeneralDeployMode ? 'Đang xuất kèm tướng khi tấn công' : 'Đang giữ tướng ở thủ đô'}
                 >
                   {playerGeneralDeployMode ? '⚔️ Xuất Kèm' : '🛡️ Giữ'}
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed"
+                  title={`Cần ít nhất 60% HP để xuất trận (Hiện tại: ${hpPercent}%)`}
+                >
+                  🔒 &lt;60% HP
                 </button>
               )}
 

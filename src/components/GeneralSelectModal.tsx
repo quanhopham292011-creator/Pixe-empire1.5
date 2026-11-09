@@ -129,6 +129,17 @@ export const GeneralSelectModal: React.FC<GeneralSelectModalProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-gray-300 leading-relaxed">{item.description}</p>
+                  <div className="flex items-center gap-1.5 pt-0.5 text-[11px] font-mono">
+                    <span className="bg-red-950/60 text-red-300 px-1.5 py-0.5 rounded border border-red-500/30">
+                      ❤️ 1000 HP
+                    </span>
+                    <span className="bg-blue-950/60 text-blue-300 px-1.5 py-0.5 rounded border border-blue-500/30">
+                      🛡️ 20% Giáp
+                    </span>
+                    <span className="bg-amber-950/60 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/30">
+                      ⚔️ 90 Sát Thương
+                    </span>
+                  </div>
                 </div>
 
                 {/* Action Button */}

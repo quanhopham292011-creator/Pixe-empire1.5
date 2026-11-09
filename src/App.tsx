@@ -46,6 +46,10 @@ import { TitleMenu } from './components/TitleMenu';
 import { GameHud } from './components/GameHud';
 import { getSkillTreeBonuses } from './utils/skillTreeConfig';
 import { 
+  GENERAL_CONSTANTS, calculateGeneralStats, applyGeneralDamage, 
+  processGeneralRecoveryTick, canDeployGeneral, migrateGeneralData 
+} from './utils/generalCombat';
+import { 
   auth, 
   onAuthStateChanged, 
   fbSignOut, 
@@ -809,13 +813,18 @@ export default function App() {
     setGameMode(chosenMode);
     gameModeRef.current = chosenMode;
     const { tiles, nations } = generateWorldMap(chosenSize, chosenDiff, customName);
-    if (nations[1] && nations[1].general) {
-      const selectedRosterItem = GENERAL_ROSTER.find(g => g.skillId === playerProfileRef.current.selectedGeneral) || GENERAL_ROSTER[0];
-      nations[1].general.name = selectedRosterItem.name;
-      nations[1].general.skillId = selectedRosterItem.skillId;
-      nations[1].general.skillCooldown = 0;
-      nations[1].general.skillActiveTimer = 0;
-    }
+    nations.forEach((n) => {
+      if (n.general) {
+        if (n.id === 1) {
+          const selectedRosterItem = GENERAL_ROSTER.find(g => g.skillId === playerProfileRef.current.selectedGeneral) || GENERAL_ROSTER[0];
+          n.general.name = selectedRosterItem.name;
+          n.general.skillId = selectedRosterItem.skillId;
+          n.general.skillCooldown = 0;
+          n.general.skillActiveTimer = 0;
+        }
+        calculateGeneralStats(n.general, n, n.isPlayer ? playerProfileRef.current : null);
+      }
+    });
     setAutoExpand(chosenDiff === 'EASY');
     totalLandCountRef.current = tiles.flat().filter(t => t.terrain !== 'WATER').length;
 
@@ -984,13 +993,12 @@ export default function App() {
             if (n.techLevels?.defense === 3 && !n.techChoices.defense) n.techChoices.defense = 'A';
 
             if (n.general) {
-              if (!n.general.skillId) {
-                const item = GENERAL_ROSTER[n.id % GENERAL_ROSTER.length];
-                n.general.skillId = item.skillId;
-                n.general.name = item.name;
-              }
-              if (n.general.skillCooldown === undefined) n.general.skillCooldown = 0;
-              if (n.general.skillActiveTimer === undefined) n.general.skillActiveTimer = 0;
+              // Di chuyển và khôi phục dữ liệu Đại Tướng v1.1 an toàn
+              n.general = migrateGeneralData(n.general, n.id, n.capitalX, n.capitalY);
+              calculateGeneralStats(n.general, n, n.isPlayer ? playerProfileRef.current : null);
+            }
+            if (!n.reserveGenerals) {
+              n.reserveGenerals = [];
             }
           }
         });
@@ -2002,6 +2010,13 @@ export default function App() {
 
           ctx.fillStyle = isSkillActive ? '#fef08a' : '#fbbf24';
           ctx.fillText(tagText, gx, gy - 13);
+
+          // Thanh máu nhỏ của Đại Tướng trên chiến trường
+          const hpRatio = Math.max(0, Math.min(1, (gen.hp || 1000) / (gen.maxHp || 1000)));
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+          ctx.fillRect(gx - tw / 2, gy - 5, tw, 3);
+          ctx.fillStyle = hpRatio >= 0.6 ? '#22c55e' : hpRatio > 0.2 ? '#eab308' : '#ef4444';
+          ctx.fillRect(gx - tw / 2, gy - 5, tw * hpRatio, 3);
         }
       });
 
@@ -2976,7 +2991,7 @@ export default function App() {
         n.goldIncome = Math.max(1, Math.floor(baseGold * (n.id > 1 ? diffMult * botSkillMult : ecoMult * (skillBonuses ? skillBonuses.goldMult : 1.0)) * titanBuff * seasonMult));
         n.gold += n.goldIncome;
 
-        // Quản lý Tướng đại diện quốc gia & Đếm ngược kỹ năng chủ động
+        // Quản lý Đại Tướng quốc gia: Kỹ năng, Hồi phục sinh tồn v1.1
         if (n.general) {
           if (n.general.skillCooldown && n.general.skillCooldown > 0) {
             n.general.skillCooldown -= 1;
@@ -2985,28 +3000,28 @@ export default function App() {
             n.general.skillActiveTimer -= 1;
           }
 
-          if (n.general.status === 'RECOVERING') {
-            n.general.reviveTimer -= 1;
-            if (n.general.reviveTimer <= 0) {
-              n.general.status = 'IDLE';
-              n.general.x = n.capitalX;
-              n.general.y = n.capitalY;
-              if (n.isPlayer) {
-                data.particles.push({
-                  x: n.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                  y: n.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                  color: '#fbbf24', size: 0, life: 35, maxLife: 35, vx: 0, vy: -0.6,
-                  type: 'FLOAT_TEXT', text: `⚔️ ${n.general.name} đã bình phục!`
-                });
-              }
-            }
-          } else if (n.general && n.general.status === 'MARCHING') {
+          // Kiểm tra vị trí an toàn (O(1) lookup trực tiếp tọa độ không quét toàn bản đồ)
+          const curTile = data.tiles[n.general.y]?.[n.general.x];
+          const isSafeZone = Boolean(curTile && curTile.owner === n.id && n.general.status !== 'MARCHING');
+
+          // Hồi phục 3% HP tối đa mỗi giây khi ở vùng an toàn
+          const rec = processGeneralRecoveryTick(n.general, n, isSafeZone);
+          if (rec.stateChanged && n.general.healthState === 'HEALTHY' && n.isPlayer) {
+            data.particles.push({
+              x: n.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              y: n.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              color: '#34d399', size: 0, life: 40, maxLife: 40, vx: 0, vy: -0.7,
+              type: 'FLOAT_TEXT', text: `✨ ${n.general.name} đã hồi phục đủ sức khỏe (>= 60% HP)!`
+            });
+          }
+
+          if (n.general.status === 'MARCHING') {
             const gen = n.general;
             const activeWave = gen.marchingWaveId 
               ? data.attackWaves.find(w => w.id === gen.marchingWaveId)
               : data.attackWaves.find(w => w.fromNation === n.id && w.hasGeneral);
             if (!activeWave) {
-              gen.status = 'IDLE';
+              gen.status = gen.healthState === 'INJURED' ? 'INJURED' : 'IDLE';
               gen.marchingWaveId = undefined;
               gen.x = n.capitalX;
               gen.y = n.capitalY;
@@ -3075,6 +3090,9 @@ export default function App() {
             if (tech.branch === 'DEFENSE') {
               player.techLevels.defense = tech.level;
               if (tech.choice) player.techChoices.defense = tech.choice;
+            }
+            if (player.general) {
+              calculateGeneralStats(player.general, player, playerProfileRef.current);
             }
             soundManager.playBuild();
             if (currentQuest === 4) setCurrentQuest(5);
@@ -4549,9 +4567,9 @@ export default function App() {
 
     const waveId = Math.random().toString();
 
-    // Tướng xuất chiến dẫn dắt đợt quân (Tướng chiếm 30% sức mạnh)
+    // Tướng xuất chiến dẫn dắt đợt quân (Tướng chiếm 30% sức mạnh - yêu cầu >= 60% HP)
     let hasGeneral = false;
-    if (attacker.general && (attacker.general.status === 'IDLE' || attacker.general.status === 'MARCHING')) {
+    if (attacker.general && canDeployGeneral(attacker.general)) {
       if ((from === 1 && playerGeneralDeployMode) || (from > 1 && (attacker.tier === 'BOSS' || troops >= 10))) {
         hasGeneral = true;
         attacker.general.status = 'MARCHING';
@@ -4847,10 +4865,48 @@ export default function App() {
         }
       }
 
-      // Xử lý thương vong của Tướng
-      if (wave.hasGeneral && attacker.general && Math.random() < 0.12) {
-        attacker.general.status = 'RECOVERING';
-        attacker.general.reviveTimer = 15;
+      // Xử lý sát thương & sinh tồn của Đại Tướng theo General System 1.1
+      if (wave.hasGeneral && attacker.general) {
+        const rawDmg = Math.min(220, Math.max(25, Math.round(cost * 0.75)));
+        const res = applyGeneralDamage(attacker.general, attacker, rawDmg);
+
+        data.particles.push({
+          x: tgt.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+          y: tgt.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+          color: '#ef4444', size: 0, life: 30, maxLife: 30, vx: 0, vy: -0.5,
+          type: 'FLOAT_TEXT',
+          text: `🛡️ -${res.damageTaken} HP`
+        });
+
+        if (res.injured) {
+          wave.hasGeneral = false;
+          if (attacker.isPlayer) {
+            data.particles.push({
+              x: attacker.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              y: attacker.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              color: '#f87171', size: 0, life: 50, maxLife: 50, vx: 0, vy: -0.8,
+              type: 'FLOAT_TEXT',
+              text: `🚨 ${attacker.general.name} bị trọng thương (HP: 0)! Rút về thủ đô.`
+            });
+          }
+        } else if (res.retreated) {
+          wave.hasGeneral = false;
+          if (attacker.isPlayer) {
+            data.particles.push({
+              x: attacker.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              y: attacker.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              color: '#fbbf24', size: 0, life: 50, maxLife: 50, vx: 0, vy: -0.8,
+              type: 'FLOAT_TEXT',
+              text: `⚠️ ${attacker.general.name} còn <= 20% HP, đã rút lui an toàn!`
+            });
+          }
+        }
+      }
+
+      // Nếu tướng địch đang đồn trú hoặc xuất trận tại ô bị tấn công, nhận sát thương phản kích
+      if (defender?.general && (defender.general.status === 'MARCHING' || (tgt.x === defender.capitalX && tgt.y === defender.capitalY))) {
+        const defRawDmg = Math.min(200, Math.max(30, Math.round((attacker.general?.attack || 90) * 0.8)));
+        applyGeneralDamage(defender.general, defender, defRawDmg);
       }
 
       if (wave.fromNation === 1) {
@@ -4950,6 +5006,15 @@ export default function App() {
               data.attackWaves.push(wave);
             }
           }
+        }
+      }
+    } else {
+      // Đợt công không đủ quân vượt qua phòng thủ: Đại Tướng nhận sát thương từ phòng tuyến địch
+      if (wave.hasGeneral && attacker.general) {
+        const repelledDmg = Math.min(250, Math.max(30, Math.round(cost * 0.85)));
+        const res = applyGeneralDamage(attacker.general, attacker, repelledDmg);
+        if (res.retreated || res.injured) {
+          wave.hasGeneral = false;
         }
       }
     }
@@ -6148,6 +6213,28 @@ export default function App() {
           savePlayerProfile(updated);
           if (auth.currentUser) {
             syncProfileToFirestore(auth.currentUser, updated).catch(console.error);
+          }
+
+          // Quy tắc 3.7: Không được hồi phục tức thì khi thay Đại Tướng chính
+          if (gameDataRef.current?.nations?.[1]?.general) {
+            const pGen = gameDataRef.current.nations[1].general;
+            const selectedRosterItem = GENERAL_ROSTER.find(g => g.skillId === updated.selectedGeneral) || GENERAL_ROSTER[0];
+            const hpRatio = pGen.maxHp > 0 ? (pGen.hp / pGen.maxHp) : 1.0;
+            pGen.name = selectedRosterItem.name;
+            pGen.skillId = selectedRosterItem.skillId;
+            pGen.skillCooldown = 0;
+            pGen.skillActiveTimer = 0;
+            calculateGeneralStats(pGen, gameDataRef.current.nations[1], updated);
+            // Kế thừa tỷ lệ HP hiện tại, ngăn lợi dụng đổi tướng để hồi đầy máu
+            pGen.hp = Math.round(pGen.maxHp * hpRatio);
+            if (pGen.hp === 0) {
+              pGen.healthState = 'INJURED';
+              pGen.status = 'INJURED';
+            } else if (pGen.hp < pGen.maxHp * GENERAL_CONSTANTS.DEPLOY_MIN_HP_RATIO) {
+              pGen.healthState = 'RECOVERING';
+            } else {
+              pGen.healthState = 'HEALTHY';
+            }
           }
         }}
       />
