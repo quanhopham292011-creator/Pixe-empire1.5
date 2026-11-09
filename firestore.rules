@@ -63,10 +63,24 @@ service cloud.firestore {
       allow list: if isAdmin();
       allow create: if isOwner(userId) && isValidId(userId) && isValidUser(request.resource.data) &&
                       request.resource.data.id == request.auth.uid &&
-                      (request.resource.data.role == 'user' || isAdmin());
+                      (
+                        isAdmin() || (
+                          request.resource.data.role == 'user' &&
+                          request.resource.data.level == 1 &&
+                          request.resource.data.exp == 0 &&
+                          request.resource.data.pixelCoins == 0
+                        )
+                      );
       allow update: if (isOwner(userId) || isAdmin()) && isValidId(userId) && isValidUser(request.resource.data) &&
                       request.resource.data.id == resource.data.id &&
-                      (request.resource.data.role == resource.data.role || isAdmin());
+                      (
+                        isAdmin() || (
+                          request.resource.data.role == resource.data.role &&
+                          request.resource.data.level <= resource.data.level + 1 &&
+                          request.resource.data.pixelCoins <= resource.data.pixelCoins + 10000 &&
+                          request.resource.data.exp <= resource.data.exp + 50000
+                        )
+                      );
       allow delete: if isAdmin();
     }
 

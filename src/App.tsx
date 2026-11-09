@@ -42,6 +42,7 @@ import { AuthModal } from './components/AuthModal';
 import { AdminPanelModal } from './components/AdminPanelModal';
 import { UserAccountBadge } from './components/UserAccountBadge';
 import { SkillTreeModal } from './components/SkillTreeModal';
+import { TitleMenu } from './components/TitleMenu';
 import { getSkillTreeBonuses } from './utils/skillTreeConfig';
 import { 
   auth, 
@@ -5310,327 +5311,35 @@ export default function App() {
       {/* THÔNG BÁO CHƠI OFFLINE KHI MẤT MẠNG */}
       <OfflineIndicator />
       
-      {/* 1. MÀN HÌNH BẮT ĐẦU VỚI ĐỔI TÊN NGƯỜI CHƠI */}
+      {/* 1. MÀN HÌNH BẮT ĐẦU VỚI TỔ HỢP TITLE MENU MỚI */}
       {gameState === 'TITLE' && (
-        <div 
-          className="flex flex-col items-center justify-center flex-1 p-4 text-center bg-gradient-to-b from-slate-900 via-slate-950 to-black overflow-y-auto"
-          style={{ 
-            paddingTop: 'calc(1rem + env(safe-area-inset-top, 0px))', 
-            paddingBottom: 'calc(1rem + env(safe-area-inset-bottom, 0px))',
-            paddingLeft: 'max(1rem, env(safe-area-inset-left, 0px))',
-            paddingRight: 'max(1rem, env(safe-area-inset-right, 0px))'
-          }}
-        >
-          <div className="max-w-md w-full bg-slate-900/95 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl backdrop-blur-md my-auto">
-            <div className="flex justify-center mb-3 text-amber-400">
-              <Crown className="w-16 h-16 animate-pulse" />
-            </div>
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-white mb-2">PIXEL EMPIRE</h1>
-            <p className="text-xs sm:text-sm text-slate-400 mb-4 leading-relaxed">
-              Bản đồ Trái Đất chuẩn OpenFront. Xuất phát tại Việt Nam, thu phục thuộc địa & chinh phục thế giới!
-            </p>
-
-            {/* HỆ THỐNG TÀI KHOẢN CLOUD & ADMIN PANEL */}
-            <div className="mb-4">
-              <UserAccountBadge
-                currentUser={currentUser}
-                playerProfile={playerProfile}
-                onOpenAuth={() => setIsAuthModalOpen(true)}
-                onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
-                onSignOut={async () => {
-                  await fbSignOut(auth);
-                  setCurrentUser(null);
-                }}
-              />
-            </div>
-
-            {/* NÚT ADMIN PANEL (CHỈ HIỂN THỊ KHI ĐĂNG NHẬP ADMIN) */}
-            {isUserAdmin(currentUser) && (
-              <button
-                type="button"
-                onClick={() => setIsAdminPanelOpen(true)}
-                className="w-full py-2.5 px-4 bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 hover:from-amber-500 hover:to-amber-600 text-white font-black rounded-2xl border border-amber-400/80 shadow-xl shadow-amber-950/60 mb-3 flex items-center justify-between text-xs active:scale-95 transition-all"
-              >
-                <div className="flex items-center gap-2">
-                  <Crown className="w-4 h-4 text-amber-300 animate-pulse" />
-                  <span>BẢNG ĐIỀU KHIỂN ADMIN (ADMIN PANEL)</span>
-                </div>
-                <span className="text-[10px] bg-black/40 text-amber-300 border border-amber-400/40 px-2 py-0.5 rounded-full font-bold">
-                  ⚡ Mở Panel
-                </span>
-              </button>
-            )}
-
-            {/* THẺ HỒ SƠ NGƯỜI CHƠI: CẤP ĐỘ, TIẾN TRÌNH EXP VÀ TIỀN XU PIXEL */}
-            {(() => {
-              const reqExp = getRequiredExpForNextLevel(playerProfile.level);
-              const isMaxLevel = playerProfile.level >= MAX_PLAYER_LEVEL;
-              const expPercent = isMaxLevel ? 100 : Math.min(100, Math.floor((playerProfile.exp / (reqExp || 1)) * 100));
-
-              return (
-                <div className="mb-5 p-3.5 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 rounded-2xl border border-amber-500/40 shadow-lg text-left">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-300 font-black text-sm shadow">
-                        Lv.{playerProfile.level}
-                      </div>
-                      <div>
-                        <div className="text-xs font-black text-amber-300 flex items-center gap-1">
-                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                          <span>Cấp {playerProfile.level} {isMaxLevel ? '(MAX)' : ''}</span>
-                        </div>
-                        <div className="text-[10px] text-slate-400 font-medium">
-                          {isMaxLevel ? '⭐ Đã đạt cấp độ tối đa' : `${playerProfile.exp} / ${reqExp} EXP`}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/15 border border-amber-500/40 rounded-xl shadow-inner">
-                      <Coins className="w-4 h-4 text-amber-400 shrink-0" />
-                      <span className="text-xs font-black text-amber-300 font-mono">
-                        {playerProfile.pixelCoins}
-                      </span>
-                      <span className="text-[10px] text-amber-400/90 font-bold">Xu</span>
-                    </div>
-                  </div>
-
-                  {/* Thanh tiến trình EXP */}
-                  <div className="w-full bg-slate-800/90 rounded-full h-2 overflow-hidden border border-slate-700/60">
-                    <div 
-                      className="bg-gradient-to-r from-amber-500 to-yellow-400 h-full rounded-full transition-all duration-500 shadow-sm shadow-amber-400/50"
-                      style={{ width: `${expPercent}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })()}
-
-            <div className="space-y-4 mb-6 text-left">
-              {/* ĐỔI TÊN NGƯỜI CHƠI */}
-              <div>
-                <label className="text-xs font-bold text-amber-400 block mb-1.5 flex items-center gap-1.5">
-                  <Edit3 className="w-3.5 h-3.5" /> Tên Đế Quốc / Quốc Gia của bạn:
-                </label>
-                <input
-                  type="text"
-                  maxLength={24}
-                  value={playerName}
-                  onChange={(e) => setPlayerName(e.target.value)}
-                  placeholder="Nhập tên quốc gia (vd: Việt Nam)..."
-                  className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white font-bold text-sm focus:border-amber-500 outline-none transition-colors"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1.5">Kích thước thế giới:</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[64, 96, 128].map(sz => (
-                    <button
-                      key={sz}
-                      onClick={() => setMapSize(sz as MapDimension)}
-                      className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                        mapSize === sz
-                          ? 'bg-blue-600 border-blue-400 text-white shadow-md'
-                          : 'bg-slate-800/80 border-slate-700 text-slate-400'
-                      }`}
-                    >
-                      {sz}x{sz} {sz === 96 ? '(Chuẩn)' : sz === 64 ? '(Nhỏ)' : '(Lớn)'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* TÁCH BIỆT CHẾ ĐỘ CHƠI: CHIẾN DỊCH & SÁNG TẠO */}
-              <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1.5">Chọn chế độ chơi:</label>
-                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-2xl border border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setGameMode('STANDARD')}
-                    className={`py-2.5 px-1 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 ${
-                      gameMode === 'STANDARD'
-                        ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Swords className="w-3.5 h-3.5" />
-                    <span>Chiến Thuật Chuẩn</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setGameMode('CREATIVE')}
-                    className={`py-2.5 px-1 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 ${
-                      gameMode === 'CREATIVE'
-                        ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/40'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <Wand2 className="w-3.5 h-3.5 text-amber-300 animate-spin-slow" />
-                    <span>🎨 Sáng Tạo (Sandbox)</span>
-                  </button>
-                </div>
-              </div>
-
-              {gameMode === 'CREATIVE' ? (
-                <div className="bg-gradient-to-r from-purple-950/60 to-pink-950/60 border border-purple-500/60 p-3 rounded-2xl space-y-1 shadow-inner">
-                  <div className="flex items-center gap-1.5 font-bold text-amber-300 text-xs">
-                    <Sparkles className="w-4 h-4 text-amber-300" />
-                    <span>Đặc Quyền Chế Độ Sáng Tạo:</span>
-                  </div>
-                  <ul className="text-[11px] text-purple-200/90 list-disc list-inside space-y-0.5">
-                    <li>Khởi đầu với 999,999 Vàng & 50,000 Quân đội.</li>
-                    <li>Tự do tăng giảm Vàng & Quân tùy thích.</li>
-                    <li>Spam và đổi thời tiết: Nắng, Mây, Giông Sét tức thì.</li>
-                    <li>Spam và triệu hồi nhiều Tà Thần Cổ Đại càn quét bản đồ.</li>
-                    <li>Có nút mở Bảng Điều Khiển Sáng Tạo (God Panel) ngay trên màn hình.</li>
-                  </ul>
-                </div>
-              ) : (
-                <div>
-                  <label className="text-xs font-bold text-slate-300 block mb-1.5">Độ khó thử thách:</label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(['EASY', 'NORMAL', 'HARD'] as GameDifficulty[]).map(diff => (
-                      <button
-                        key={diff}
-                        type="button"
-                        onClick={() => setDifficulty(diff)}
-                        className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                          difficulty === diff
-                            ? 'bg-amber-600 border-amber-400 text-white shadow-md'
-                            : 'bg-slate-800/80 border-slate-700 text-slate-400'
-                        }`}
-                      >
-                        {diff === 'EASY' ? 'Dễ (Khuyên dùng)' : diff === 'NORMAL' ? 'Vừa' : 'Khó'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* NÚT CHỌN TƯỚNG SẢNH CHÍNH */}
-            <button
-              type="button"
-              onClick={() => setIsGeneralSelectOpen(true)}
-              className="w-full py-3 px-4 bg-gradient-to-r from-amber-600/90 via-amber-700/90 to-amber-800/90 hover:from-amber-500 hover:to-amber-600 text-white font-bold rounded-2xl border border-amber-500/50 shadow-lg shadow-amber-950/40 transition-all flex items-center justify-between gap-2 text-sm active:scale-95 mb-3"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="bg-amber-950/80 p-1.5 rounded-xl border border-amber-500/40 shrink-0">
-                  <GeneralModel skillId={playerProfile.selectedGeneral} size={30} />
-                </div>
-                <div className="text-left truncate">
-                  <div className="text-xs text-amber-200 font-bold">🎖️ Chọn Tướng</div>
-                  <div className="text-xs text-amber-100/90 truncate">
-                    Đang chọn: <span className="font-bold text-white">{GENERAL_ROSTER.find(g => g.skillId === playerProfile.selectedGeneral)?.name || 'Đại Tướng Hắc Phong'}</span>
-                  </div>
-                </div>
-              </div>
-              <span className="text-[11px] font-bold bg-amber-500/30 text-amber-200 px-2.5 py-1 rounded-xl border border-amber-500/40 shrink-0">
-                Đổi Tướng ❯
-              </span>
-            </button>
-
-            {/* NÚT CÂY KỸ NĂNG ĐẾ CHẾ (SẢNH CHÍNH) */}
-            <button
-              type="button"
-              onClick={() => {
-                setIsSkillTreeOpen(true);
-                soundManager.playClick();
-              }}
-              className="w-full py-3 px-4 bg-gradient-to-r from-emerald-700/90 via-teal-700/90 to-cyan-800/90 hover:from-emerald-600 hover:to-teal-600 text-white font-bold rounded-2xl border border-emerald-500/50 shadow-lg shadow-emerald-950/40 transition-all flex items-center justify-between gap-2 text-sm active:scale-95 mb-3"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="bg-emerald-950/80 p-2 rounded-xl border border-emerald-500/40 shrink-0 text-lg">
-                  🌳
-                </div>
-                <div className="text-left truncate">
-                  <div className="text-xs text-emerald-200 font-bold flex items-center gap-1.5">
-                    <span>Cây Kỹ Năng Đế Chế</span>
-                    {playerProfile.skillPoints > 0 && (
-                      <span className="text-[10px] bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded-full font-black animate-pulse">
-                        +{playerProfile.skillPoints} Điểm
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-xs text-emerald-100/80 truncate">
-                    Nâng cấp 3 nhánh: Kinh Tế, Quân Đội, Anh Hùng
-                  </div>
-                </div>
-              </div>
-              <span className="text-[11px] font-bold bg-emerald-500/30 text-emerald-200 px-2.5 py-1 rounded-xl border border-emerald-500/40 shrink-0">
-                Mở Cây ❯
-              </span>
-            </button>
-
-            {savedGameInfo ? (
-              <div className="space-y-3">
-                <button
-                  type="button"
-                  onClick={loadGame}
-                  className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold rounded-2xl shadow-xl shadow-emerald-600/30 transition-all flex items-center justify-between min-h-[50px] active:scale-95 border border-emerald-400/40"
-                >
-                  <div className="flex items-center gap-3 text-left">
-                    <RotateCcw className="w-5 h-5 text-emerald-200 shrink-0 animate-spin-slow" />
-                    <div>
-                      <div className="text-sm font-black leading-tight flex items-center gap-2">
-                        Tiếp Tục Ván Cũ
-                        <span className="text-[10px] bg-emerald-950/80 text-emerald-300 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                          {savedGameInfo.mode}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-emerald-100/90 font-normal mt-0.5">
-                        {savedGameInfo.playerName} • Lưu: {savedGameInfo.timestamp} ({savedGameInfo.gameTimeStr})
-                      </div>
-                    </div>
-                  </div>
-                  <ChevronRight className="w-5 h-5 text-emerald-200 shrink-0" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmNewGame(true)}
-                  className="w-full py-3 px-4 bg-slate-800/90 hover:bg-slate-700 text-slate-200 font-bold rounded-2xl border border-slate-700 transition-all flex items-center justify-center gap-2 text-sm active:scale-95 shadow"
-                >
-                  <RotateCcw className="w-4 h-4 text-slate-400" />
-                  Chơi Mới (Xóa ván cũ)
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => startNewGame(difficulty, mapSize, playerName, gameMode)}
-                className={`w-full py-4 text-white font-extrabold rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 text-base min-h-[48px] active:scale-95 ${
-                  gameMode === 'CREATIVE'
-                    ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 hover:from-purple-500 hover:to-pink-500 shadow-purple-500/40'
-                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 shadow-blue-500/30'
-                }`}
-              >
-                {gameMode === 'CREATIVE' ? (
-                  <Wand2 className="w-5 h-5 text-amber-300 animate-pulse" />
-                ) : (
-                  <Play className="w-5 h-5 fill-current" />
-                )}
-                {gameMode === 'CREATIVE' ? 'Bắt Đầu Chế Độ Sáng Tạo' : 'Khởi Đầu Chinh Phục'}
-              </button>
-            )}
-
-            {/* NÚT TẠO / VÀO PHÒNG CHƠI VỚI BẠN BÈ (MULTIPLAYER LOBBY) */}
-            <div className="pt-3 border-t border-slate-800/80 mt-3 space-y-2">
-              <button
-                type="button"
-                onClick={() => setIsMultiplayerModalOpen(true)}
-                className="w-full py-3.5 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 active:scale-95 text-white font-black rounded-2xl shadow-xl shadow-indigo-600/30 flex items-center justify-center gap-2.5 text-sm border border-indigo-400/40 transition-all min-h-[48px]"
-              >
-                <Users className="w-5 h-5 text-amber-300 animate-pulse" />
-                <span>🎮 Tạo & Vào Phòng Chơi Với Bạn Bè</span>
-              </button>
-
-              {/* NÚT CÀI ĐẶT APP VỀ MÁY ĐỂ CHƠI OFFLINE (PWA) */}
-              <PWAInstallButton />
-            </div>
-          </div>
-        </div>
+        <TitleMenu
+          currentUser={currentUser}
+          playerProfile={playerProfile}
+          playerName={playerName}
+          setPlayerName={setPlayerName}
+          mapSize={mapSize}
+          setMapSize={setMapSize}
+          gameMode={gameMode}
+          setGameMode={setGameMode}
+          difficulty={difficulty}
+          setDifficulty={setDifficulty}
+          savedGameInfo={savedGameInfo}
+          loadGame={loadGame}
+          startNewGame={startNewGame}
+          setShowConfirmNewGame={setShowConfirmNewGame}
+          setIsAuthModalOpen={setIsAuthModalOpen}
+          setIsAdminPanelOpen={setIsAdminPanelOpen}
+          setIsGeneralSelectOpen={setIsGeneralSelectOpen}
+          setIsSkillTreeOpen={setIsSkillTreeOpen}
+          setIsTechOpen={setIsTechOpen}
+          setIsMultiplayerModalOpen={setIsMultiplayerModalOpen}
+          setIsSettingsOpen={setIsSettingsOpen}
+          isUserAdmin={isUserAdmin}
+          fbSignOut={fbSignOut}
+          auth={auth}
+          soundManager={soundManager}
+        />
       )}
 
       {/* 2. MÀN HÌNH CHƠI CHÍNH */}
