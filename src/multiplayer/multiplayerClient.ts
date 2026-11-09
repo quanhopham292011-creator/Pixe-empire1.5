@@ -57,14 +57,37 @@ class MultiplayerClient {
     this.isConnecting = true;
 
     return new Promise((resolve) => {
+      let opened = false;
+      let failed = false;
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      // Báo lỗi đúng 1 lần để giao diện không bị treo ở "Đang kết nối..."
+      const fail = () => {
+        if (failed || opened) return;
+        failed = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        this.isConnecting = false;
+        this.messageQueue = [];
+        try { this.ws?.close(); } catch (_e) { /* bỏ qua */ }
+        this.ws = null;
+        if (this.onError) {
+          this.onError('Không kết nối được máy chủ chơi chung. Hãy kiểm tra mạng hoặc cấu hình máy chủ rồi thử lại.');
+        }
+        resolve(false);
+      };
+
       try {
+        // Ưu tiên địa chỉ máy chủ riêng (VITE_WS_URL), nếu không có thì dùng cùng tên miền
+        const envUrl = (import.meta as any).env?.VITE_WS_URL as string | undefined;
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        const wsUrl = `${protocol}//${host}/ws`;
+        const wsUrl = envUrl && envUrl.trim() ? envUrl.trim() : `${protocol}//${window.location.host}/ws`;
 
         this.ws = new WebSocket(wsUrl);
+        timeoutId = setTimeout(fail, 30000);
 
         this.ws.onopen = () => {
+          opened = true;
+          if (timeoutId) clearTimeout(timeoutId);
           this.isConnecting = false;
           if (this.onConnectionChange) this.onConnectionChange(true);
 
@@ -86,21 +109,19 @@ class MultiplayerClient {
         };
 
         this.ws.onclose = () => {
+          if (!opened) { fail(); return; }
           this.isConnecting = false;
           this.ws = null;
           if (this.onConnectionChange) this.onConnectionChange(false);
-          resolve(false);
         };
 
         this.ws.onerror = (err) => {
           console.error('Lỗi kết nối WebSocket:', err);
-          this.isConnecting = false;
-          resolve(false);
+          fail();
         };
       } catch (err) {
         console.error('Không thể mở kết nối WebSocket:', err);
-        this.isConnecting = false;
-        resolve(false);
+        fail();
       }
     });
   }
