@@ -80,12 +80,6 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
       onClick: () => { soundManager.playClick(); setIsSkillTreeOpen(true); },
     },
     {
-      id: 'tech',
-      label: 'Công Nghệ',
-      icon: <Cpu className="w-6 h-6 text-cyan-400" />,
-      onClick: () => { soundManager.playClick(); setIsTechOpen(true); },
-    },
-    {
       id: 'multiplayer',
       label: 'Nhiều Người',
       icon: <Users className="w-6 h-6 text-blue-400" />,
