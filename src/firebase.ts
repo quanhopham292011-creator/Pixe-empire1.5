@@ -6,6 +6,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  sendEmailVerification,
   signOut as fbSignOut,
   onAuthStateChanged,
   User as FirebaseUser,
@@ -105,6 +106,7 @@ export interface UserAccountData {
 
 export function isUserAdmin(user: FirebaseUser | null): boolean {
   if (!user || !user.email) return false;
+  if (!user.emailVerified) return false;
   return user.email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase();
 }
 
@@ -260,6 +262,7 @@ export {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  sendEmailVerification,
   fbSignOut,
   onAuthStateChanged,
 };

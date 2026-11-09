@@ -159,9 +159,8 @@ export function selectGeneral(
 export function upgradeSkillBranchNode(
   profile: PlayerProfile,
   branch: 'ECONOMY' | 'MILITARY' | 'HERO',
-  currentGold: number,
-  nodeCost: { gold: number; coins: number }
-): { success: boolean; message: string; updatedProfile: PlayerProfile; goldDeducted: number } {
+  nodeCost: { coins: number }
+): { success: boolean; message: string; updatedProfile: PlayerProfile } {
   const currentLvl =
     branch === 'ECONOMY'
       ? profile.skillTree.economyLevel
@@ -170,19 +169,15 @@ export function upgradeSkillBranchNode(
       : profile.skillTree.heroLevel;
 
   if (currentLvl >= 10) {
-    return { success: false, message: 'Nhánh này đã đạt cấp tối đa (Cấp 10)!', updatedProfile: profile, goldDeducted: 0 };
+    return { success: false, message: 'Nhánh này đã đạt cấp tối đa (Cấp 10)!', updatedProfile: profile };
   }
 
   if (profile.skillPoints < 1) {
-    return { success: false, message: 'Bạn không đủ Điểm Kỹ Năng (cần 1 điểm)! Hãy lên cấp để nhận thêm.', updatedProfile: profile, goldDeducted: 0 };
+    return { success: false, message: 'Bạn không đủ Điểm Kỹ Năng (cần 1 điểm)! Hãy lên cấp để nhận thêm.', updatedProfile: profile };
   }
 
   if (profile.pixelCoins < nodeCost.coins) {
-    return { success: false, message: `Bạn còn thiếu ${nodeCost.coins - profile.pixelCoins} Xu Pixel!`, updatedProfile: profile, goldDeducted: 0 };
-  }
-
-  if (currentGold < nodeCost.gold) {
-    return { success: false, message: `Ngân khố thiếu ${nodeCost.gold - currentGold} Vàng!`, updatedProfile: profile, goldDeducted: 0 };
+    return { success: false, message: `Bạn còn thiếu ${nodeCost.coins - profile.pixelCoins} Xu Pixel!`, updatedProfile: profile };
   }
 
   const nextTree = { ...profile.skillTree };
@@ -202,7 +197,6 @@ export function upgradeSkillBranchNode(
     success: true,
     message: `Nâng cấp thành công lên Cấp ${currentLvl + 1}!`,
     updatedProfile,
-    goldDeducted: nodeCost.gold,
   };
 }
 
@@ -212,15 +206,13 @@ export function upgradeSkillBranchNode(
 export function upgradeHybridMastery(
   profile: PlayerProfile,
   hybridId: 'ECONOMY_MILITARY' | 'ECONOMY_HERO' | 'MILITARY_HERO',
-  currentGold: number,
-  cost: { skillPointCost: number; goldCost: number; coinCost: number }
-): { success: boolean; message: string; updatedProfile: PlayerProfile; goldDeducted: number } {
+  cost: { skillPointCost: number; coinCost: number }
+): { success: boolean; message: string; updatedProfile: PlayerProfile } {
   if (profile.skillTree.chosenHybrid) {
     return {
       success: false,
       message: 'Bạn đã chọn một mốc kết hợp rồi! Các mốc khác đã bị khóa vĩnh viễn (hãy Reset nếu muốn đổi).',
       updatedProfile: profile,
-      goldDeducted: 0,
     };
   }
 
@@ -235,20 +227,15 @@ export function upgradeHybridMastery(
       success: false,
       message: 'Chưa đủ điều kiện: Cả 2 nhánh liên quan phải đạt từ Cấp 5 trở lên!',
       updatedProfile: profile,
-      goldDeducted: 0,
     };
   }
 
   if (profile.skillPoints < cost.skillPointCost) {
-    return { success: false, message: 'Bạn không đủ Điểm Kỹ Năng!', updatedProfile: profile, goldDeducted: 0 };
+    return { success: false, message: 'Bạn không đủ Điểm Kỹ Năng!', updatedProfile: profile };
   }
 
   if (profile.pixelCoins < cost.coinCost) {
-    return { success: false, message: `Bạn còn thiếu ${cost.coinCost - profile.pixelCoins} Xu Pixel!`, updatedProfile: profile, goldDeducted: 0 };
-  }
-
-  if (currentGold < cost.goldCost) {
-    return { success: false, message: `Ngân khố thiếu ${cost.goldCost - currentGold} Vàng!`, updatedProfile: profile, goldDeducted: 0 };
+    return { success: false, message: `Bạn còn thiếu ${cost.coinCost - profile.pixelCoins} Xu Pixel!`, updatedProfile: profile };
   }
 
   const updatedProfile: PlayerProfile = {
@@ -266,7 +253,6 @@ export function upgradeHybridMastery(
     success: true,
     message: 'Kích hoạt Mốc Kết Hợp thành công!',
     updatedProfile,
-    goldDeducted: cost.goldCost,
   };
 }
 

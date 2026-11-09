@@ -14,6 +14,7 @@ export interface TechNode {
   id: string;
   branch: TechBranch;
   level: number;
+  choice?: 'A' | 'B';
   name: string;
   description: string;
   cost: number;
@@ -90,6 +91,11 @@ export interface Nation {
     economy: number;
     military: number;
     defense: number;
+  };
+  techChoices?: {
+    economy?: 'A' | 'B';
+    military?: 'A' | 'B';
+    defense?: 'A' | 'B';
   };
   diplomacy: {
     [targetId: number]: {

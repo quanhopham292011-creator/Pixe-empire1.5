@@ -30,8 +30,8 @@ interface SkillTreeModalProps {
   isOpen: boolean;
   onClose: () => void;
   playerProfile: PlayerProfile;
-  currentGold: number;
-  onDeductGold: (amount: number) => void;
+  currentGold?: number;
+  onDeductGold?: (amount: number) => void;
   onUpdateProfile: (profile: PlayerProfile) => void;
 }
 
@@ -407,13 +407,11 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
       return;
     }
 
-    const res = upgradeSkillBranchNode(playerProfile, branch, currentGold, {
-      gold: node.goldCost,
+    const res = upgradeSkillBranchNode(playerProfile, branch, {
       coins: node.coinCost,
     });
 
     if (res.success) {
-      onDeductGold(res.goldDeducted);
       onUpdateProfile(res.updatedProfile);
       showToast(`🎉 ${res.message}`);
       // Tự động chuyển selected node sang nấc tiếp theo
@@ -436,14 +434,12 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
 
   // Nâng cấp mốc kết hợp
   const handleUpgradeHybrid = (hybrid: HybridNodeInfo) => {
-    const res = upgradeHybridMastery(playerProfile, hybrid.id, currentGold, {
+    const res = upgradeHybridMastery(playerProfile, hybrid.id, {
       skillPointCost: hybrid.skillPointCost,
-      goldCost: hybrid.goldCost,
       coinCost: hybrid.coinCost,
     });
 
     if (res.success) {
-      onDeductGold(res.goldDeducted);
       onUpdateProfile(res.updatedProfile);
       showToast(`🌟 ${res.message}`);
       setConfirmHybrid(null);
@@ -524,17 +520,6 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                 {playerProfile.skillPoints}
               </span>
               <span className="text-[9px] font-mono text-[#facc15] hidden xs:inline">Điểm</span>
-            </div>
-
-            {/* Vàng */}
-            <div
-              className="flex items-center gap-1 px-2 py-1 bg-[#0f172a] border border-[#475569]"
-              title="Vàng trong trận"
-            >
-              <PixelIconCoin size={14} />
-              <span className="font-mono text-xs font-bold text-[#fde047]">
-                {currentGold.toLocaleString()}
-              </span>
             </div>
 
             {/* Xu Pixel */}
@@ -853,7 +838,7 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                             NÂNG ĐƯỢC
                           </span>
                           <span className="text-[9px] text-[#cbd5e1] font-mono">
-                            1⭐ • {node.goldCost.toLocaleString()}🪙 • {node.coinCost}💎
+                            1⭐ • {node.coinCost}💎
                           </span>
                         </div>
                       ) : (
@@ -963,7 +948,6 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
 
                 const canAfford =
                   playerProfile.skillPoints >= 1 &&
-                  currentGold >= selectedNode.node.goldCost &&
                   playerProfile.pixelCoins >= selectedNode.node.coinCost;
 
                 return (
@@ -972,10 +956,6 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                       <span>Chi phí:</span>
                       <span className={playerProfile.skillPoints >= 1 ? 'text-[#fef08a]' : 'text-[#f87171]'}>
                         1⭐
-                      </span>
-                      <span>•</span>
-                      <span className={currentGold >= selectedNode.node.goldCost ? 'text-[#fde047]' : 'text-[#f87171]'}>
-                        {selectedNode.node.goldCost.toLocaleString()}🪙
                       </span>
                       <span>•</span>
                       <span className={playerProfile.pixelCoins >= selectedNode.node.coinCost ? 'text-[#67e8f9]' : 'text-[#f87171]'}>
@@ -1036,18 +1016,19 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
 
                 const canAfford =
                   playerProfile.skillPoints >= selectedNode.node.skillPointCost &&
-                  currentGold >= selectedNode.node.goldCost &&
                   playerProfile.pixelCoins >= selectedNode.node.coinCost;
 
                 return (
                   <>
                     <div className="flex items-center gap-2 text-xs font-mono text-[#cbd5e1]">
                       <span>Chi phí:</span>
-                      <span>{selectedNode.node.skillPointCost}⭐</span>
+                      <span className={playerProfile.skillPoints >= selectedNode.node.skillPointCost ? 'text-[#fef08a]' : 'text-[#f87171]'}>
+                        {selectedNode.node.skillPointCost}⭐
+                      </span>
                       <span>•</span>
-                      <span>{selectedNode.node.goldCost.toLocaleString()}🪙</span>
-                      <span>•</span>
-                      <span>{selectedNode.node.coinCost}💎</span>
+                      <span className={playerProfile.pixelCoins >= selectedNode.node.coinCost ? 'text-[#67e8f9]' : 'text-[#f87171]'}>
+                        {selectedNode.node.coinCost}💎
+                      </span>
                     </div>
 
                     <button

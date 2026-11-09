@@ -6,6 +6,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   updateProfile,
+  sendEmailVerification,
   syncProfileToFirestore,
   loadProfileFromFirestore,
   isUserAdmin,
@@ -94,14 +95,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         const user = cred.user;
         const nameToSet = displayName.trim() || email.split('@')[0];
         await updateProfile(user, { displayName: nameToSet });
+        await sendEmailVerification(cred.user);
         // Đồng bộ tiến trình hiện tại lên Firestore
         await syncProfileToFirestore(user, playerProfile);
         const isAdmin = isUserAdmin(user);
         onProfileLoaded(playerProfile, isAdmin);
-        setSuccessMsg(`Tạo tài khoản thành công! Đã lưu tiến trình game.`);
+        setSuccessMsg('Tạo tài khoản thành công! Hãy kiểm tra hộp thư để xác minh email.');
         setTimeout(() => {
           onClose();
-        }, 1000);
+        }, 1500);
       }
     } catch (err: any) {
       console.error('Email auth error:', err);

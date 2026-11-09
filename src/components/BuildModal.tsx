@@ -32,7 +32,9 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   const calculateBatchCost = (type: Exclude<BuildingType, 'NONE'>, goal: BatchOption) => {
     const base = BUILDING_INFO[type].baseCost;
     const currentCount = existingBuildingCounts[type] || 0;
-    const discount = playerNation.techLevels?.economy >= 2 ? 0.92 : 1.0;
+    let discount = 1.0;
+    if (playerNation.techLevels?.economy >= 2) discount *= 0.92;
+    if (playerNation.techLevels?.economy >= 3 && playerNation.techChoices?.economy === 'B') discount *= 0.80;
     const gold = playerNation.gold || 0;
 
     let totalCost = 0;

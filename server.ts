@@ -102,6 +102,8 @@ interface ConnectedClient {
   ws: WebSocket;
   playerId: string;
   roomCode: string | null;
+  msgCount: number;
+  lastReset: number;
 }
 
 const PLAYER_COLORS = [
@@ -112,6 +114,11 @@ const PLAYER_COLORS = [
   '#f97316', // Cam (Player 5 - Nation 5)
   '#ec4899', // Hồng (Player 6 - Nation 6)
 ];
+
+function sanitizePlayerName(name?: string): string {
+  if (!name) return '';
+  return name.replace(/[\x00-\x1F\x7F-\x9F<>]/g, '').trim().slice(0, 24);
+}
 
 class RoomManager {
   private rooms = new Map<string, RoomState>();
@@ -128,11 +135,31 @@ class RoomManager {
 
   public handleConnection(ws: WebSocket) {
     const playerId = 'p_' + Math.random().toString(36).substring(2, 9);
-    this.clients.set(ws, { ws, playerId, roomCode: null });
+    this.clients.set(ws, { ws, playerId, roomCode: null, msgCount: 0, lastReset: Date.now() });
 
     ws.on('message', (data: string | Buffer) => {
       try {
-        const message: ClientMessage = JSON.parse(data.toString());
+        const dataBuf = Buffer.isBuffer(data) ? data : Buffer.from(data as string);
+        if (dataBuf.length > 65536) {
+          // Bỏ qua tin nhắn lớn hơn 64KB
+          return;
+        }
+
+        const client = this.clients.get(ws);
+        if (!client) return;
+
+        const now = Date.now();
+        if (now - client.lastReset >= 1000) {
+          client.msgCount = 0;
+          client.lastReset = now;
+        }
+        client.msgCount++;
+        if (client.msgCount > 30) {
+          // Tối đa 30 tin mỗi giây cho mỗi kết nối
+          return;
+        }
+
+        const message: ClientMessage = JSON.parse(dataBuf.toString());
         this.processMessage(ws, message);
       } catch (err) {
         console.error('Lỗi phân tích WebSocket message:', err);
@@ -173,9 +200,11 @@ class RoomManager {
           code = this.generateRoomCode();
         }
 
+        const cleanedName = sanitizePlayerName(msg.playerName) || 'Chủ Phòng';
+
         const hostPlayer: RoomPlayer = {
           id: client.playerId,
-          name: msg.playerName?.trim() || 'Chủ Phòng',
+          name: cleanedName,
           isHost: true,
           nationId: 1,
           color: PLAYER_COLORS[0],
@@ -240,9 +269,11 @@ class RoomManager {
           }
         }
 
+        const cleanedName = sanitizePlayerName(msg.playerName) || `Người chơi ${room.players.length + 1}`;
+
         const newPlayer: RoomPlayer = {
           id: client.playerId,
-          name: msg.playerName?.trim() || `Người chơi ${room.players.length + 1}`,
+          name: cleanedName,
           isHost: false,
           nationId: assignedNationId,
           color: PLAYER_COLORS[(assignedNationId - 1) % PLAYER_COLORS.length],
@@ -270,8 +301,27 @@ class RoomManager {
         if (!client.roomCode) return;
         const room = this.rooms.get(client.roomCode);
         if (!room || room.hostId !== client.playerId) return;
+        if (room.status !== 'LOBBY') return;
 
-        room.settings = { ...room.settings, ...msg.settings };
+        if (msg.settings) {
+          const s = msg.settings;
+          if (typeof s.mapSize === 'number' && Number.isInteger(s.mapSize) && s.mapSize >= 32 && s.mapSize <= 192) {
+            room.settings.mapSize = s.mapSize;
+          }
+          if (typeof s.gameSpeed === 'number' && s.gameSpeed >= 1 && s.gameSpeed <= 4) {
+            room.settings.gameSpeed = s.gameSpeed;
+          }
+          if (typeof s.botCount === 'number' && Number.isInteger(s.botCount) && s.botCount >= 0 && s.botCount <= 8) {
+            room.settings.botCount = s.botCount;
+          }
+          if (typeof s.maxPlayers === 'number' && Number.isInteger(s.maxPlayers) && s.maxPlayers >= 2 && s.maxPlayers <= 6) {
+            room.settings.maxPlayers = s.maxPlayers;
+          }
+          if (s.difficulty && ['EASY', 'NORMAL', 'HARD'].includes(s.difficulty)) {
+            room.settings.difficulty = s.difficulty;
+          }
+        }
+
         this.broadcastToRoom(client.roomCode, {
           type: 'ROOM_UPDATED',
           room,
@@ -294,9 +344,18 @@ class RoomManager {
 
       case 'PLAYER_ATTACK': {
         if (!client.roomCode) return;
+        const room = this.rooms.get(client.roomCode);
+        if (!room || room.status !== 'PLAYING') return;
+
+        const player = room.players.find(p => p.id === client.playerId);
+        if (!player) return;
+
+        if (msg.fromNation !== player.nationId) return;
+        if (typeof msg.troops !== 'number' || msg.troops <= 0) return;
+
         this.broadcastToRoom(client.roomCode, {
           type: 'ACTION_ATTACK',
-          fromNation: msg.fromNation,
+          fromNation: player.nationId,
           toNation: msg.toNation,
           sourceX: msg.sourceX,
           sourceY: msg.sourceY,
@@ -310,8 +369,13 @@ class RoomManager {
       case 'PLAYER_BUILD': {
         if (!client.roomCode) return;
         const room = this.rooms.get(client.roomCode);
-        const player = room?.players.find(p => p.id === client.playerId);
+        if (!room || room.status !== 'PLAYING') return;
+
+        const player = room.players.find(p => p.id === client.playerId);
         if (!player) return;
+
+        if (typeof msg.buildingType !== 'string' || msg.buildingType.length === 0 || msg.buildingType.length > 32) return;
+        if (typeof msg.count !== 'number' || !Number.isInteger(msg.count) || msg.count < 1 || msg.count > 100) return;
 
         this.broadcastToRoom(client.roomCode, {
           type: 'ACTION_BUILD',
@@ -326,6 +390,9 @@ class RoomManager {
 
       case 'STATE_SYNC': {
         if (!client.roomCode) return;
+        const room = this.rooms.get(client.roomCode);
+        if (!room || room.hostId !== client.playerId) return;
+
         this.broadcastToRoom(client.roomCode, {
           type: 'STATE_SYNC',
           nations: msg.nations,

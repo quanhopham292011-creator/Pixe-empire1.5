@@ -188,7 +188,7 @@ export function drawTerritoryBuffer(
   ctx.imageSmoothingEnabled = false;
 
   // Tối ưu cập nhật cục bộ: nếu chỉ có vài ô thay đổi, chỉ vẽ lại các ô đó cùng 4 ô lân cận
-  if (!forceFull && dirtyTiles && dirtyTiles.length > 0 && dirtyTiles.length <= 128) {
+  if (!forceFull && dirtyTiles && dirtyTiles.length > 0 && dirtyTiles.length <= 512) {
     const patchMap = new Map<number, { x: number; y: number }>();
     for (let i = 0; i < dirtyTiles.length; i++) {
       const pt = dirtyTiles[i];
