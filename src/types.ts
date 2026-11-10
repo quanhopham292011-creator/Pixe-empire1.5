@@ -125,6 +125,9 @@ export interface Nation {
       truceTimer: number;
     };
   };
+  allianceInvites: { senderNationId: number; expiryTimer: number }[];
+  lastRejectedInviteTimer: { [nationId: number]: number };
+  traitorTimer: number; // 2 phút (120s)
 }
 
 export interface AttackWave {

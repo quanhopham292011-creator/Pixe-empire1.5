@@ -250,7 +250,10 @@ export function generateWorldMap(
     capitalY: 0,
     hasPort: false,
     techLevels: { economy: 0, military: 0, defense: 0 },
-    diplomacy: {}
+    diplomacy: {},
+    allianceInvites: [],
+    lastRejectedInviteTimer: {},
+    traitorTimer: 0
   });
 
   const personalities: NationPersonality[] = ['DEFENSIVE', 'AGGRESSIVE', 'MERCHANT', 'OPPORTUNIST'];
@@ -365,7 +368,10 @@ export function generateWorldMap(
       general: generalObj,
       reserveGenerals: [],
       techLevels: { economy: 0, military: 0, defense: 0 },
-      diplomacy: defaultDiplomacy
+      diplomacy: defaultDiplomacy,
+      allianceInvites: [],
+      lastRejectedInviteTimer: {},
+      traitorTimer: 0
     });
 
     // Tạo lãnh thổ ban đầu
