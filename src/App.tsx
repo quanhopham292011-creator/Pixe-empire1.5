@@ -51,6 +51,8 @@ import { useSaveGame } from './hooks/useSaveGame';
 import { useGameRenderer } from './hooks/useGameRenderer';
 import { useTradeRoutes } from './hooks/useTradeRoutes';
 import { useDarkTitanAI } from './hooks/useDarkTitanAI';
+import { useSeasonEvents } from './hooks/useSeasonEvents';
+import { useAttackWaves } from './hooks/useAttackWaves';
 import { getSkillTreeBonuses } from './utils/skillTreeConfig';
 import { 
   GENERAL_CONSTANTS, calculateGeneralStats, applyGeneralDamage, 
@@ -131,10 +133,6 @@ export default function App() {
   }, []);
 
   // Hệ Thống Thời Tiết (Mây trôi bồng bềnh, Mưa lất phất)
-  const [weather, setWeather] = useState<WeatherType>('CLOUDY');
-  const weatherRef = useRef<WeatherType>('CLOUDY');
-  const [weatherEnabled, setWeatherEnabled] = useState<boolean>(true);
-  const weatherEnabledRef = useRef<boolean>(true);
   const weatherParticlesRef = useRef<WeatherParticle[]>([]);
   // Hiệu ứng chớp nháy toàn màn hình giả lập tia chớp (Lightning Flash) khi trời Mưa (RAIN)
   const lightningFlashRef = useRef<{ startTime: number; duration: number } | null>(null);
@@ -370,6 +368,26 @@ export default function App() {
     handleMapTap: (mapX, mapY, screenX, screenY) => handleMapTapRef.current(mapX, mapY, screenX, screenY),
   });
 
+  const initWeatherParticlesRef = useRef<((size: MapDimension, weather: WeatherType) => void) | null>(null);
+
+  const {
+    weather,
+    setWeather,
+    weatherRef,
+    weatherEnabled,
+    setWeatherEnabled,
+    weatherEnabledRef,
+    cycleWeather,
+    toggleWeather,
+    updateSeasonEventsAndWeather,
+  } = useSeasonEvents({
+    gameDataRef,
+    cameraRef,
+    mapSize,
+    initWeatherParticlesRef,
+    nextLightningTimeRef,
+  });
+
   const { initWeatherParticles, renderTerrainBuffer, renderTerritoryBuffer } = useGameRenderer({
     mapSize,
     gameStateRef,
@@ -404,6 +422,8 @@ export default function App() {
     gameDataRef,
     clampCamera,
   });
+
+  initWeatherParticlesRef.current = initWeatherParticles;
 
   // Viện trợ tài chính / tặng quân đồng minh
   const handleSendGoldAid = useCallback((botId: number) => {
@@ -522,29 +542,7 @@ export default function App() {
     }
   }, []);
 
-  // Chuyển đổi kiểu thời tiết nhanh
-  const cycleWeather = useCallback(() => {
-    setWeather(prev => {
-      const next: WeatherType = prev === 'CLEAR' ? 'CLOUDY' : prev === 'CLOUDY' ? 'RAIN' : 'CLEAR';
-      weatherRef.current = next;
-      initWeatherParticles(mapSize, next);
-      if (next === 'RAIN') {
-        nextLightningTimeRef.current = performance.now() + 1500 + Math.random() * 2000;
-      }
-      soundManager.playClick();
-      return next;
-    });
-  }, [mapSize, initWeatherParticles]);
 
-  // Bật/tắt hiệu ứng thời tiết
-  const toggleWeather = useCallback(() => {
-    setWeatherEnabled(prev => {
-      const next = !prev;
-      weatherEnabledRef.current = next;
-      soundManager.playClick();
-      return next;
-    });
-  }, []);
 
   // Kiểm tra ô tọa độ có nằm trong tầm nhìn của người chơi hay không
   const isTileVisibleToPlayer = useCallback((tx: number, ty: number, data: any): boolean => {
@@ -900,6 +898,12 @@ export default function App() {
 
   const { updateTradeRoutes, lootTradeShip } = useTradeRoutes(gameDataRef);
   const { updateDarkTitans } = useDarkTitanAI({ gameDataRef, offscreenTerritoryDirtyRef });
+  const { updateAttackWaves } = useAttackWaves({
+    gameDataRef,
+    gameSpeed,
+    unlockedAchievementsRef,
+    cameraRef,
+  });
 
   // Tự động lưu game an toàn khi người chơi chuyển app hoặc đóng trình duyệt trên Android
   useEffect(() => {
@@ -1253,70 +1257,8 @@ export default function App() {
         }
       });
 
-      // Kích hoạt Sự Kiện Ngẫu Nhiên & Thảm Họa Thiên Nhiên theo mùa mỗi 50 giây
-      if (data.gameTimeSeconds > 0 && data.gameTimeSeconds % 50 === 0 && !data.activeSeasonEvent) {
-        const eventTypes: Array<{ type: 'BLIZZARD' | 'PLAGUE' | 'GOLDEN_HARVEST' | 'DROUGHT'; name: string; duration: number; desc: string }> = [
-          { type: 'BLIZZARD', name: '❄️ Bão Tuyết Càn Quét', duration: 20, desc: 'Bão tuyết cực đoan! Toàn bộ quân đội và đợt hành quân bị đóng băng tạm thời.' },
-          { type: 'PLAGUE', name: '🦠 Đại Dịch Bùng Phát', duration: 15, desc: 'Dịch bệnh lan rộng! Lực lượng quân sự toàn cầu suy giảm 15% tạm thời.' },
-          { type: 'GOLDEN_HARVEST', name: '🌾 Mùa Màng Bội Thu', duration: 25, desc: 'Thời tiết ôn hòa! Sản lượng thu nhập vàng toàn cầu được nhân đôi (+100%).' },
-          { type: 'DROUGHT', name: '☀️ Hạn Hán Khắc Nghiệt', duration: 20, desc: 'Hạn hán kéo dài! Sản lượng thu nhập vàng suy giảm 50%.' },
-        ];
-        const chosen = eventTypes[Math.floor(Math.random() * eventTypes.length)];
-        data.activeSeasonEvent = {
-          type: chosen.type,
-          name: chosen.name,
-          remainingTime: chosen.duration,
-          duration: chosen.duration,
-          desc: chosen.desc,
-        };
-
-        if (chosen.type === 'PLAGUE') {
-          data.nations.forEach(n => {
-            if (!n.isEliminated) {
-              n.troops = Math.max(5, Math.floor(n.troops * 0.85));
-            }
-          });
-        }
-
-        soundManager.playThunder();
-        data.events.unshift({
-          id: Math.random().toString(),
-          title: chosen.name,
-          description: chosen.desc,
-          type: chosen.type === 'GOLDEN_HARVEST' ? 'HARVEST' : chosen.type === 'DROUGHT' ? 'CROP_FAILURE' : 'PLAGUE',
-          targetNationId: 0,
-          timestamp: formatGameTime(data.gameTimeSeconds),
-        });
-
-        data.particles.push({
-          x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
-          y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
-          color: chosen.type === 'GOLDEN_HARVEST' ? '#10b981' : chosen.type === 'BLIZZARD' ? '#38bdf8' : '#ef4444',
-          size: 0, life: 50, maxLife: 50, vx: 0, vy: -0.7,
-          type: 'FLOAT_TEXT',
-          text: `⚠️ SỰ KIỆN: ${chosen.name}!`
-        });
-      }
-
-      if (data.activeSeasonEvent) {
-        data.activeSeasonEvent.remainingTime -= 1;
-        if (data.activeSeasonEvent.remainingTime <= 0) {
-          data.activeSeasonEvent = null;
-        }
-      }
-
-      // Chu kỳ chuyển dịch thời tiết tự nhiên mỗi 80s (Nắng nhẹ -> Mây trôi -> Mưa lất phất)
-      if (weatherEnabledRef.current && data.gameTimeSeconds > 0 && data.gameTimeSeconds % 80 === 0) {
-        setWeather(prev => {
-          const next: WeatherType = prev === 'CLEAR' ? 'CLOUDY' : prev === 'CLOUDY' ? 'RAIN' : 'CLEAR';
-          weatherRef.current = next;
-          initWeatherParticles(size as MapDimension, next);
-          if (next === 'RAIN') {
-            nextLightningTimeRef.current = performance.now() + 2000 + Math.random() * 3000;
-          }
-          return next;
-        });
-      }
+      // Kích hoạt Sự Kiện Ngẫu Nhiên & Thảm Họa Thiên Nhiên theo mùa & Thời tiết
+      updateSeasonEventsAndWeather();
 
       // Quyền năng God Mode (Khóa Bất Tử): Tự động hồi phục 999.999 vàng và 99.999 quân
       if (godModeLockedRef.current && nations[1]) {
@@ -2237,90 +2179,7 @@ export default function App() {
       data.flyingMissiles = data.flyingMissiles.filter((_, idx) => !finishedMissiles.includes(idx));
 
       // 6. Cập nhật Attack Waves & Va chạm Đại chiến Tà Thần
-      const finishedWaves: number[] = [];
-      data.attackWaves.forEach((wave, idx) => {
-        const isBlizzard = data.activeSeasonEvent?.type === 'BLIZZARD';
-        const waveSpeedMult = isBlizzard ? 0 : (gameSpeed * 0.14);
-
-        // Kỹ năng "Hào Quang Khích Lệ" & Công nghệ Quân sự cấp 1 (+10% tốc độ di chuyển quân)
-        let generalSpeedMult = 1.0;
-        const waveAttacker = data.nations[wave.fromNation];
-        if (waveAttacker?.techLevels?.military >= 1) {
-          generalSpeedMult *= 1.10;
-        }
-        if (waveAttacker?.general?.skillId === 'INSPIRE_AURA' && (waveAttacker.general.skillActiveTimer || 0) > 0) {
-          const power = getSkillPower(waveAttacker);
-          generalSpeedMult += 0.50 * power;
-        }
-
-        wave.progress += wave.speed * waveSpeedMult * generalSpeedMult;
-
-        // Kiểm tra va chạm chiến đấu với Tà Thần
-        const wavePxX = wave.sourceX + (wave.targetX - wave.sourceX) * wave.progress;
-        const wavePxY = wave.sourceY + (wave.targetY - wave.sourceY) * wave.progress;
-
-        data.darkTitans.forEach(titan => {
-          if (!titan.isActive) return;
-          const distToTitan = Math.hypot(wavePxX - titan.x, wavePxY - titan.y);
-
-          if (distToTitan <= 1.2) {
-            const attackerNation = data.nations[wave.fromNation];
-            const titanBuff = (attackerNation?.titanBuffTimer && attackerNation.titanBuffTimer > 0) ? 1.30 : 1.0;
-            const damageToTitan = Math.floor(wave.troops * 2.2 * titanBuff);
-
-            titan.hp = Math.max(0, (titan.hp ?? DARK_TITAN_CONFIG.MAX_HP) - damageToTitan);
-
-            data.particles.push({
-              x: titan.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              y: titan.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              color: '#f43f5e',
-              size: 0, life: 25, maxLife: 25, vx: (Math.random() - 0.5) * 0.5, vy: -0.8,
-              type: 'FLOAT_TEXT',
-              text: `💥 -${damageToTitan} HP`
-            });
-
-            wave.troops = Math.max(0, wave.troops - 10);
-
-            // Kiểm tra ĐÁNH GỤC TÀ THẦN
-            if (titan.hp <= 0) {
-              titan.isActive = false;
-              soundManager.playGeneralHorn();
-
-              if (attackerNation) {
-                attackerNation.gold += DARK_TITAN_CONFIG.BOUNTY_GOLD;
-                attackerNation.titanBuffTimer = DARK_TITAN_CONFIG.BUFF_DURATION_SECONDS;
-
-                data.events.unshift({
-                  id: Math.random().toString(),
-                  title: '⚔️ TRẢM TÀ THẦN THÀNH CÔNG',
-                  description: `👑 Quân đội ${attackerNation.name} đã ĐÁNH GỤC TÀ THẦN CỔ ĐẠI! Nhận +${formatPopulation(DARK_TITAN_CONFIG.BOUNTY_GOLD)} Vàng & Buff Sức Mạnh +30% toàn diện trong 3 phút!`,
-                  type: 'HARVEST',
-                  targetNationId: attackerNation.id,
-                  timestamp: formatGameTime(data.gameTimeSeconds),
-                });
-
-                if (attackerNation.isPlayer && !unlockedAchievementsRef.current.has('KILL_TITAN')) {
-                  unlockedAchievementsRef.current.add('KILL_TITAN');
-                  soundManager.playAchievement();
-                  data.particles.push({
-                    x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
-                    y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
-                    color: '#fbbf24', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.9,
-                    type: 'FLOAT_TEXT',
-                    text: '🏆 THÀNH TỰU: Diệt Tà Thần Cổ Đại!',
-                  });
-                }
-              }
-            }
-          }
-        });
-
-        if (wave.progress >= 1.0) {
-          finishedWaves.push(idx);
-          resolveAttackCapture(wave);
-        }
-      });
-      data.attackWaves = data.attackWaves.filter((_, idx) => !finishedWaves.includes(idx));
+      updateAttackWaves(resolveAttackCapture, gameSpeed);
 
       // 7. Cập nhật particles (Floating text giảm nhanh hơn để biến mất sau ~1.5 - 2s)
       data.particles.forEach(p => {
@@ -3490,6 +3349,17 @@ export default function App() {
                   >
                     <Settings className="w-4 h-4 text-amber-400" /> Cài Đặt Trận Đấu
                   </button>
+                  {isUserAdmin(currentUser) && (
+                    <button
+                      onClick={() => {
+                        setIsAdminPanelOpen(true);
+                        soundManager.playClick();
+                      }}
+                      className="w-full py-2.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 border border-amber-400/60 shadow-lg active:scale-95 transition-all"
+                    >
+                      <Crown className="w-4 h-4 text-amber-300" /> Bảng Điều Khiển Admin
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
