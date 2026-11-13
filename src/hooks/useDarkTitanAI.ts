@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { DarkTitan } from '../types';
+import { applyCasualties } from '../utils/casualties';
 import { soundManager } from '../utils/audio';
 import { 
   TILE_PIXEL_SIZE, DARK_TITAN_CONFIG, formatGameTime, BUILDING_INFO 
@@ -123,6 +124,11 @@ export function useDarkTitanAI({ gameDataRef, offscreenTerritoryDirtyRef }: UseD
         const say = (text: string, color: string) => {
           data.particles.push({ x: titan.x * TS + TS / 2, y: titan.y * TS + TS / 2, color, size: 0, life: 45, maxLife: 45, vx: 0, vy: -0.8, type: 'FLOAT_TEXT', text });
         };
+        const addFx = (kind: 'CLAW' | 'CHAIN' | 'TELEPORT' | 'METEOR', fx: number, fy: number, radius: number, duration: number, color: string) => {
+          data.titanFx = data.titanFx || [];
+          if (data.titanFx.length > 30) data.titanFx.shift();
+          data.titanFx.push({ kind, x: fx, y: fy, radius, duration, color, start: Date.now() });
+        };
         const hitArea = (cx: number, cy: number, radius: number, loss: number, isPercent: boolean, destroyAll: boolean, eat: number = 0) => {
           const victims = new Set<number>();
           for (let yy = Math.max(0, cy - radius); yy <= Math.min(size - 1, cy + radius); yy++) {
@@ -142,6 +148,7 @@ export function useDarkTitanAI({ gameDataRef, offscreenTerritoryDirtyRef }: UseD
             if (!n) return;
             const l = isPercent ? Math.floor(n.troops * loss) : Math.round(loss);
             n.troops = Math.max(0, n.troops - l);
+            applyCasualties(n, l);
             data.particles.push({ x: cx * TS + TS / 2, y: cy * TS + TS / 2, color: '#dc2626', size: 0, life: 35, maxLife: 35, vx: 0, vy: -0.5, type: 'FLOAT_TEXT', text: `☠️ -${l} Quân (${n.name})` });
           });
           offscreenTerritoryDirtyRef.current = true;
@@ -165,7 +172,8 @@ export function useDarkTitanAI({ gameDataRef, offscreenTerritoryDirtyRef }: UseD
           if (titan.ultCharge <= 0) {
             const ux = titan.ultX ?? titan.x, uy = titan.ultY ?? titan.y;
             soundManager.playThunder();
-            hitArea(ux, uy, DARK_TITAN_CONFIG.ULT_RADIUS, 0.4 * dmgMul, true, true, 1);
+            hitArea(ux, uy, DARK_TITAN_CONFIG.ULT_RADIUS, 0.5 * dmgMul, true, true, 1);
+            addFx('METEOR', ux, uy, DARK_TITAN_CONFIG.ULT_RADIUS, 900, '#f97316');
             data.attackWaves = data.attackWaves.filter((w: any) => Math.hypot(w.targetX - ux, w.targetY - uy) > DARK_TITAN_CONFIG.ULT_RADIUS);
             say('☄️ THIÊN THẠCH HẮC ÁM!', '#f97316');
           }
@@ -179,13 +187,15 @@ export function useDarkTitanAI({ gameDataRef, offscreenTerritoryDirtyRef }: UseD
             soundManager.playThunder();
             say('☄️ Thiên Thạch sắp giáng xuống!', '#f97316');
           } else if (cd.q <= 0 && nearestOwned(2)) {
-            hitArea(titan.x, titan.y, 3, 80 * dmgMul, false, true, 0.4);
+            hitArea(titan.x, titan.y, 3, 150 * dmgMul, false, true, 0.5);
+            addFx('CLAW', titan.x, titan.y, 3, 600, '#ef4444');
             titan.hp = Math.min(titan.maxHp, titan.hp + Math.floor(titan.maxHp * 0.02));
             cd.q = DARK_TITAN_CONFIG.Q_COOLDOWN;
             say('🩸 Móng Vuốt Hủy Diệt', '#ef4444');
           } else if (cd.w <= 0 && wavesNear.length > 0) {
             wavesNear.forEach((w: any) => { w.troops = Math.floor(w.troops * 0.85); });
             titan.slowTimer = 6;
+            addFx('CHAIN', titan.x, titan.y, 7, 800, '#a855f7');
             cd.w = DARK_TITAN_CONFIG.W_COOLDOWN;
             say('⛓️ Xiềng Xích Bóng Tối', '#a855f7');
           } else if (cd.e <= 0) {
@@ -198,10 +208,12 @@ export function useDarkTitanAI({ gameDataRef, offscreenTerritoryDirtyRef }: UseD
             }
             if (spots.length > 0) {
               const spot = spots[Math.floor(Math.random() * spots.length)];
+              addFx('TELEPORT', titan.x, titan.y, 2.5, 700, '#8b5cf6');
               titan.x = spot.x; titan.y = spot.y; titan.moveTimer = 0;
+              addFx('TELEPORT', titan.x, titan.y, 2.5, 700, '#8b5cf6');
               cd.e = DARK_TITAN_CONFIG.E_COOLDOWN;
               say('🌀 Dịch Chuyển Bóng Đêm', '#8b5cf6');
-              hitArea(titan.x, titan.y, 2, 60 * dmgMul, false, true, 0.5);
+              hitArea(titan.x, titan.y, 2, 100 * dmgMul, false, true, 0.5);
             }
           }
         }
@@ -253,6 +265,7 @@ export function useDarkTitanAI({ gameDataRef, offscreenTerritoryDirtyRef }: UseD
               if (victim) {
                 const dmgTroops = Math.round(DARK_TITAN_CONFIG.DAMAGE_TROOPS * dmgMul);
                 victim.troops = Math.max(0, victim.troops - dmgTroops);
+                applyCasualties(victim, dmgTroops);
                 data.particles.push({
                   x: titan.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
                   y: titan.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,

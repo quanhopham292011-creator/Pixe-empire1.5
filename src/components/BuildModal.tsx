@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { BuildingType, Tile, Nation } from '../types';
 import { BUILDING_INFO, formatPopulation } from '../utils/constants';
-import { X, Layers } from 'lucide-react';
+import { X } from 'lucide-react';
 import { BuildingSvgIcon } from './BuildingSvgIcon';
 
 interface BuildModalProps {
@@ -14,6 +14,21 @@ interface BuildModalProps {
 }
 
 type BatchOption = 1 | 2 | 5 | 10 | 20 | 50 | 100 | 'MAX';
+type BuildableType = Exclude<BuildingType, 'NONE'>;
+
+const BATCH_OPTIONS: BatchOption[] = [1, 2, 5, 10, 20, 50, 100, 'MAX'];
+
+const SHORT_NAME: Record<BuildableType, string> = {
+  CITY: 'Thành Thị',
+  BARRACKS: 'Doanh Trại',
+  FORTRESS: 'Pháo Đài',
+  PORT: 'Hải Cảng',
+  MISSILE_SILO: 'Bệ Tên Lửa',
+  AIR_DEFENSE: 'Phòng Không',
+  LASER: 'Tháp Laser',
+};
+
+const ALL_TYPES: BuildableType[] = ['CITY', 'BARRACKS', 'FORTRESS', 'PORT', 'LASER', 'MISSILE_SILO', 'AIR_DEFENSE'];
 
 export const BuildModal: React.FC<BuildModalProps> = ({
   isOpen,
@@ -27,15 +42,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
 
   if (!isOpen || !selectedTile) return null;
 
-  const batchOptions: BatchOption[] = [1, 2, 5, 10, 20, 50, 100, 'MAX'];
+  const gold = playerNation.gold || 0;
 
-  const calculateBatchCost = (type: Exclude<BuildingType, 'NONE'>, goal: BatchOption) => {
+  const calculateBatchCost = (type: BuildableType, goal: BatchOption) => {
     const base = BUILDING_INFO[type].baseCost;
     const currentCount = existingBuildingCounts[type] || 0;
     let discount = 1.0;
     if (playerNation.techLevels?.economy >= 2) discount *= 0.92;
     if (playerNation.techLevels?.economy >= 3 && playerNation.techChoices?.economy === 'B') discount *= 0.80;
-    const gold = playerNation.gold || 0;
 
     let totalCost = 0;
     let actualCount = 0;
@@ -46,13 +60,11 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       if (goal !== 'MAX') {
         totalCost += singleCost;
         actualCount++;
+      } else if (totalCost + singleCost <= gold) {
+        totalCost += singleCost;
+        actualCount++;
       } else {
-        if (totalCost + singleCost <= gold) {
-          totalCost += singleCost;
-          actualCount++;
-        } else {
-          break;
-        }
+        break;
       }
     }
 
@@ -64,123 +76,131 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     return { totalCost, actualCount };
   };
 
-  const buildingTypes: Array<Exclude<BuildingType, 'NONE'>> = ['CITY', 'BARRACKS', 'FORTRESS', 'PORT', 'ARTILLERY', 'LASER', 'MISSILE_SILO', 'AIR_DEFENSE'];
+  // Chỉ hiện công trình xây được: Hải Cảng chỉ hiện khi ô giáp biển
+  const buildingTypes = ALL_TYPES.filter((t) => t !== 'PORT' || selectedTile.hasHarborAccess);
+  const n = buildingTypes.length;
+  const RADIUS = 37;
+
+  const existing: BuildableType | null =
+    selectedTile.building && selectedTile.building !== 'NONE' ? (selectedTile.building as BuildableType) : null;
+
+  const terrainLabel =
+    selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi';
 
   return (
-    <div 
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-md p-2 sm:p-4"
-      style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
+    <div
+      className="fixed inset-0 z-50 flex overflow-y-auto bg-black/60 backdrop-blur-[2px] p-3"
+      style={{
+        paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))',
+        paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
-      <div className="w-full max-w-lg bg-slate-950 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom duration-200 text-slate-100">
-        
-        {/* HEADER */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/80">
-          <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-extrabold text-white text-base tracking-wide flex items-center gap-2">
-                🏗️ TRUNG TÂM XÂY DỰNG
-              </h3>
-              <span className="text-xs bg-amber-500/20 text-amber-300 font-bold border border-amber-500/40 px-2.5 py-0.5 rounded-full">
-                💰 {formatPopulation(playerNation.gold)} Vàng
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Vị trí: ({selectedTile.x}, {selectedTile.y}) · {selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi'} {selectedTile.hasHarborAccess ? '· Giáp biển' : ''}
+      <div className="m-auto flex flex-col items-center gap-3 text-slate-100" style={{ width: 'min(94vw, 380px)' }}>
+        <div className="text-center">
+          <p className="text-xs font-bold text-slate-200">
+            Ô ({selectedTile.x}, {selectedTile.y}) · {terrainLabel}
+            {selectedTile.hasHarborAccess ? ' · Giáp biển' : ''}
+          </p>
+          {existing && (
+            <p className="text-[11px] text-amber-300 mt-1">
+              Ô này đang có {BUILDING_INFO[existing].name} (Cấp {selectedTile.buildingLevel || 1}). Xây loại khác sẽ
+              THAY THẾ nó.
             </p>
-          </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-xl active:bg-slate-800 bg-slate-900 border border-slate-800">
-            <X className="w-5 h-5" />
-          </button>
+          )}
         </div>
 
-        {/* BATCH SELECTOR */}
-        <div className="px-4 py-2.5 bg-slate-900/50 border-b border-slate-800 space-y-1.5">
-          <div className="flex items-center justify-between text-[11px] font-bold text-slate-300">
-            <span className="flex items-center gap-1 text-amber-400">
-              <Layers className="w-3.5 h-3.5" /> Mốc số lượng xây gộp:
-            </span>
-            <span className="text-slate-400 font-mono text-[10px]">
-              {selectedBatch === 'MAX' ? 'Tối đa theo số Vàng' : `x${selectedBatch} Công trình`}
-            </span>
-          </div>
+        <div className="relative w-full" style={{ aspectRatio: '1 / 1' }}>
+          <div className="pointer-events-none absolute inset-[13%] rounded-full bg-slate-950/75 border border-slate-700/60" />
 
-          <div className="grid grid-cols-8 gap-1">
-            {batchOptions.map((opt) => (
+          <button
+            onClick={onClose}
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full bg-slate-900 border-2 border-slate-700 flex flex-col items-center justify-center active:scale-95 transition-transform"
+            aria-label="Đóng"
+          >
+            <X className="w-6 h-6 text-slate-300" />
+            <span className="text-[12px] font-mono font-bold text-amber-300 mt-0.5">💰 {formatPopulation(gold)}</span>
+          </button>
+
+          {buildingTypes.map((type, i) => {
+            const angle = ((-90 + (i * 360) / n) * Math.PI) / 180;
+            const left = 50 + RADIUS * Math.cos(angle);
+            const top = 50 + RADIUS * Math.sin(angle);
+
+            const { totalCost, actualCount } = calculateBatchCost(type, selectedBatch);
+            const canAfford = gold >= totalCost;
+            const isCurrent = selectedTile.building === type;
+
+            let badge: string | null = null;
+            if (isCurrent) badge = `Lv${selectedTile.buildingLevel || 1}+${actualCount}`;
+            else if (actualCount > 1) badge = `x${actualCount}`;
+
+            return (
+              <button
+                key={type}
+                disabled={!canAfford}
+                onClick={() => {
+                  onBuild(type, actualCount);
+                  onClose();
+                }}
+                style={{ left: `${left}%`, top: `${top}%` }}
+                className={`absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 transition-transform active:scale-95 ${
+                  canAfford ? '' : 'opacity-40 grayscale'
+                }`}
+              >
+                <span
+                  className={`relative w-16 h-16 rounded-full bg-slate-900 border-2 flex items-center justify-center shadow-lg ${
+                    isCurrent ? 'border-blue-400' : 'border-slate-600'
+                  }`}
+                >
+                  <BuildingSvgIcon
+                    type={type}
+                    className="w-8 h-8 text-white [&_*]:stroke-current [&_*]:fill-none"
+                  />
+                  {badge && (
+                    <span className="absolute -top-1 -right-3 whitespace-nowrap rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-black leading-none text-slate-950">
+                      {badge}
+                    </span>
+                  )}
+                </span>
+
+                <span className="text-[11px] font-bold leading-none text-white whitespace-nowrap">
+                  {SHORT_NAME[type]}
+                </span>
+
+                <span
+                  className={`text-[12px] font-mono font-bold leading-none whitespace-nowrap ${
+                    canAfford ? 'text-amber-300' : 'text-slate-400'
+                  }`}
+                >
+                  {formatPopulation(totalCost)} 💰
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="w-full rounded-2xl bg-slate-950/80 border border-slate-800 p-2">
+          <p className="text-[11px] text-center text-slate-400 mb-1.5">
+            Số lượng mỗi lần chạm: {selectedBatch === 'MAX' ? 'tối đa theo số Vàng' : `x${selectedBatch}`}
+          </p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {BATCH_OPTIONS.map((opt) => (
               <button
                 key={String(opt)}
                 onClick={() => setSelectedBatch(opt)}
-                className={`py-1.5 rounded-lg text-[11px] font-bold border transition-all active:scale-95 flex items-center justify-center ${
+                className={`h-11 rounded-xl text-sm font-bold border transition-all active:scale-95 ${
                   selectedBatch === opt
-                    ? 'bg-amber-500 border-amber-300 text-slate-950 font-black shadow'
-                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                    ? 'bg-amber-500 border-amber-300 text-slate-950 font-black'
+                    : 'bg-slate-900 border-slate-700 text-slate-300'
                 }`}
               >
                 {opt === 'MAX' ? 'MAX' : `x${opt}`}
               </button>
             ))}
           </div>
-        </div>
-
-        {/* RADIAL / GRID OPENFRONT STYLE BUILDING SELECTION */}
-        <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[62vh] overflow-y-auto">
-          {buildingTypes.map((type) => {
-            const info = BUILDING_INFO[type];
-            const { totalCost, actualCount } = calculateBatchCost(type, selectedBatch);
-            const canAfford = playerNation.gold >= totalCost;
-            const isPort = type === 'PORT';
-            const portValid = isPort ? selectedTile.hasHarborAccess : true;
-            const isCurrentBuilding = selectedTile.building === type;
-            const isDisabled = !canAfford || (isPort && !portValid);
-
-            return (
-              <button
-                key={type}
-                disabled={isDisabled}
-                onClick={() => {
-                  onBuild(type, actualCount);
-                  onClose();
-                }}
-                className={`group relative p-3 rounded-2xl border flex flex-col items-center text-center transition-all active:scale-95 ${
-                  isCurrentBuilding
-                    ? 'bg-blue-950/40 border-blue-500/60 shadow-lg shadow-blue-500/10'
-                    : isDisabled
-                    ? 'bg-slate-900/40 border-slate-800/80 opacity-40 grayscale cursor-not-allowed'
-                    : 'bg-slate-900 hover:bg-slate-850 border-slate-700/80 hover:border-slate-600 shadow-md'
-                }`}
-              >
-                {/* ICON TRẮNG LỚN PHONG CÁCH OPENFRONT */}
-                <div className="w-12 h-12 rounded-2xl bg-slate-950 border border-slate-700/80 flex items-center justify-center text-white mb-2 shadow-inner group-hover:scale-105 transition-transform">
-                  <BuildingSvgIcon type={type} className="w-7 h-7 text-white" />
-                </div>
-
-                {/* TÊN CÔNG TRÌNH */}
-                <span className="font-bold text-white text-xs tracking-tight line-clamp-1 mb-0.5">
-                  {info.name}
-                </span>
-
-                {/* TRẠNG THÁI / CẤP ĐỘ */}
-                {isCurrentBuilding ? (
-                  <span className="text-[9px] bg-amber-500/25 text-amber-300 font-bold border border-amber-500/40 px-2 py-0.5 rounded-full mb-1">
-                    Cấp {selectedTile.buildingLevel || 1} (Xây Chồng)
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-slate-400 line-clamp-1 mb-1">
-                    {info.desc}
-                  </span>
-                )}
-
-                {/* GIÁ TIỀN NHỎ BÊN DƯỚI */}
-                <div className="mt-auto pt-2 border-t border-slate-800/80 w-full flex items-center justify-between text-[11px]">
-                  <span className={`font-mono font-bold ${canAfford ? 'text-amber-400' : 'text-slate-500'}`}>
-                    {formatPopulation(totalCost)} 💰
-                  </span>
-                  <span className="text-[10px] font-bold text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded">
-                    {isCurrentBuilding ? `+${actualCount}` : `x${actualCount}`}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
         </div>
       </div>
     </div>

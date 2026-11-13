@@ -3,8 +3,10 @@
  */
 
 import { Tile, TerrainType, MapDimension, Nation, NationPersonality, GameDifficulty, SettlementTier } from '../types';
-import { REAL_NATION_NAMES, GENERAL_ROSTER } from './constants';
+import { REAL_NATION_NAMES, FOREST_COLONY_NAMES, GENERAL_ROSTER } from './constants';
 import { createDefaultGeneral } from './generalCombat';
+import { earthLandRatio, lonLatToTile } from './earthMask';
+import { WORLD_COUNTRIES } from './worldCountries';
 
 function pseudoNoise(x: number, y: number, seed: number): number {
   const n = Math.sin(x * 12.9898 + y * 78.233 + seed * 43758.5453) * 43758.5453;
@@ -29,44 +31,26 @@ function smoothNoise(x: number, y: number, seed: number, scale: number): number 
   return i1 * (1 - fy) + i2 * fy;
 }
 
-/**
- * Kiểm tra điểm (normX, normY) trong khoảng [0,1] thuộc lục địa Trái Đất nào:
- * 1. Châu Mỹ (Americas): normX [0.10 - 0.32], normY [0.12 - 0.82]
- * 2. Châu Âu (Europe): normX [0.42 - 0.58], normY [0.12 - 0.35]
- * 3. Châu Phi (Africa): normX [0.42 - 0.58], normY [0.36 - 0.75]
- * 4. Châu Á (Asia): normX [0.58 - 0.86], normY [0.12 - 0.62]
- * 5. Châu Đại Dương / Úc (Oceania): normX [0.72 - 0.90], normY [0.62 - 0.85]
- */
-function getEarthContinentDensity(normX: number, normY: number): number {
-  // 1. Châu Mỹ (Bắc & Nam Mỹ)
-  if (normX >= 0.10 && normX <= 0.32 && normY >= 0.12 && normY <= 0.82) {
-    const isNorth = normY <= 0.45;
-    const isSouth = normY >= 0.48;
-    const isCentral = normY > 0.42 && normY < 0.50 && normX >= 0.20 && normX <= 0.28;
-    if (isNorth || isSouth || isCentral) return 0.65;
-  }
 
-  // 2. Châu Âu
-  if (normX >= 0.42 && normX <= 0.58 && normY >= 0.12 && normY <= 0.35) {
-    return 0.70;
-  }
+function hslToHex(h: number, s: number, l: number): string {
+  s /= 100; l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const c = l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return Math.round(255 * c).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
 
-  // 3. Châu Phi
-  if (normX >= 0.42 && normX <= 0.58 && normY >= 0.36 && normY <= 0.75) {
-    return 0.72;
-  }
-
-  // 4. Châu Á (bao gồm Đông Nam Á)
-  if (normX >= 0.58 && normX <= 0.88 && normY >= 0.12 && normY <= 0.62) {
-    return 0.75;
-  }
-
-  // 5. Châu Đại Dương / Úc
-  if (normX >= 0.72 && normX <= 0.90 && normY >= 0.62 && normY <= 0.85) {
-    return 0.68;
-  }
-
-  return 0.05; // Đại dương mở
+function getDistinctNationColor(i: number, palette: string[], isBoss = false): string {
+  if (i <= 1) return palette[i]; // 0 trung lập, 1 người chơi (xanh)
+  if (isBoss) return palette[2]; // Boss (đỏ cam sáng chói)
+  let h = (i * 137.508) % 360;
+  if (Math.abs(h - 220) < 25 || h < 18 || h > 342) h = (h + 50) % 360; // tránh trùng xanh của người chơi và đỏ của Boss
+  const s = 82 + (i % 3) * 6;
+  const l = 58 + (i % 2) * 8;
+  return hslToHex(h, s, l);
 }
 
 /**
@@ -76,7 +60,8 @@ export function generateWorldMap(
   size: MapDimension = 96, 
   difficulty: GameDifficulty = 'EASY',
   customPlayerName: string = 'Việt Nam',
-  seed: number = Math.random() * 1000
+  seed: number = Math.random() * 1000,
+  customPlayerPos?: { x: number; y: number }
 ): {
   tiles: Tile[][];
   nations: Nation[];
@@ -85,28 +70,21 @@ export function generateWorldMap(
 
   for (let y = 0; y < size; y++) {
     tiles[y] = [];
-    const normY = y / size;
     for (let x = 0; x < size; x++) {
-      const normX = x / size;
+      // Tỉ lệ đất liền thật của Trái Đất tại ô này
+      const landRatio = earthLandRatio(x, y, size);
 
-      // Mật độ lục địa Trái Đất tại vị trí
-      const continentMask = getEarthContinentDensity(normX, normY);
-
-      // Noise địa hình
+      // Noise chỉ dùng để chia Núi / Rừng / Đồng bằng trên đất liền
       const n1 = smoothNoise(x, y, seed, size * 0.30);
       const n2 = smoothNoise(x, y, seed + 20, size * 0.12) * 0.4;
       const n3 = smoothNoise(x, y, seed + 40, size * 0.05) * 0.2;
-      const height = (n1 + n2 + n3) / 1.6 + continentMask - 0.42;
+      const h = (n1 + n2 + n3) / 1.6;
 
       let terrain: TerrainType = 'WATER';
-      if (height > 0.62) {
-        terrain = 'MOUNTAIN';
-      } else if (height > 0.42) {
-        terrain = 'FOREST';
-      } else if (height > 0.10) {
-        terrain = 'LAND';
-      } else {
-        terrain = 'WATER';
+      if (landRatio >= 0.5) {
+        if (h > 0.70) terrain = 'MOUNTAIN';
+        else if (h > 0.54) terrain = 'FOREST';
+        else terrain = 'LAND';
       }
 
       tiles[y][x] = {
@@ -123,99 +101,153 @@ export function generateWorldMap(
   }
 
   // Mật độ quốc gia và thuộc địa theo kích thước bản đồ
-  const minorCount = size === 64 ? 14 : size === 96 ? 24 : 36;
-  const totalNations = 2 + minorCount; // 1 Player, 1 Boss AI, minorCount Thuộc địa
+  const baseMinorCount = size === 64 ? 14 : size === 96 ? 24 : size === 128 ? 36 : 48;
+  // Thêm các bản làng dân tộc Việt Nam rải dày đặc hơn trên bản đồ
+  const ethnicExtraCount = size === 64 ? 10 : size === 96 ? 18 : size === 128 ? 30 : 44;
+  const minorCount = baseMinorCount + ethnicExtraCount;
 
   // Bảng màu rực rỡ cho Quốc gia / Tông màu xám trầm cho Thuộc địa
   const nationColors = [
     "#64748b", // 0: Neutral
-    "#2563eb", // 1: Player (Xanh dương rực rỡ)
-    "#dc2626", // 2: Boss AI (Đỏ chói rực rỡ)
+    "#38bdf8", // 1: Player (Xanh dương sáng rực rỡ OpenFront style)
+    "#f87171", // 2: Boss AI (Đỏ cam sáng chói rực rỡ)
     "#71717a", "#a1a1aa", "#78716c", "#a8a29e", "#64748b", // Muted tones cho Thuộc địa
-    "#059669", "#7c3aed", "#d97706", "#0284c7", "#ca8a04", "#0d9488", "#e11d48", "#84cc16"
+    "#10b981", "#8b5cf6", "#f59e0b", "#0ea5e9", "#eab308", "#14b8a6", "#f43f5e", "#84cc16"
   ];
 
-  const shuffledNames = [...REAL_NATION_NAMES];
-  for (let i = shuffledNames.length - 1; i > 0; i--) {
+  const cleanPlayerName = (customPlayerName && customPlayerName.trim()) ? customPlayerName.trim() : 'Việt Nam';
+  const officialCountryNameSet = new Set(
+    [...REAL_NATION_NAMES, ...WORLD_COUNTRIES.map(c => c.name)].map(n => n.trim().toLowerCase())
+  );
+
+  // Danh sách tên riêng biệt cho Thuộc địa rừng (lọc bỏ toàn bộ tên trùng quốc gia chính thức)
+  const shuffledForestNames = FOREST_COLONY_NAMES.filter(
+    name => !officialCountryNameSet.has(name.trim().toLowerCase())
+  );
+  for (let i = shuffledForestNames.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [shuffledNames[i], shuffledNames[j]] = [shuffledNames[j], shuffledNames[i]];
+    [shuffledForestNames[i], shuffledForestNames[j]] = [shuffledForestNames[j], shuffledForestNames[i]];
   }
+  let forestNameIdx = 0;
+  const nextForestName = (): string => {
+    const pool = shuffledForestNames.length > 0 ? shuffledForestNames : ['Rừng Nguyên Sinh'];
+    const name = pool[forestNameIdx % pool.length];
+    const round = Math.floor(forestNameIdx / pool.length);
+    forestNameIdx++;
+    return round === 0 ? name : `${name} ${round + 1}`;
+  };
+
+  // Tên bản làng theo các dân tộc Việt Nam (lọc trùng tên quốc gia chính thức) + vài tên "bản" vui
+  const ETHNIC_NAME_POOL: string[] = [
+    ...['Mông','Dao','Tày','Thái','Nùng','Giáy','Hà Nhì','Lô Lô','Pà Thẻn','Si La','Sán Chay','Sán Dìu','La Chí','Pu Péo','Phù Lá','La Hủ','Lự','Kháng','Khơ Mú','Xinh Mun','Cống','Mảng','Bố Y','Cờ Lao','La Ha','Thổ','Ơ Đu','Chứt','Hoa'].map(n => `Bản ${n}`),
+    'Bản Mèo', 'Bản Chuột', 'Bản Gấu', 'Bản Hổ', 'Bản Voi', 'Bản Cú', 'Bản Rùa',
+    'Bản Tuất', 'Bản Gà',
+  ].filter(name => !officialCountryNameSet.has(name.trim().toLowerCase()));
+  for (let i = ETHNIC_NAME_POOL.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [ETHNIC_NAME_POOL[i], ETHNIC_NAME_POOL[j]] = [ETHNIC_NAME_POOL[j], ETHNIC_NAME_POOL[i]];
+  }
+  let ethnicNameIdx = 0;
+  const nextEthnicName = (): string => {
+    const name = ETHNIC_NAME_POOL[ethnicNameIdx % ETHNIC_NAME_POOL.length];
+    const round = Math.floor(ethnicNameIdx / ETHNIC_NAME_POOL.length);
+    ethnicNameIdx++;
+    return round === 0 ? name : `${name} ${round + 1}`;
+  };
 
   const spawnLocations: { x: number; y: number }[] = [];
 
-  // 1. VỊ TRÍ XUẤT PHÁT MẶC ĐỊNH CỦA NGƯỜI CHƠI: Đông Nam Á / Việt Nam (normX ~0.72, normY ~0.54)
-  const vnTargetX = Math.floor(size * 0.72);
-  const vnTargetY = Math.floor(size * 0.54);
-  let playerSpawn = { x: vnTargetX, y: vnTargetY };
-
-  for (let dy = -3; dy <= 3; dy++) {
-    for (let dx = -3; dx <= 3; dx++) {
-      const px = playerSpawn.x + dx;
-      const py = playerSpawn.y + dy;
-      if (px >= 0 && px < size && py >= 0 && py < size) {
-        if (tiles[py][px].terrain === 'WATER') tiles[py][px].terrain = 'LAND';
+  // Tìm ô đất liền gần nhất (nếu ô đang là biển)
+  const snapToLand = (px: number, py: number, maxR = 14): { x: number; y: number } => {
+    if (tiles[py][px].terrain !== 'WATER') return { x: px, y: py };
+    for (let r = 1; r <= maxR; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const nx = px + dx;
+          const ny = py + dy;
+          if (nx >= 0 && nx < size && ny >= 0 && ny < size && tiles[ny][nx].terrain !== 'WATER') {
+            return { x: nx, y: ny };
+          }
+        }
       }
     }
-  }
-  spawnLocations.push(playerSpawn); // Index 0 -> Player (ID 1)
+    tiles[py][px].terrain = 'LAND'; // dự phòng
+    return { x: px, y: py };
+  };
 
-  // 2. VỊ TRÍ BOSS AI: Châu Âu / Bắc Mỹ (normX ~0.48, normY ~0.25)
-  const bossTargetX = Math.floor(size * 0.48);
-  const bossTargetY = Math.floor(size * 0.25);
-  let bossSpawn = { x: bossTargetX, y: bossTargetY };
+  // 1. NGƯỜI CHƠI: Việt Nam (kinh độ 106, vĩ độ 16) hoặc vị trí tùy chọn
+  const playerTarget = customPlayerPos
+    ? snapToLand(Math.max(1, Math.min(size - 2, customPlayerPos.x)), Math.max(1, Math.min(size - 2, customPlayerPos.y)))
+    : snapToLand(lonLatToTile(106, 16, size).x, lonLatToTile(106, 16, size).y);
+  spawnLocations.push(playerTarget); // Index 0 -> Player (ID 1)
 
-  for (let dy = -4; dy <= 4; dy++) {
-    for (let dx = -4; dx <= 4; dx++) {
-      const px = bossSpawn.x + dx;
-      const py = bossSpawn.y + dy;
-      if (px >= 0 && px < size && py >= 0 && py < size) {
-        if (tiles[py][px].terrain === 'WATER') tiles[py][px].terrain = 'LAND';
-      }
-    }
-  }
-  spawnLocations.push(bossSpawn); // Index 1 -> Boss AI (ID 2)
-
-  // 3. VỊ TRÍ PHÂN BỐ TỰ NHIÊN CỦA 3 LOẠI THUỘC ĐỊA (Rừng, Bộ lạc, Dân tộc)
-  const colonyRegionCoords = [
-    { x: 0.50, y: 0.55 }, // Châu Phi Trung
-    { x: 0.20, y: 0.30 }, // Bắc Mỹ
-    { x: 0.24, y: 0.65 }, // Nam Mỹ
-    { x: 0.82, y: 0.72 }, // Úc / Châu Đại Dương
-    { x: 0.75, y: 0.25 }, // Bắc Á / Siberia
-    { x: 0.62, y: 0.38 }, // Trung Á
-    { x: 0.48, y: 0.68 }, // Nam Phi
-    { x: 0.16, y: 0.45 }, // Trung Mỹ
-    { x: 0.85, y: 0.42 }, // Đông Á
-    { x: 0.30, y: 0.75 }, // Nam Mỹ Nam
-    { x: 0.45, y: 0.20 }, // Bắc Âu
-    { x: 0.65, y: 0.50 }, // Ấn Độ / Nam Á
-    { x: 0.55, y: 0.40 }, // Trung Đông
-    { x: 0.78, y: 0.60 }, // Indonesia / Quần đảo
-    { x: 0.15, y: 0.22 }, // Canada Tây
-    { x: 0.28, y: 0.35 }, // Mỹ Đông
-    { x: 0.52, y: 0.45 }, // Bắc Phi
-    { x: 0.70, y: 0.30 }, // Mông Cổ
+  // 2. QUỐC GIA AI THẬT: đặt đúng vị trí ngoài đời thực (bao gồm Đức, không trùng tên người chơi)
+  const spawnInfo: ({ name: string; dev: boolean; isCountry: boolean } | null)[] = [
+    { name: cleanPlayerName, dev: true, isCountry: true }, // Player
   ];
-
-  for (let i = 0; i < minorCount; i++) {
-    const reg = colonyRegionCoords[i % colonyRegionCoords.length];
-    let cx = Math.floor(size * reg.x + (Math.random() * 10 - 5));
-    let cy = Math.floor(size * reg.y + (Math.random() * 10 - 5));
-    cx = Math.max(4, Math.min(size - 5, cx));
-    cy = Math.max(4, Math.min(size - 5, cy));
-
-    // Đảm bảo khoảng cách tối thiểu giữa các điểm xuất phát
-    const tooClose = spawnLocations.some(loc => Math.hypot(loc.x - cx, loc.y - cy) < 3.5);
-    if (tooClose) {
-      cx = Math.max(4, Math.min(size - 5, cx + Math.floor(Math.random() * 6 - 3)));
-      cy = Math.max(4, Math.min(size - 5, cy + Math.floor(Math.random() * 6 - 3)));
+  const eligibleWorldCountries = WORLD_COUNTRIES.filter(
+    c => c.name.trim().toLowerCase() !== cleanPlayerName.toLowerCase()
+  );
+  const devList = eligibleWorldCountries.filter(c => c.dev);
+  const otherList = eligibleWorldCountries.filter(c => !c.dev);
+  const shuffleArr = <T,>(arr: T[]): T[] => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
     }
+    return a;
+  };
+  const candidates = [...shuffleArr(devList), ...shuffleArr(otherList)];
 
-    if (tiles[cy][cx].terrain === 'WATER') {
-      tiles[cy][cx].terrain = 'LAND';
+  const isFarEnough = (px: number, py: number, minDist = 3.5) =>
+    !spawnLocations.some(loc => Math.hypot(loc.x - px, loc.y - py) < minDist);
+
+  const aiCountryTarget = baseMinorCount + 1;
+  const aiTotalTarget = minorCount + 1;
+  let placed = 0;
+  for (let c = 0; c < candidates.length && placed < aiCountryTarget; c++) {
+    const country = candidates[c];
+    const base = lonLatToTile(country.lon, country.lat, size);
+    for (let attempt = 0; attempt < 12; attempt++) {
+      const jx = Math.max(1, Math.min(size - 2, base.x + Math.floor(Math.random() * 5 - 2)));
+      const jy = Math.max(1, Math.min(size - 2, base.y + Math.floor(Math.random() * 5 - 2)));
+      if (tiles[jy][jx].terrain === 'WATER') continue;
+      if (!isFarEnough(jx, jy)) continue;
+      spawnLocations.push({ x: jx, y: jy });
+      spawnInfo.push({ name: country.name, dev: country.dev, isCountry: true });
+      placed++;
+      break;
     }
-    spawnLocations.push({ x: cx, y: cy });
   }
+
+  // Nếu còn thiếu (thuộc địa rừng / bộ lạc / bản làng), chọn ô đất ngẫu nhiên với tên tách biệt
+  let guard = 0;
+  while (placed < aiTotalTarget && guard < 3000) {
+    guard++;
+    const rx = 2 + Math.floor(Math.random() * (size - 4));
+    const ry = 2 + Math.floor(Math.random() * (size - 4));
+    if (tiles[ry][rx].terrain === 'WATER' || !isFarEnough(rx, ry, 3.3)) continue;
+    spawnLocations.push({ x: rx, y: ry });
+    spawnInfo.push({ name: nextEthnicName(), dev: false, isCountry: false });
+    placed++;
+  }
+
+  // 3. CHỌN NGẪU NHIÊN 1 QUỐC GIA AI LÀM BOSS (không cố định Đức, không trùng người chơi)
+  const bossCountryIndices: number[] = [];
+  const fallbackAiIndices: number[] = [];
+  for (let idx = 2; idx <= spawnLocations.length; idx++) {
+    const meta = spawnInfo[idx - 1];
+    fallbackAiIndices.push(idx);
+    if (meta?.isCountry && meta.name.trim().toLowerCase() !== cleanPlayerName.toLowerCase()) {
+      bossCountryIndices.push(idx);
+    }
+  }
+  const bossPool = bossCountryIndices.length > 0 ? bossCountryIndices : fallbackAiIndices;
+  const bossNationId = bossPool.length > 0
+    ? bossPool[Math.floor(Math.random() * bossPool.length)]
+    : -1;
 
   // Cập nhật giáp biển
   for (let y = 0; y < size; y++) {
@@ -258,13 +290,15 @@ export function generateWorldMap(
 
   const personalities: NationPersonality[] = ['DEFENSIVE', 'AGGRESSIVE', 'MERCHANT', 'OPPORTUNIST'];
 
-  for (let i = 1; i <= totalNations; i++) {
+  const actualTotalNations = spawnLocations.length;
+
+  for (let i = 1; i <= actualTotalNations; i++) {
     const isPlayer = i === 1;
-    const isBoss = i === 2;
+    const isBoss = i === bossNationId;
     const spawn = spawnLocations[i - 1] || { x: Math.floor(size / 2), y: Math.floor(size / 2) };
 
     const defaultDiplomacy: Nation['diplomacy'] = {};
-    for (let j = 1; j <= totalNations; j++) {
+    for (let j = 1; j <= actualTotalNations; j++) {
       if (j !== i) {
         defaultDiplomacy[j] = { status: 'WAR', relation: 0, truceTimer: 0 };
       }
@@ -277,28 +311,45 @@ export function generateWorldMap(
     let initGold = 50;
     let initLandRadius = 1.4;
 
+    const spawnMeta = spawnInfo[i - 1];
+
     if (isPlayer) {
       tier = 'PLAYER';
-      initPop = 10;
-      initTroops = 20;
-      initGold = 50;
-      initLandRadius = 2.2;
+      initPop = difficulty === 'EASY' ? 16 : difficulty === 'NORMAL' ? 13 : 10;
+      initTroops = difficulty === 'EASY' ? 34 : difficulty === 'NORMAL' ? 26 : 20;
+      initGold = difficulty === 'EASY' ? 120 : difficulty === 'NORMAL' ? 80 : 50;
+      initLandRadius = difficulty === 'EASY' ? 2.8 : difficulty === 'NORMAL' ? 2.5 : 2.2;
     } else if (isBoss) {
       tier = 'BOSS';
-      initPop = 30;
-      initTroops = 50;
-      initGold = 300;
-      initLandRadius = 3.2;
+      initPop = difficulty === 'EASY' ? 14 : difficulty === 'NORMAL' ? 18 : difficulty === 'HARD' ? 24 : 28;
+      initTroops = difficulty === 'EASY' ? 24 : difficulty === 'NORMAL' ? 34 : difficulty === 'HARD' ? 44 : 50;
+      initGold = difficulty === 'EASY' ? 90 : difficulty === 'NORMAL' ? 150 : difficulty === 'HARD' ? 240 : 300;
+      initLandRadius = difficulty === 'EASY' ? 2.8 : difficulty === 'NORMAL' ? 2.5 : 2.2;
+    } else if (spawnMeta?.isCountry) {
+      // Quốc gia chính thức (từ WORLD_COUNTRIES): không bao giờ bị biến thành thuộc địa rừng
+      tier = 'TIER_3_ETHNIC';
+      colonyCategory = 'ETHNIC';
+      if (spawnMeta.dev) {
+        initPop = difficulty === 'EASY' ? 10 : difficulty === 'NORMAL' ? 13 : 16;
+        initTroops = difficulty === 'EASY' ? 18 : difficulty === 'NORMAL' ? 25 : 32;
+        initGold = difficulty === 'EASY' ? 80 : difficulty === 'NORMAL' ? 120 : 160;
+        initLandRadius = difficulty === 'EASY' ? 2.2 : difficulty === 'NORMAL' ? 2.5 : 2.8;
+      } else {
+        initPop = difficulty === 'EASY' ? 8 : difficulty === 'NORMAL' ? 11 : 13;
+        initTroops = difficulty === 'EASY' ? 15 : difficulty === 'NORMAL' ? 20 : 25;
+        initGold = difficulty === 'EASY' ? 70 : difficulty === 'NORMAL' ? 100 : 130;
+        initLandRadius = difficulty === 'EASY' ? 2.0 : difficulty === 'NORMAL' ? 2.2 : 2.4;
+      }
     } else {
       const randTier = Math.random();
-      if (randTier < 0.40) {
+      if (randTier < 0.50) {
         tier = 'TIER_1_FOREST';
         colonyCategory = 'FOREST';
         initPop = 3;
         initTroops = 6;
         initGold = 40;
         initLandRadius = 1.2;
-      } else if (randTier < 0.75) {
+      } else if (randTier < 0.85) {
         tier = 'TIER_2_TRIBE';
         colonyCategory = 'TRIBE';
         initPop = 6;
@@ -308,37 +359,61 @@ export function generateWorldMap(
       } else {
         tier = 'TIER_3_ETHNIC';
         colonyCategory = 'ETHNIC';
-        initPop = 12;
-        initTroops = 24;
-        initGold = 120;
-        initLandRadius = 2.4;
+        initPop = 10;
+        initTroops = 20;
+        initGold = 100;
+        initLandRadius = 2.2;
       }
+      if (difficulty === 'EASY') {
+        initPop = Math.max(2, Math.round(initPop * 0.75));
+        initTroops = Math.max(4, Math.round(initTroops * 0.75));
+        initGold = Math.max(30, Math.round(initGold * 0.75));
+      }
+    }
+
+    // Chế độ CỰC KHÓ (Ác mộng): Bot AI & Boss khởi đầu mạnh tạo áp lực cao
+    if (!isPlayer && difficulty === 'EXTREME') {
+      initPop = Math.round(initPop * 1.25);
+      initTroops = Math.round(initTroops * 1.45);
+      initGold = Math.round(initGold * 1.5);
+      if (!isBoss) initLandRadius += 0.5;
+    }
+
+    // Tách biệt tên: Thuộc địa rừng luôn dùng FOREST_COLONY_NAMES, tuyệt đối không lấy tên quốc gia chính thức
+    let colonyBaseName = spawnMeta?.name ?? nextEthnicName();
+    if (colonyCategory === 'FOREST') {
+      colonyBaseName = nextForestName();
+    } else if (colonyCategory === 'TRIBE' && officialCountryNameSet.has(colonyBaseName.trim().toLowerCase())) {
+      colonyBaseName = nextEthnicName();
     }
 
     let nationName = "";
     let generalName = "";
 
     if (isPlayer) {
-      const cleanName = (customPlayerName && customPlayerName.trim()) ? customPlayerName.trim() : 'Việt Nam';
-      nationName = `${cleanName} (Bạn)`;
+      nationName = `${cleanPlayerName} (Bạn)`;
       generalName = `Tướng Trần Hưng Đạo`;
     } else if (isBoss) {
-      nationName = `Đế Quốc ${shuffledNames[0]} (Boss)`;
-      generalName = `Thống Chế Alexander`;
+      const bossCountryName = spawnMeta?.name || 'Đế Chế';
+      nationName = `${bossCountryName} (Boss)`;
+      generalName = `Thống Chế ${bossCountryName}`;
     } else {
-      if (colonyCategory === 'FOREST') {
-        nationName = `${shuffledNames[i]} [Rừng]`;
-        generalName = `Vệ Binh Rừng ${shuffledNames[i]}`;
+      if (spawnMeta?.dev) {
+        nationName = `${colonyBaseName} [Phát Triển]`;
+        generalName = `Đại Tướng ${colonyBaseName}`;
+      } else if (colonyCategory === 'FOREST') {
+        nationName = `${colonyBaseName} [Rừng]`;
+        generalName = `Vệ Binh ${colonyBaseName}`;
       } else if (colonyCategory === 'TRIBE') {
-        nationName = `${shuffledNames[i]} [Bộ Lạc]`;
-        generalName = `Tù Trưởng ${shuffledNames[i]}`;
+        nationName = `${colonyBaseName} [Bộ Lạc]`;
+        generalName = `Tù Trưởng ${colonyBaseName}`;
       } else {
-        nationName = `${shuffledNames[i]} [Dân Tộc]`;
-        generalName = `Chủ Tướng ${shuffledNames[i]}`;
+        nationName = `${colonyBaseName} [Dân Tộc]`;
+        generalName = `Chủ Tướng ${colonyBaseName}`;
       }
     }
 
-    const nColor = nationColors[i] || nationColors[i % nationColors.length];
+    const nColor = colonyCategory === 'FOREST' ? '#ffffff' : (colonyCategory ? nationColors[3 + (i % 5)] : getDistinctNationColor(i, nationColors, isBoss));
 
     // Chọn ngẫu nhiên 1 trong 5 Đại Tướng từ GENERAL_ROSTER cho quốc gia
     const rosterItem = GENERAL_ROSTER[Math.floor(Math.random() * GENERAL_ROSTER.length)];
@@ -353,7 +428,7 @@ export function generateWorldMap(
       isPlayer,
       tier,
       colonyCategory,
-      colonyEvolveTimer: colonyCategory === 'ETHNIC' ? 60 : undefined, // 60s để Dân tộc tiến hóa thành Quốc gia
+      colonyEvolveTimer: colonyCategory === 'ETHNIC' ? (difficulty === 'EASY' ? 140 : difficulty === 'NORMAL' ? 95 : difficulty === 'HARD' ? 70 : 55) : undefined, // Thời gian Dân tộc tiến hóa thành Quốc gia theo độ khó
       personality: isPlayer ? 'DEFENSIVE' : isBoss ? 'AGGRESSIVE' : colonyCategory === 'FOREST' ? 'DEFENSIVE' : colonyCategory === 'TRIBE' ? 'DEFENSIVE' : personalities[(i - 1) % personalities.length],
       gold: initGold,
       goldIncome: Math.max(2, Math.floor(initPop * 0.4)),

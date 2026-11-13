@@ -26,7 +26,7 @@ export const TECH_TREE: TechNode[] = [
     level: 3,
     choice: 'A',
     name: 'Thương Nhân',
-    description: 'Tổng +25% thu nhập vàng, cộng 20 vàng mỗi ô chiếm của địch.',
+    description: 'Tổng +25% thu nhập vàng, cộng 3 vàng mỗi ô chiếm (tối đa 30 vàng/s).',
     cost: 2500,
     researchTime: 50,
   },
@@ -144,6 +144,20 @@ export const REAL_NATION_NAMES: string[] = [
   "Antigua & Barbuda", "Saint Kitts & Nevis", "Belize", "Guatemala", "El Salvador", "Honduras", "Nicaragua", "Dominicana", "Haiti", "Bermuda"
 ];
 
+export const FOREST_COLONY_NAMES: string[] = [
+  "Rừng U Minh", "Rừng Cúc Phương", "Rừng Nam Cát Tiên", "Rừng Bạch Mã", "Rừng Phong Nha",
+  "Rừng Pù Mát", "Rừng Ba Bể", "Rừng Yok Đôn", "Rừng Bidoup", "Rừng Chư Yang Sin",
+  "Rừng Ngọc Linh", "Rừng Tà Đùng", "Rừng Tràm Trà Sư", "Rừng Cần Giờ", "Rừng Hoàng Liên",
+  "Rừng Pù Luông", "Đại Ngàn Trường Sơn", "Đại Ngàn Tây Nguyên", "Rừng Già Kon Hà Nừng", "Rừng Xuân Sơn",
+  "Rừng Tam Đảo", "Rừng Yên Tử", "Rừng Kẻ Gỗ", "Rừng Vũ Quang", "Rừng Tà Năng",
+  "Rừng Amazonia", "Rừng Taiga Phương Bắc", "Rừng Đen Schwarzwald", "Rừng Sherwood", "Rừng Brocéliande",
+  "Rừng Ardennes", "Rừng Białowieża", "Rừng Đỏ Sequoia", "Rừng Boreal Yukon", "Rừng Mưa Borneo",
+  "Rừng Xanh Lưu Vực", "Rừng Valdivia", "Rừng Sundarbans", "Rừng Daintree", "Rừng Tongass",
+  "Rừng Yakushima", "Rừng Aokigahara", "Rừng Hoia Baciu", "Thung Lũng Sương Mù", "Thung Lũng Xanh",
+  "Đầm Lầy Cổ Đại", "Cao Nguyên Đá Xám", "Đồi Thông Vi Vu", "Khu Rừng Cấm", "Rừng Già Ngàn Năm",
+  "Cánh Rừng Bạch Dương", "Rừng Tuyết Tùng", "Suối Nguồn Rừng Sâu", "Rừng Rậm Nhiệt Đới", "Rừng Sồi Cổ Thụ",
+];
+
 export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
   name: string;
   desc: string;
@@ -173,12 +187,6 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
     desc: 'Xây ven biển để quân đội vượt biển đổ bộ. Hỗ trợ xây chồng tăng thu nhập!',
     baseCost: 160,
     icon: 'Anchor',
-  },
-  ARTILLERY: {
-    name: 'Đại Pháo',
-    desc: 'Bắn plasma mỗi 15s. Xây chồng tăng sát thương & cự ly nã pháo!',
-    baseCost: 180,
-    icon: 'Crosshair',
   },
   MISSILE_SILO: {
     name: 'Bệ Tên Lửa (Silo)',
@@ -216,7 +224,7 @@ export const MISSILE_CONFIG: Record<MissileType, MissileConfigItem> = {
     id: 'ATOM',
     name: 'Atom (Nguyên Tử)',
     cost: 3_500, // 3.500 vàng
-    radius: 2.4,
+    radius: 2.1,
     description: 'Bán kính nổ nhỏ, phá hủy toàn bộ công trình và quét sạch quân phòng thủ trong phạm vi.',
     color: '#eab308',
   },
@@ -232,7 +240,7 @@ export const MISSILE_CONFIG: Record<MissileType, MissileConfigItem> = {
     id: 'MIRV',
     name: 'MIRV (Đa Đầu Đạn)',
     cost: 50_000, // 50.000 vàng
-    radius: 2.4,
+    radius: 2.7,
     mirvCount: 12,
     mirvSpreadRadius: 9.0,
     description: 'Rải 12 đầu đạn hạt nhân lên lãnh thổ đối phương. Không thể bị hệ thống phòng không SAM đánh chặn!',
@@ -253,17 +261,17 @@ export const DARK_TITAN_CONFIG = {
   DURATION_SECONDS: 300,
   WARNING_BEFORE_DESPAWN: 30,
   MOVE_INTERVAL_SECONDS: 3,
-  DAMAGE_TROOPS: 100,
-  MAX_HP: 3000,
+  DAMAGE_TROOPS: 200,
+  MAX_HP: 5000,
   BOUNTY_GOLD: 5000,
   BUFF_DURATION_SECONDS: 180,
-  Q_COOLDOWN: 8,
-  W_COOLDOWN: 14,
-  E_COOLDOWN: 18,
-  ULT_COOLDOWN: 30,
+  Q_COOLDOWN: 6,
+  W_COOLDOWN: 11,
+  E_COOLDOWN: 14,
+  ULT_COOLDOWN: 24,
   ULT_CHARGE_SECONDS: 3,
   RAGE_HP_RATIO: 0.5,
-  ULT_RADIUS: 8,
+  ULT_RADIUS: 9,
 };
 
 export interface GeneralRosterItem {
@@ -310,7 +318,7 @@ export const GENERAL_ROSTER: GeneralRosterItem[] = [
     cooldown: 80,
     emoji: '🦅',
     unlockType: 'PURCHASE',
-    price: 100,
+    price: 200,
   },
   {
     name: 'Đại Tướng Dạ Ảnh',
@@ -321,7 +329,7 @@ export const GENERAL_ROSTER: GeneralRosterItem[] = [
     cooldown: 70,
     emoji: '🌙',
     unlockType: 'PURCHASE',
-    price: 150,
+    price: 300,
   },
   {
     name: 'Đại Tướng Hỏa Long',

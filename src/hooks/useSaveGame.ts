@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { 
-  GameDifficulty, GameMode, MapDimension, Nation, 
+  GameDifficulty, GameMode, MapDimension, Nation, General,
   PlayerProfile, QuestStep, Tile, VictoryReward, WeatherType 
 } from '../types';
 import { soundManager } from '../utils/audio';
@@ -209,6 +209,20 @@ export function useSaveGame({
       if (payload.playerGeneralDeployMode !== undefined) setPlayerGeneralDeployMode(payload.playerGeneralDeployMode);
       if (payload.hudStats) setHudStats(payload.hudStats);
 
+      // Đại Pháo đã bị xoá: đổi công trình cũ thành đất trống
+      if (Array.isArray(gameData.tiles)) {
+        gameData.tiles.forEach((row: Tile[]) => {
+          if (Array.isArray(row)) {
+            row.forEach((tile: Tile) => {
+              if (tile && (tile.building as string) === 'ARTILLERY') {
+                tile.building = 'NONE';
+                tile.buildingLevel = 0;
+              }
+            });
+          }
+        });
+      }
+
       if (Array.isArray(gameData.nations)) {
         gameData.nations.forEach((n: Nation) => {
           if (n) {
@@ -218,12 +232,27 @@ export function useSaveGame({
             if (n.techLevels?.defense === 3 && !n.techChoices.defense) n.techChoices.defense = 'A';
 
             if (n.general) {
-              // Di chuyển và khôi phục dữ liệu Đại Tướng v1.1 an toàn
+              // Di chuyển và khôi phục dữ liệu Đại Tướng an toàn
               n.general = migrateGeneralData(n.general, n.id, n.capitalX, n.capitalY);
+              n.general.role = 'ACTIVE';
               calculateGeneralStats(n.general, n, n.isPlayer ? playerProfileRef.current : null);
             }
-            if (!n.reserveGenerals) {
+            if (!Array.isArray(n.reserveGenerals)) {
               n.reserveGenerals = [];
+            } else {
+              const seenIds = new Set<string>();
+              if (n.general?.id) seenIds.add(n.general.id);
+              const validReserves: General[] = [];
+              for (const rg of n.reserveGenerals) {
+                if (!rg) continue;
+                const migrated = migrateGeneralData(rg, n.id, n.capitalX, n.capitalY);
+                if (seenIds.has(migrated.id)) continue; // Chống trùng ID
+                seenIds.add(migrated.id);
+                migrated.role = 'RESERVE';
+                calculateGeneralStats(migrated, n, n.isPlayer ? playerProfileRef.current : null);
+                validReserves.push(migrated);
+              }
+              n.reserveGenerals = validReserves;
             }
           }
         });

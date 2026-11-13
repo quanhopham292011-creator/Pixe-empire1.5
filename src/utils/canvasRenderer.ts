@@ -1,5 +1,6 @@
 import { Tile, Nation } from '../types';
 import { TILE_PIXEL_SIZE } from './constants';
+import { getNationColor } from './buildingSprites';
 
 const SUB = 6;
 
@@ -41,9 +42,17 @@ function waterColor(depth: number): [number, number, number] {
   return [lerp(96, 40, t), lerp(166, 104, t), lerp(210, 168, t)];
 }
 
+/** Bản đồ càng lớn thì vẽ bộ đệm càng nhỏ để tiết kiệm bộ nhớ, giảm lag trên điện thoại */
+export function getBufferScale(size: number): number {
+  if (size >= 192) return 0.5;
+  if (size >= 128) return 0.75;
+  return 1;
+}
+
 export function drawTerrainBuffer(offCanvas: HTMLCanvasElement, tiles: Tile[][], size: number) {
-  const targetW = size * TILE_PIXEL_SIZE;
-  const targetH = size * TILE_PIXEL_SIZE;
+  const bufScale = getBufferScale(size);
+  const targetW = Math.round(size * TILE_PIXEL_SIZE * bufScale);
+  const targetH = Math.round(size * TILE_PIXEL_SIZE * bufScale);
   if (offCanvas.width !== targetW || offCanvas.height !== targetH) {
     offCanvas.width = targetW;
     offCanvas.height = targetH;
@@ -149,7 +158,7 @@ export function drawTerrainBuffer(offCanvas: HTMLCanvasElement, tiles: Tile[][],
   tctx.putImageData(img, 0, 0);
 
   ctx.imageSmoothingEnabled = false;
-  ctx.drawImage(tmp, 0, 0, size * TILE_PIXEL_SIZE, size * TILE_PIXEL_SIZE);
+  ctx.drawImage(tmp, 0, 0, targetW, targetH);
 }
 
 const darkenedCache: Record<string, string> = {};
@@ -166,6 +175,24 @@ function darken(hex: string): string {
   return res;
 }
 
+const borderCache: Record<string, string> = {};
+function borderColor(hex: string): string {
+  if (borderCache[hex]) return borderCache[hex];
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return '#000000';
+  const n = parseInt(m[1], 16);
+  const res = `rgb(${Math.floor(((n >> 16) & 255) * 0.60)},${Math.floor(((n >> 8) & 255) * 0.60)},${Math.floor((n & 255) * 0.60)})`;
+  borderCache[hex] = res;
+  return res;
+}
+// Chỉ vẽ viền khi bên kia là ĐẤT của chủ khác (không vẽ viền ở bờ biển, không vẽ ở mép bản đồ)
+function isEdge(tiles: Tile[][], size: number, x: number, y: number, owner: number): boolean {
+  if (x < 0 || y < 0 || x >= size || y >= size) return false;
+  const n = tiles[y]?.[x];
+  if (!n || n.terrain === 'WATER') return false;
+  return n.owner !== owner;
+}
+
 export function drawTerritoryBuffer(
   offCanvas: HTMLCanvasElement, 
   tiles: Tile[][], 
@@ -173,8 +200,9 @@ export function drawTerritoryBuffer(
   size: number,
   dirtyTiles?: { x: number; y: number }[]
 ) {
-  const targetW = size * TILE_PIXEL_SIZE;
-  const targetH = size * TILE_PIXEL_SIZE;
+  const bufScale = getBufferScale(size);
+  const targetW = Math.round(size * TILE_PIXEL_SIZE * bufScale);
+  const targetH = Math.round(size * TILE_PIXEL_SIZE * bufScale);
   let forceFull = false;
 
   if (offCanvas.width !== targetW || offCanvas.height !== targetH) {
@@ -185,6 +213,7 @@ export function drawTerritoryBuffer(
 
   const ctx = offCanvas.getContext('2d');
   if (!ctx) return;
+  ctx.setTransform(bufScale, 0, 0, bufScale, 0, 0);
   ctx.imageSmoothingEnabled = false;
 
   // Tối ưu cập nhật cục bộ: nếu chỉ có vài ô thay đổi, chỉ vẽ lại các ô đó cùng 4 ô lân cận
@@ -221,25 +250,25 @@ export function drawTerritoryBuffer(
       const py = y * TILE_PIXEL_SIZE;
 
       // Tô màu lãnh thổ
-      ctx.globalAlpha = 0.55;
-      ctx.fillStyle = nation.color;
+      ctx.globalAlpha = 0.78;
+      ctx.fillStyle = getNationColor(nation);
       ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
 
       // Vẽ tường biên giới
       ctx.globalAlpha = 1.0;
-      ctx.fillStyle = darken(nation.color);
-      const e = 2;
-      if (y === 0 || tiles[y - 1]?.[x]?.owner !== t.owner) ctx.fillRect(px, py, TILE_PIXEL_SIZE, e);
-      if (y === size - 1 || tiles[y + 1]?.[x]?.owner !== t.owner) ctx.fillRect(px, py + TILE_PIXEL_SIZE - e, TILE_PIXEL_SIZE, e);
-      if (x === 0 || tiles[y]?.[x - 1]?.owner !== t.owner) ctx.fillRect(px, py, e, TILE_PIXEL_SIZE);
-      if (x === size - 1 || tiles[y]?.[x + 1]?.owner !== t.owner) ctx.fillRect(px + TILE_PIXEL_SIZE - e, py, e, TILE_PIXEL_SIZE);
+      ctx.fillStyle = borderColor(getNationColor(nation));
+      const e = 2.2;
+      if (isEdge(tiles, size, x, y - 1, t.owner)) ctx.fillRect(px, py, TILE_PIXEL_SIZE, e);
+      if (isEdge(tiles, size, x, y + 1, t.owner)) ctx.fillRect(px, py + TILE_PIXEL_SIZE - e, TILE_PIXEL_SIZE, e);
+      if (isEdge(tiles, size, x - 1, y, t.owner)) ctx.fillRect(px, py, e, TILE_PIXEL_SIZE);
+      if (isEdge(tiles, size, x + 1, y, t.owner)) ctx.fillRect(px + TILE_PIXEL_SIZE - e, py, e, TILE_PIXEL_SIZE);
     });
 
     return;
   }
 
   // Toàn bộ bản đồ cần vẽ lại (Lần đầu khởi tạo hoặc thay đổi kích thước)
-  ctx.clearRect(0, 0, offCanvas.width, offCanvas.height);
+  ctx.clearRect(0, 0, size * TILE_PIXEL_SIZE, size * TILE_PIXEL_SIZE);
 
   // Nhóm ô đất sở hữu theo từng quốc gia để batch fill 1 lần per nation
   const nationTiles: Map<number, { x: number; y: number }[]> = new Map();
@@ -262,8 +291,8 @@ export function drawTerritoryBuffer(
     if (!nation) return;
 
     // 1. Tô màu lãnh thổ quốc gia trong 1 nhịp canvas batch
-    ctx.globalAlpha = 0.55;
-    ctx.fillStyle = nation.color;
+    ctx.globalAlpha = 0.78;
+    ctx.fillStyle = getNationColor(nation);
     ctx.beginPath();
     for (let i = 0; i < list.length; i++) {
       const p = list[i];
@@ -273,17 +302,17 @@ export function drawTerritoryBuffer(
 
     // 2. Tường đường viền biên giới quốc gia trong 1 nhịp canvas batch
     ctx.globalAlpha = 1.0;
-    ctx.fillStyle = darken(nation.color);
+    ctx.fillStyle = borderColor(getNationColor(nation));
     ctx.beginPath();
-    const e = 2;
+    const e = 2.2;
     for (let i = 0; i < list.length; i++) {
       const { x, y } = list[i];
       const px = x * TILE_PIXEL_SIZE;
       const py = y * TILE_PIXEL_SIZE;
-      if (y === 0 || tiles[y - 1]?.[x]?.owner !== ownerId) ctx.rect(px, py, TILE_PIXEL_SIZE, e);
-      if (y === size - 1 || tiles[y + 1]?.[x]?.owner !== ownerId) ctx.rect(px, py + TILE_PIXEL_SIZE - e, TILE_PIXEL_SIZE, e);
-      if (x === 0 || tiles[y]?.[x - 1]?.owner !== ownerId) ctx.rect(px, py, e, TILE_PIXEL_SIZE);
-      if (x === size - 1 || tiles[y]?.[x + 1]?.owner !== ownerId) ctx.rect(px + TILE_PIXEL_SIZE - e, py, e, TILE_PIXEL_SIZE);
+      if (isEdge(tiles, size, x, y - 1, ownerId)) ctx.rect(px, py, TILE_PIXEL_SIZE, e);
+      if (isEdge(tiles, size, x, y + 1, ownerId)) ctx.rect(px, py + TILE_PIXEL_SIZE - e, TILE_PIXEL_SIZE, e);
+      if (isEdge(tiles, size, x - 1, y, ownerId)) ctx.rect(px, py, e, TILE_PIXEL_SIZE);
+      if (isEdge(tiles, size, x + 1, y, ownerId)) ctx.rect(px + TILE_PIXEL_SIZE - e, py, e, TILE_PIXEL_SIZE);
     }
     ctx.fill();
   });

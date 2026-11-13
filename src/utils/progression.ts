@@ -9,20 +9,13 @@ export const MAX_PLAYER_LEVEL = 10;
 
 /**
  * Tính lượng EXP cần để lên cấp tiếp theo:
- * Lv 1 -> Lv 2: 20 exp
- * Lv 2 -> Lv 3: 40 exp
- * Lv 3 -> Lv 4: 80 exp
- * Lv 4 -> Lv 5: 160 exp
- * Lv 5 -> Lv 6: 320 exp
- * Lv 6 -> Lv 7: 640 exp
- * Lv 7 -> Lv 8: 1280 exp
- * Lv 8 -> Lv 9: 2560 exp
- * Lv 9 -> Lv 10: 5120 exp
- * Lv 10: MAX (0 exp cần thêm)
+ * Lv1→2: 20, Lv2→3: 40, Lv3→4: 70, Lv4→5: 110, Lv5→6: 170, Lv6→7: 250, Lv7→8: 350, Lv8→9: 480, Lv9→10: 650.
+ * Lv10 là tối đa (0 exp cần thêm).
  */
 export function getRequiredExpForNextLevel(currentLevel: number): number {
   if (currentLevel >= MAX_PLAYER_LEVEL) return 0;
-  return 20 * Math.pow(2, currentLevel - 1);
+  const table = [0, 20, 40, 70, 110, 170, 250, 350, 480, 650];
+  return table[currentLevel] || 650;
 }
 
 const STORAGE_KEY = 'pixel_empire_profile_v1';
@@ -331,16 +324,19 @@ export function calculateVictoryReward(
   }
 
   let baseExp = 10;
-  let baseCoins = 10;
+  let baseCoins = 5;
 
   if (difficulty === 'EASY') {
     baseExp = 10;
-    baseCoins = 10;
+    baseCoins = 5;
   } else if (difficulty === 'NORMAL') {
     baseExp = 20;
-    baseCoins = 25;
+    baseCoins = 12;
   } else if (difficulty === 'HARD') {
     baseExp = 40;
+    baseCoins = 25;
+  } else if (difficulty === 'EXTREME') {
+    baseExp = 80;
     baseCoins = 50;
   }
 
@@ -371,6 +367,114 @@ export function calculateVictoryReward(
       newLevel += 1;
       leveledUp = true;
       pointsGained += 3; // Mỗi level lên nhận 3 điểm kỹ năng
+    } else {
+      break;
+    }
+  }
+
+  if (newLevel >= MAX_PLAYER_LEVEL) {
+    newExp = 0;
+  }
+
+  const newCoins = currentProfile.pixelCoins + coinsGained;
+
+  const updatedProfile: PlayerProfile = {
+    ...currentProfile,
+    level: newLevel,
+    exp: newExp,
+    pixelCoins: newCoins,
+    skillPoints: (currentProfile.skillPoints || 0) + pointsGained,
+  };
+
+  savePlayerProfile(updatedProfile);
+
+  return {
+    reward: {
+      expGained,
+      coinsGained,
+      leveledUp,
+      oldLevel,
+      newLevel,
+      oldExp,
+      newExp,
+      reqExp: getRequiredExpForNextLevel(newLevel),
+      isMultiplayer,
+      isCreative: false,
+    },
+    updatedProfile,
+  };
+}
+
+/**
+ * Tính toán và trao phần thưởng an ủi khi Thua (DEFEAT):
+ * - Thưởng bằng 25% phần thưởng thắng của độ khó hiện tại (làm tròn xuống)
+ * - Chế độ nhiều người: Giảm một nửa nữa
+ * - Chế độ Sáng Tạo: Không nhận gì
+ * - Không tính mốc Kinh Tế + Anh Hùng
+ */
+export function calculateDefeatReward(
+  difficulty: GameDifficulty,
+  mode: GameMode,
+  isMultiplayer: boolean,
+  currentProfile: PlayerProfile
+): { reward: VictoryReward; updatedProfile: PlayerProfile } {
+  if (mode === 'CREATIVE') {
+    return {
+      reward: {
+        expGained: 0,
+        coinsGained: 0,
+        leveledUp: false,
+        oldLevel: currentProfile.level,
+        newLevel: currentProfile.level,
+        oldExp: currentProfile.exp,
+        newExp: currentProfile.exp,
+        reqExp: getRequiredExpForNextLevel(currentProfile.level),
+        isMultiplayer,
+        isCreative: true,
+      },
+      updatedProfile: { ...currentProfile }
+    };
+  }
+
+  let baseExp = 10;
+  let baseCoins = 5;
+
+  if (difficulty === 'EASY') {
+    baseExp = 10;
+    baseCoins = 5;
+  } else if (difficulty === 'NORMAL') {
+    baseExp = 20;
+    baseCoins = 12;
+  } else if (difficulty === 'HARD') {
+    baseExp = 40;
+    baseCoins = 25;
+  } else if (difficulty === 'EXTREME') {
+    baseExp = 80;
+    baseCoins = 50;
+  }
+
+  let expGained = Math.floor(baseExp * 0.25);
+  let coinsGained = Math.floor(baseCoins * 0.25);
+
+  if (isMultiplayer) {
+    expGained = Math.floor(expGained / 2);
+    coinsGained = Math.floor(coinsGained / 2);
+  }
+
+  const oldLevel = currentProfile.level;
+  const oldExp = currentProfile.exp;
+  let newLevel = oldLevel;
+  let newExp = oldExp + expGained;
+  let leveledUp = false;
+  let pointsGained = 0;
+
+  while (newLevel < MAX_PLAYER_LEVEL) {
+    const req = getRequiredExpForNextLevel(newLevel);
+    if (newExp >= req) {
+      newExp -= req;
+      newLevel += 1;
+      leveledUp = true;
+      pointsGained += 3;
     } else {
       break;
     }

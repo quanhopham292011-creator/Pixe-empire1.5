@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertTriangle } from 'lucide-react';
-import { GameDifficulty, GameMode, MapDimension } from '../../types';
+import { GameDifficulty, GameMode, MapDimension, VictoryReward } from '../../types';
 import { MatchLeaderboard } from '../MatchLeaderboard';
 import { multiplayerClient } from '../../multiplayer/multiplayerClient';
 
@@ -11,6 +11,7 @@ interface DefeatModalProps {
   mapSize: MapDimension;
   playerName: string;
   gameMode: GameMode;
+  victoryReward: VictoryReward | null;
   gameDataRef: React.MutableRefObject<any>;
   totalLandCountRef: React.MutableRefObject<number>;
   myNationIdRef: React.MutableRefObject<number>;
@@ -27,6 +28,7 @@ export const DefeatModal: React.FC<DefeatModalProps> = ({
   mapSize,
   playerName,
   gameMode,
+  victoryReward,
   gameDataRef,
   totalLandCountRef,
   myNationIdRef,
@@ -43,6 +45,15 @@ export const DefeatModal: React.FC<DefeatModalProps> = ({
         <AlertTriangle className="w-14 h-14 text-red-500 mx-auto mb-2 animate-pulse" />
         <h2 className="text-2xl font-black text-white mb-1">ĐẾ CHẾ SỤP ĐỔ!</h2>
         <p className="text-xs text-slate-300 mb-2">Lãnh thổ của bạn đã hoàn toàn thất thủ.</p>
+
+        {victoryReward && !victoryReward.isCreative && (
+          <div className="mb-3 p-3 bg-slate-950/80 border border-slate-700/60 rounded-xl text-center text-xs text-slate-300 shadow">
+            <div>Thưởng an ủi: <strong className="text-amber-400">+{victoryReward.expGained} EXP, +{victoryReward.coinsGained} Xu</strong></div>
+            {victoryReward.leveledUp && (
+              <div className="text-amber-300 font-bold mt-1">🎉 Chúc mừng bạn đã lên cấp {victoryReward.newLevel}!</div>
+            )}
+          </div>
+        )}
 
         {/* BẢNG XẾP HẠNG LÃNH THỔ CÁC QUỐC GIA */}
         <MatchLeaderboard

@@ -20,10 +20,14 @@ export function formatGameTime(seconds: number): string {
 }
 
 /**
- * Hệ số sức mạnh kỹ năng: Boss = 1.25, Người chơi và Bot thường = 1.0
+ * Hệ số sức mạnh kỹ năng: Boss tùy theo độ khó (mặc định 1.25), Người chơi và Bot thường = 1.0
  */
-export function getSkillPower(nation?: { tier?: string } | null): number {
+export function getSkillPower(nation?: { tier?: string } | null, difficulty?: string): number {
   if (nation && nation.tier === 'BOSS') {
+    if (difficulty === 'EASY') return 1.10;
+    if (difficulty === 'NORMAL') return 1.20;
+    if (difficulty === 'HARD') return 1.25;
+    if (difficulty === 'EXTREME') return 1.30;
     return 1.25;
   }
   return 1.0;

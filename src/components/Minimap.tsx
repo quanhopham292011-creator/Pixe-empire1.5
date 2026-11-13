@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { Tile, Nation, DarkTitan, FlyingMissile } from '../types';
+import { getNationColor } from '../utils/buildingSprites';
 
 interface MinimapProps {
   tiles: Tile[][];
@@ -12,6 +13,21 @@ interface MinimapProps {
   flyingMissiles?: FlyingMissile[];
   fogOfWarEnabled?: boolean;
   playerNationId?: number;
+}
+
+function hexToAbgr(hex: string, defaultColor: number = 0xFFCBD5E1): number {
+  if (!hex || hex[0] !== '#') return defaultColor;
+  let h = hex.slice(1);
+  if (h.length === 3) {
+    h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  }
+  if (h.length !== 6) return defaultColor;
+  const num = parseInt(h, 16);
+  if (isNaN(num)) return defaultColor;
+  const r = (num >> 16) & 0xff;
+  const g = (num >> 8) & 0xff;
+  const b = num & 0xff;
+  return (0xff000000 | (b << 16) | (g << 8) | r) >>> 0;
 }
 
 export const Minimap: React.FC<MinimapProps> = React.memo(({
@@ -29,26 +45,24 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // 1. Offscreen Cache: Chỉ vẽ lại toàn bộ lưới ô vuông khi tiles hoặc nations thay đổi
+  // 1. Offscreen Cache: Chỉ vẽ lại toàn bộ lưới ô vuông khi tiles hoặc nations thay đổi (Fast ImageData)
   useEffect(() => {
     if (!tiles || tiles.length === 0) return;
 
-    if (!offscreenCanvasRef.current) {
+    if (!offscreenCanvasRef.current || offscreenCanvasRef.current.width !== mapSize) {
       offscreenCanvasRef.current = document.createElement('canvas');
-      offscreenCanvasRef.current.width = 100;
-      offscreenCanvasRef.current.height = 100;
+      offscreenCanvasRef.current.width = mapSize;
+      offscreenCanvasRef.current.height = mapSize;
     }
 
     const offCanvas = offscreenCanvasRef.current;
     const offCtx = offCanvas.getContext('2d');
     if (!offCtx) return;
 
-    const size = offCanvas.width;
-    const tileSize = size / mapSize;
+    const imgData = offCtx.createImageData(mapSize, mapSize);
+    const data32 = new Uint32Array(imgData.data.buffer);
 
-    offCtx.clearRect(0, 0, size, size);
-
-    // Tính toán vùng tầm nhìn người chơi cho Minimap (Tối ưu dùng Uint8Array phẳng)
+    // Tính toán vùng tầm nhìn người chơi cho Minimap
     const visibleMap: Uint8Array | null = fogOfWarEnabled
       ? new Uint8Array(mapSize * mapSize)
       : null;
@@ -77,38 +91,44 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
       }
     }
 
-    // Pre-build color lookup table per nation ID for fast tile rendering
-    const nationColorMap: string[] = [];
+    const nationColorMap: number[] = [];
     nations.forEach(n => {
-      if (n) nationColorMap[n.id] = n.color;
+      if (n) nationColorMap[n.id] = hexToAbgr(getNationColor(n));
     });
 
-    // Vẽ địa hình & lãnh thổ vào offscreen cache
+    const FOG_COLOR = 0xFF20110B;
+    const WATER_COLOR = 0xFF8A3A1E;
+    const MOUNTAIN_COLOR = 0xFF695547;
+    const FOREST_COLOR = 0xFF2D5314;
+    const LAND_COLOR = 0xFF8B7464;
+
     for (let y = 0; y < mapSize; y++) {
       const rowOffset = y * mapSize;
+      const row = tiles[y];
+      if (!row) continue;
       for (let x = 0; x < mapSize; x++) {
-        const t = tiles[y]?.[x];
+        const t = row[x];
         if (!t) continue;
-
-        const isVisible = !visibleMap || visibleMap[rowOffset + x] === 1;
+        const idx = rowOffset + x;
+        const isVisible = !visibleMap || visibleMap[idx] === 1;
 
         if (!isVisible) {
-          offCtx.fillStyle = '#0b1120'; // Mù sương chiến tranh trên Minimap
+          data32[idx] = FOG_COLOR;
         } else if (t.terrain === 'WATER') {
-          offCtx.fillStyle = '#1e3a8a';
+          data32[idx] = WATER_COLOR;
         } else if (t.owner > 0) {
-          offCtx.fillStyle = nationColorMap[t.owner] || '#cbd5e1';
+          data32[idx] = nationColorMap[t.owner] || 0xFFE1D5CB;
         } else if (t.terrain === 'MOUNTAIN') {
-          offCtx.fillStyle = '#475569';
+          data32[idx] = MOUNTAIN_COLOR;
         } else if (t.terrain === 'FOREST') {
-          offCtx.fillStyle = '#14532d';
+          data32[idx] = FOREST_COLOR;
         } else {
-          offCtx.fillStyle = '#64748b';
+          data32[idx] = LAND_COLOR;
         }
-
-        offCtx.fillRect(x * tileSize, y * tileSize, Math.ceil(tileSize), Math.ceil(tileSize));
       }
     }
+
+    offCtx.putImageData(imgData, 0, 0);
   }, [tiles, nations, mapSize, fogOfWarEnabled, playerNationId]);
 
   // 2. Main Render: Vẽ cache lên canvas chính và render Viewport Box, Boss & Đồng minh nhanh gọn (60fps)
@@ -125,7 +145,7 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
 
     // Vẽ nền địa hình từ offscreen cache
     if (offscreenCanvasRef.current) {
-      ctx.drawImage(offscreenCanvasRef.current, 0, 0);
+      ctx.drawImage(offscreenCanvasRef.current, 0, 0, size, size);
     }
 
     // Điểm sáng Thủ đô của Người chơi, Đồng minh & Boss

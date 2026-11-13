@@ -3,7 +3,7 @@
  */
 
 export type TerrainType = 'LAND' | 'WATER' | 'MOUNTAIN' | 'FOREST';
-export type BuildingType = 'NONE' | 'CITY' | 'BARRACKS' | 'FORTRESS' | 'PORT' | 'ARTILLERY' | 'MISSILE_SILO' | 'AIR_DEFENSE' | 'LASER';
+export type BuildingType = 'NONE' | 'CITY' | 'BARRACKS' | 'FORTRESS' | 'PORT' | 'MISSILE_SILO' | 'AIR_DEFENSE' | 'LASER';
 
 export type NationPersonality = 'AGGRESSIVE' | 'DEFENSIVE' | 'MERCHANT' | 'OPPORTUNIST';
 export type DiplomacyStatus = 'WAR' | 'TRUCE' | 'ALLIANCE';
@@ -39,6 +39,7 @@ export interface Tile {
   hasHarborAccess: boolean;
   scorchedTimer?: number; // Đất cháy / nhiễm phóng xạ sau đại chiến (giây)
   missileCooldown?: number; // Đếm ngược hồi chiêu phóng tên lửa (giây)
+  inactiveTimer?: number; // giây còn lại trước khi công trình vừa chiếm hoạt động
 }
 
 export type SettlementTier = 'TIER_1_FOREST' | 'TIER_2_TRIBE' | 'TIER_3_ETHNIC' | 'PLAYER' | 'BOSS';
@@ -47,6 +48,16 @@ export type GeneralStatus = 'IDLE' | 'MARCHING' | 'INJURED' | 'RECOVERING' | 'FA
 export type GeneralSkillId = 'INSPIRE_AURA' | 'MISSILE_BARRAGE' | 'IRON_BORDER_SHIELD' | 'SUPPLY_REINFORCE' | 'SHADOW_RAID';
 export type GeneralHealthState = 'HEALTHY' | 'INJURED' | 'RECOVERING';
 export type GeneralRole = 'ACTIVE' | 'RESERVE' | 'CAPTIVE';
+export type GeneralBehavior = 'ATTACK' | 'DEFEND' | 'PROTECT' | 'RETREAT' | 'RECOVER';
+export type GeneralStyle = 'WARRIOR' | 'GUARDIAN' | 'COMMANDER' | 'STRATEGIST';
+export type GeneralLoyaltyState = 'TRUNG_THANH' | 'BAT_MAN' | 'NGUY_CO_PHAN_BOI';
+
+export interface GeneralEvolutionStats {
+  damageDealt: number; // Sát thương gây ra (thiên về WARRIOR)
+  damageAbsorbed: number; // Sát thương gánh đỡ cho quân (thiên về GUARDIAN)
+  wavesLed: number; // Đợt quân chỉ huy thành công & kích hoạt skill (thiên về COMMANDER)
+  tacticalCaptures: number; // Chiếm giữ mục tiêu chiến lược / diệt Tà Thần (thiên về STRATEGIST)
+}
 
 export interface General {
   id: string;
@@ -55,6 +66,9 @@ export interface General {
   status: GeneralStatus;
   role: GeneralRole; // 'ACTIVE' | 'RESERVE' | 'CAPTIVE'
   healthState: GeneralHealthState; // 'HEALTHY' | 'INJURED' | 'RECOVERING'
+  behavior?: GeneralBehavior; // Pixel Empire 1.3: Adaptive General AI (ATTACK, DEFEND, PROTECT, RETREAT, RECOVER)
+  style?: GeneralStyle; // Pixel Empire 1.5: Tiến hóa phong cách vĩnh viễn
+  evolutionStats?: GeneralEvolutionStats; // Bộ đếm đóng góp thực tế
 
   // Hệ thống Chỉ số Chiến đấu & Sinh tồn v1.1
   hp: number; // HP hiện tại (mặc định 1000)
@@ -69,7 +83,7 @@ export interface General {
   y: number;
   targetX?: number;
   targetY?: number;
-  combatPowerBonus: number; // 0.30 -> chiếm 30% sức mạnh quân đội / +30% hiệu suất
+  combatPowerBonus: number; // General System 1.2: Mặc định 0.10 (+10% sức mạnh khi chỉ huy đợt quân wave.hasGeneral)
   reviveTimer: number;
   isDeployedToFront: boolean;
   skillId: GeneralSkillId;
@@ -104,6 +118,7 @@ export interface Nation {
   isEliminated: boolean;
   capitalX: number;
   capitalY: number;
+  capitalCaptured?: boolean; // Thủ đô đã thất thủ (chỉ xử lý bắt tướng 1 lần)
   hasPort: boolean;
   general?: General; // Mỗi quốc gia có tối đa 1 Đại Tướng ACTIVE
   reserveGenerals?: General[]; // Danh sách Đại Tướng dự bị (chuẩn bị v1.2)
@@ -141,7 +156,7 @@ export interface AttackWave {
   troops: number;
   progress: number;
   speed: number;
-  hasGeneral?: boolean; // Tướng dẫn dắt đợt tiến công (+30% sức mạnh)
+  hasGeneral?: boolean; // Tướng dẫn dắt đợt tiến công (bonus tối đa +10% sức mạnh)
   targetsQueue?: { x: number; y: number }[]; // Danh sách ô sẽ tràn qua
   focusX?: number;
   focusY?: number;
@@ -214,8 +229,8 @@ export interface GameEvent {
 }
 
 export type GameMode = 'STANDARD' | 'CREATIVE';
-export type GameDifficulty = 'EASY' | 'NORMAL' | 'HARD';
-export type MapDimension = 64 | 96 | 128;
+export type GameDifficulty = 'EASY' | 'NORMAL' | 'HARD' | 'EXTREME';
+export type MapDimension = 64 | 96 | 128 | 192;
 
 export type QuestStep = 1 | 2 | 3 | 4 | 5 | 6;
 

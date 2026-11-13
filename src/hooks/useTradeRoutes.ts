@@ -56,7 +56,7 @@ export function useTradeRoutes(gameDataRef: React.MutableRefObject<any>) {
       const countOnRoute = data.tradeShips.filter((s: SeaTradeShip) => s.routeId === route.id).length;
       const targetShips = route.isIntercontinental ? 2 : 1;
       if (countOnRoute < targetShips) {
-        const cargoGold = route.isIntercontinental ? 120 : 40;
+        const cargoGold = route.isIntercontinental ? 45 : 15;
         const travelDurationSeconds = Math.max(8, Math.min(22, route.distanceTiles * 0.7));
 
         data.tradeShips.push({
@@ -98,7 +98,7 @@ export function useTradeRoutes(gameDataRef: React.MutableRefObject<any>) {
       const player = data.nations[1];
       if (!player) return false;
 
-      const lootGold = Math.round(ship.cargoGold * 1.5);
+      const lootGold = Math.round(ship.cargoGold * 1.0);
       player.gold += lootGold;
 
       soundManager.playCapture();

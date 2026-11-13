@@ -9,6 +9,7 @@ import {
 import { soundManager } from '../utils/audio';
 import { generateWeatherParticles } from '../utils/weatherUtils';
 import { drawTerrainBuffer, drawTerritoryBuffer } from '../utils/canvasRenderer';
+import { drawBuildingSprite, getNationColor } from '../utils/buildingSprites';
 
 interface UseGameRendererParams {
   mapSize: MapDimension;
@@ -277,11 +278,12 @@ export function useGameRenderer({
       const zoom = currentCamera.zoom;
 
       // 1. Draw Offscreen Layer Địa hình & Lãnh thổ
+      const fullPx = size * TILE_PIXEL_SIZE;
       if (offscreenTerrainCanvasRef.current) {
-        ctx.drawImage(offscreenTerrainCanvasRef.current, 0, 0);
+        ctx.drawImage(offscreenTerrainCanvasRef.current, 0, 0, fullPx, fullPx);
       }
       if (offscreenTerritoryCanvasRef.current) {
-        ctx.drawImage(offscreenTerritoryCanvasRef.current, 0, 0);
+        ctx.drawImage(offscreenTerritoryCanvasRef.current, 0, 0, fullPx, fullPx);
       }
 
       // Vẽ Tap Ripples
@@ -345,7 +347,6 @@ export function useGameRenderer({
           const getTileVisionRad = (t: Tile): number => {
             if (t.building === 'AIR_DEFENSE') return 7.5;
             if (t.building === 'MISSILE_SILO' || t.building === 'LASER') return 6.5;
-            if (t.building === 'ARTILLERY') return 6.0;
             if (t.building === 'FORTRESS') return 5.5;
             if (t.building === 'CITY' || t.building === 'PORT') return 5.0;
             if (t.building === 'BARRACKS') return 4.5;
@@ -441,91 +442,25 @@ export function useGameRenderer({
           const py = y * TILE_PIXEL_SIZE;
 
           // 4.2. Vẽ Công Trình (Icon tròn nhỏ, nền màu phe, viền sáng, icon trắng ở giữa)
-          if (t.building !== 'NONE') {
+          if (t.building !== 'NONE' && (zoom >= 0.6 || t.owner === 1)) {
             const cx = px + TILE_PIXEL_SIZE / 2;
             const cy = py + TILE_PIXEL_SIZE / 2;
-            const radius = 9;
-            const nationColor = (t.owner > 0 && nations[t.owner]) ? nations[t.owner].color : '#1e293b';
-
+            const nationColor = (t.owner > 0 && nations[t.owner]) ? getNationColor(nations[t.owner]) : '#1e293b';
             ctx.save();
-            ctx.beginPath();
-            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-            ctx.fillStyle = nationColor;
-            ctx.fill();
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-
-            // Vẽ icon trắng nhỏ ở giữa
-            ctx.strokeStyle = '#ffffff';
-            ctx.fillStyle = '#ffffff';
-            ctx.lineWidth = 1.5;
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            const bType = t.building;
-            if (bType === 'CITY') {
-              ctx.fillRect(cx - 3, cy - 4, 6, 8);
-            } else if (bType === 'BARRACKS') {
-              ctx.fillRect(cx - 4, cy - 2, 8, 5);
-              ctx.fillRect(cx + 1, cy - 5, 2, 3);
-            } else if (bType === 'PORT') {
-              ctx.beginPath();
-              ctx.arc(cx, cy - 3, 2, 0, Math.PI * 2);
-              ctx.stroke();
-              ctx.beginPath();
-              ctx.moveTo(cx, cy - 1);
-              ctx.lineTo(cx, cy + 5);
-              ctx.moveTo(cx - 3, cy + 3);
-              ctx.lineTo(cx + 3, cy + 3);
-              ctx.stroke();
-            } else if (bType === 'MISSILE_SILO') {
-              ctx.beginPath();
-              ctx.moveTo(cx, cy - 5);
-              ctx.lineTo(cx - 3, cy + 4);
-              ctx.lineTo(cx + 3, cy + 4);
-              ctx.closePath();
-              ctx.fill();
-            } else if (bType === 'AIR_DEFENSE') {
-              ctx.beginPath();
-              ctx.moveTo(cx - 4, cy + 4);
-              ctx.lineTo(cx, cy - 4);
-              ctx.lineTo(cx + 4, cy + 4);
-              ctx.closePath();
-              ctx.stroke();
-            } else if (bType === 'FORTRESS') {
-              ctx.beginPath();
-              ctx.moveTo(cx, cy - 5);
-              ctx.lineTo(cx - 4, cy - 2);
-              ctx.lineTo(cx - 4, cy + 3);
-              ctx.quadraticCurveTo(cx, cy + 6, cx, cy + 6);
-              ctx.quadraticCurveTo(cx, cy + 6, cx + 4, cy + 3);
-              ctx.lineTo(cx + 4, cy - 2);
-              ctx.closePath();
-              ctx.fill();
-            } else if (bType === 'ARTILLERY') {
-              ctx.beginPath();
-              ctx.arc(cx - 2, cy + 2, 2.5, 0, Math.PI * 2);
-              ctx.fill();
-              ctx.beginPath();
-              ctx.moveTo(cx - 2, cy + 2);
-              ctx.lineTo(cx + 5, cy - 4);
-              ctx.lineWidth = 2;
-              ctx.stroke();
-            } else if (bType === 'LASER') {
-              ctx.fillStyle = '#ec4899';
-              ctx.strokeStyle = '#f472b6';
-              ctx.beginPath();
-              ctx.arc(cx, cy, 3.5, 0, Math.PI * 2);
-              ctx.fill();
-              ctx.stroke();
-              ctx.beginPath();
-              ctx.moveTo(cx - 4, cy - 4); ctx.lineTo(cx + 4, cy + 4);
-              ctx.moveTo(cx - 4, cy + 4); ctx.lineTo(cx + 4, cy - 4);
-              ctx.lineWidth = 1.3;
-              ctx.stroke();
-            }
+            const isInactive = !!(t.inactiveTimer && t.inactiveTimer > 0);
+            if (isInactive) ctx.globalAlpha = 0.35;
+            drawBuildingSprite(ctx, t.building, cx, cy, nationColor);
             ctx.restore();
+
+            if (t.inactiveTimer && t.inactiveTimer > 0) {
+              ctx.save();
+              ctx.fillStyle = '#fbbf24';
+              ctx.font = 'bold 9px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(`${Math.ceil(t.inactiveTimer)}`, cx, cy);
+              ctx.restore();
+            }
 
             // Hiển thị nhãn cấp độ xây chồng (L2, L3...) nhỏ gọn góc ô
             const lvl = t.buildingLevel || 1;
@@ -660,19 +595,40 @@ export function useGameRenderer({
             return;
           }
 
-          const nameStr = nation.name;
+          const widthOnScreen = Math.sqrt(Math.max(1, nation.territoryCount || 1)) * TILE_PIXEL_SIZE * zoom;
+          if (widthOnScreen < 55 && nation.id !== 1) return; // nước nhỏ thì không hiện chữ
+          const nameStr = String(nation.name).replace(/\s*\[.*?\]/g, '').replace(/\s*\(.*?\)/g, '').trim();
           const popStr = `${formatPopulation(nation.population || 0)}`;
-
+          const fs = Math.max(7, Math.min(40, 11 / zoom)); // chữ luôn cỡ ~11px trên màn hình
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-
+          ctx.lineJoin = 'round';
+          ctx.lineWidth = fs * 0.28;
+          ctx.strokeStyle = 'rgba(15,23,42,0.85)';
+          ctx.font = `bold ${fs}px sans-serif`;
+          ctx.strokeText(nameStr, pos.px, pos.py - fs * 0.5);
           ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 10px sans-serif';
-          ctx.fillText(nameStr, pos.px, pos.py - 5);
+          ctx.fillText(nameStr, pos.px, pos.py - fs * 0.5);
+          if (widthOnScreen >= 100) {
+            ctx.font = `${fs * 0.85}px sans-serif`;
+            ctx.strokeText(popStr, pos.px, pos.py + fs * 0.6);
+            ctx.fillStyle = '#e2e8f0';
+            ctx.fillText(popStr, pos.px, pos.py + fs * 0.6);
+          }
 
-          ctx.fillStyle = '#e2e8f0';
-          ctx.font = '9px sans-serif';
-          ctx.fillText(popStr, pos.px, pos.py + 6);
+          // Huy hiệu bắt tay xanh: quốc gia đã liên minh với người chơi
+          if (nation.id !== 1 && nations[1]?.diplomacy?.[nation.id]?.status === 'ALLIANCE') {
+            ctx.fillStyle = '#2563eb';
+            ctx.beginPath();
+            ctx.arc(pos.px, pos.py + 18, 6.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#93c5fd';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '9px sans-serif';
+            ctx.fillText('🤝', pos.px, pos.py + 18.5);
+          }
         });
       }
 
@@ -787,14 +743,58 @@ export function useGameRenderer({
           ctx.quadraticCurveTo(midX, midY, curX, arcY);
           ctx.stroke();
 
-          // 3. Quầng sáng & Đầu đạn tên lửa
-          ctx.fillStyle = '#ffffff';
-          ctx.beginPath();
-          ctx.arc(curX, arcY, 5.5, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.strokeStyle = cfg.color;
-          ctx.lineWidth = 2;
-          ctx.stroke();
+          // 3. Hiệu ứng riêng cho từng loại tên lửa (đơn giản)
+          const tt = timestamp * 0.01;
+          if (m.type === 'ATOM') {
+            // ATOM: đầu đạn nhỏ màu vàng + quầng nhấp nháy
+            ctx.fillStyle = 'rgba(234, 179, 8, 0.35)';
+            ctx.beginPath();
+            ctx.arc(curX, arcY, 8 + Math.sin(tt) * 1.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(curX, arcY, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = cfg.color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          } else if (m.type === 'HYDRO') {
+            // HYDRO: đầu đạn to, quầng lửa cam đập mạnh
+            const pulseH = 1 + Math.sin(tt * 1.5) * 0.25;
+            ctx.fillStyle = 'rgba(249, 115, 22, 0.3)';
+            ctx.beginPath();
+            ctx.arc(curX, arcY, 15 * pulseH, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'rgba(239, 68, 68, 0.55)';
+            ctx.beginPath();
+            ctx.arc(curX, arcY, 10 * pulseH, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(curX, arcY, 6.5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = cfg.color;
+            ctx.lineWidth = 3;
+            ctx.stroke();
+          } else {
+            // MIRV: đầu đạn chính + 3 đầu đạn con xoay quanh
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(curX, arcY, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = cfg.color;
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            for (let k = 0; k < 3; k++) {
+              const ang = tt * 0.6 + (k * Math.PI * 2) / 3;
+              const sx = curX + Math.cos(ang) * 11;
+              const sy = arcY + Math.sin(ang) * 11;
+              ctx.fillStyle = cfg.color;
+              ctx.beginPath();
+              ctx.arc(sx, sy, 2.8, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
 
           // 4. Nhãn đếm ngược thời gian bay (vd: 12s, 11s... 1s)
           const flightDuration = MISSILE_SETTINGS.DEFAULT_FLIGHT_DURATION_SECONDS || 12;
@@ -982,6 +982,47 @@ export function useGameRenderer({
         }
       });
 
+      // Hiệu ứng chiêu thức Tà Thần (vẽ đơn giản, tự biến mất sau vài trăm ms)
+      const titanFxList = gameDataRef.current.titanFx as any[] | undefined;
+      if (titanFxList && titanFxList.length > 0) {
+        const nowMs = Date.now();
+        for (let i = titanFxList.length - 1; i >= 0; i--) {
+          const fx = titanFxList[i];
+          const t = (nowMs - fx.start) / fx.duration;
+          if (t >= 1) { titanFxList.splice(i, 1); continue; }
+          const fcx = fx.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const fcy = fx.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const fr = fx.radius * TILE_PIXEL_SIZE;
+          ctx.save();
+          ctx.globalAlpha = 1 - t;
+          ctx.strokeStyle = fx.color;
+          ctx.fillStyle = fx.color;
+          ctx.lineWidth = 3;
+          if (fx.kind === 'METEOR') {
+            ctx.globalAlpha = (1 - t) * 0.45;
+            ctx.beginPath(); ctx.arc(fcx, fcy, fr * (0.4 + 0.6 * t), 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1 - t;
+            ctx.beginPath(); ctx.arc(fcx, fcy, fr * (0.4 + 0.6 * t), 0, Math.PI * 2); ctx.stroke();
+          } else if (fx.kind === 'CLAW') {
+            ctx.lineWidth = 3.5;
+            for (let k = -1; k <= 1; k++) {
+              ctx.beginPath();
+              ctx.moveTo(fcx - fr * 0.7 + k * 8, fcy - fr * 0.7);
+              ctx.lineTo(fcx + fr * 0.7 + k * 8, fcy + fr * 0.7);
+              ctx.stroke();
+            }
+          } else if (fx.kind === 'CHAIN') {
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath(); ctx.arc(fcx, fcy, fr * (1 - 0.6 * t), 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([]);
+          } else if (fx.kind === 'TELEPORT') {
+            ctx.beginPath(); ctx.arc(fcx, fcy, fr * (0.3 + 0.7 * t), 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(fcx, fcy, fr * (0.15 + 0.4 * t), 0, Math.PI * 2); ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+
       // 6.8. Render Tuyến Đường Giao Thương Biển (Sea Trade Routes) & Tàu Buôn Hải Cảng (Sea Trade Ships)
       if (gameDataRef.current.tradeRoutes && gameDataRef.current.tradeRoutes.length > 0) {
         ctx.save();
@@ -1059,6 +1100,71 @@ export function useGameRenderer({
 
           ctx.fillStyle = ship.isIntercontinental ? '#7dd3fc' : '#fef08a';
           ctx.fillText(cargoLabel, curX, curY - 12);
+          ctx.restore();
+        });
+      }
+
+      // 6.9. Hiệu ứng nổ tên lửa (Atom / Hydro / MIRV)
+      if (gameDataRef.current.blasts && gameDataRef.current.blasts.length > 0) {
+        const nowMs = performance.now();
+        gameDataRef.current.blasts = gameDataRef.current.blasts.filter((b: any) => nowMs - b.start < b.duration);
+        gameDataRef.current.blasts.forEach((b: any) => {
+          const t = Math.min(1, Math.max(0, (nowMs - b.start) / b.duration)); // 0 -> 1
+          const R = b.radiusPx;
+          ctx.save();
+          if (b.kind === 'ATOM') {
+            // ATOM: chớp sáng + 1 vòng sóng cam
+            ctx.globalAlpha = (1 - t) * 0.9;
+            ctx.fillStyle = '#fde68a';
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.4 + t * 0.6), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1 - t;
+            ctx.strokeStyle = '#f97316';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.3 + t * 1.1), 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (b.kind === 'HYDRO') {
+            // HYDRO: quả cầu lửa to + 2 vòng sóng xung kích
+            ctx.globalAlpha = (1 - t) * 0.85;
+            ctx.fillStyle = '#ef4444';
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.5 + t * 0.5), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fb923c';
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.3 + t * 0.4), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#ffffff';
+            ctx.globalAlpha = Math.max(0, 1 - t * 2.5);
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1 - t;
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.4 + t * 1.3), 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.2 + t * 0.9), 0, Math.PI * 2);
+            ctx.stroke();
+          } else {
+            // MIRV: chớp hồng nhỏ + vòng sóng hồng (mỗi đầu đạn con)
+            ctx.globalAlpha = (1 - t) * 0.85;
+            ctx.fillStyle = '#f9a8d4';
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.4 + t * 0.5), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1 - t;
+            ctx.strokeStyle = '#ec4899';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.3 + t * 1.0), 0, Math.PI * 2);
+            ctx.stroke();
+          }
           ctx.restore();
         });
       }

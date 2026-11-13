@@ -33,16 +33,16 @@ export const RESET_SKILL_TREE_COIN_COST = 15;
 
 // CHI PHÍ NÂNG CẤP THEO TỪNG CẤP ĐỘ (1 ĐIỂM KỸ NĂNG + XU PIXEL)
 export const NODE_COSTS: Record<number, { gold: number; coins: number }> = {
-  1: { gold: 0, coins: 2 },
-  2: { gold: 0, coins: 4 },
-  3: { gold: 0, coins: 6 },
-  4: { gold: 0, coins: 10 },
-  5: { gold: 0, coins: 16 }, // Mốc đặc biệt 1
-  6: { gold: 0, coins: 22 },
-  7: { gold: 0, coins: 30 },
-  8: { gold: 0, coins: 40 },
-  9: { gold: 0, coins: 55 },
-  10: { gold: 0, coins: 75 }, // Mốc đặc biệt 2
+  1: { gold: 0, coins: 3 },
+  2: { gold: 0, coins: 6 },
+  3: { gold: 0, coins: 9 },
+  4: { gold: 0, coins: 15 },
+  5: { gold: 0, coins: 24 }, // Mốc đặc biệt 1
+  6: { gold: 0, coins: 33 },
+  7: { gold: 0, coins: 45 },
+  8: { gold: 0, coins: 60 },
+  9: { gold: 0, coins: 80 },
+  10: { gold: 0, coins: 110 }, // Mốc đặc biệt 2
 };
 
 // 1. NHÁNH KINH TẾ (MÀU VÀNG)
@@ -50,24 +50,24 @@ export const ECONOMY_BRANCH: SkillNodeInfo[] = [
   {
     level: 1,
     name: 'Thuế Nông Nghiệp',
-    shortDesc: '+2% sản lượng vàng/giây',
-    fullDesc: 'Tối ưu hóa nguồn thu thuế từ đồng ruộng và trang trại. Tăng 2% tổng sản lượng vàng mỗi giây.',
+    shortDesc: '+1% sản lượng vàng/giây',
+    fullDesc: 'Tối ưu hóa nguồn thu thuế từ đồng ruộng và trang trại. Tăng 1% tổng sản lượng vàng mỗi giây.',
     goldCost: NODE_COSTS[1].gold,
     coinCost: NODE_COSTS[1].coins,
   },
   {
     level: 2,
     name: 'Giao Thương Địa Phương',
-    shortDesc: '+2% sản lượng vàng & +3% trần dân số',
-    fullDesc: 'Kết nối các chợ phiên vùng quê, tăng thêm 2% sản lượng vàng và nới rộng 3% trần dân số.',
+    shortDesc: '+1% sản lượng vàng & +3% trần dân số',
+    fullDesc: 'Kết nối các chợ phiên vùng quê, tăng thêm 1% sản lượng vàng và nới rộng 3% trần dân số.',
     goldCost: NODE_COSTS[2].gold,
     coinCost: NODE_COSTS[2].coins,
   },
   {
     level: 3,
     name: 'Thương Cảng Nhộn Nhịp',
-    shortDesc: '+2% sản lượng vàng & +4.5% trần dân số',
-    fullDesc: 'Mở rộng giao thương đường thủy, tăng thêm 2% sản lượng vàng và nới rộng 4.5% trần dân số.',
+    shortDesc: '+1% sản lượng vàng & +4.5% trần dân số',
+    fullDesc: 'Mở rộng giao thương đường thủy, tăng thêm 1% sản lượng vàng và nới rộng 4.5% trần dân số.',
     goldCost: NODE_COSTS[3].gold,
     coinCost: NODE_COSTS[3].coins,
   },
@@ -82,8 +82,8 @@ export const ECONOMY_BRANCH: SkillNodeInfo[] = [
   {
     level: 5,
     name: '⭐ Con Đường Tơ Lụa',
-    shortDesc: 'MỐC ĐẶC BIỆT: +10% Vàng, Tàu buôn x2 vàng, Giảm 20% giá Thành Thị',
-    fullDesc: 'Mở ra tuyến thương mại huyết mạch: Tăng thêm 10% thu nhập vàng, Tàu buôn biển mang về gấp đôi vàng (+100%), và giảm 20% chi phí xây dựng Thành Thị.',
+    shortDesc: 'MỐC ĐẶC BIỆT: +5% Vàng, Tàu buôn x1.3 vàng, Giảm 20% giá Thành Thị',
+    fullDesc: 'Mở ra tuyến thương mại huyết mạch: Tăng thêm 5% thu nhập vàng, Tàu buôn biển mang về thêm vàng (×1.3), và giảm 20% chi phí xây dựng Thành Thị.',
     goldCost: NODE_COSTS[5].gold,
     coinCost: NODE_COSTS[5].coins,
     isSpecialMilestone: true,
@@ -91,40 +91,40 @@ export const ECONOMY_BRANCH: SkillNodeInfo[] = [
   {
     level: 6,
     name: 'Khai Khoáng Kim Loại',
-    shortDesc: '+2% vàng & giảm 15% thời gian/phí công nghệ',
-    fullDesc: 'Phát triển luyện kim sâu, tăng thêm 2% vàng mỗi giây và giảm 15% thời gian nghiên cứu cây công nghệ.',
+    shortDesc: '+1% vàng & giảm 15% thời gian/phí công nghệ',
+    fullDesc: 'Phát triển luyện kim sâu, tăng thêm 1% vàng mỗi giây và giảm 15% thời gian nghiên cứu cây công nghệ.',
     goldCost: NODE_COSTS[6].gold,
     coinCost: NODE_COSTS[6].coins,
   },
   {
     level: 7,
     name: 'Ngân Khố Hoàng Gia',
-    shortDesc: '+2% vàng & tăng 20% tốc độ sinh sôi dân số',
-    fullDesc: 'Quản lý tài chính tập trung, tăng thêm 2% vàng và gia tăng 20% tốc độ tăng trưởng dân số toàn quốc.',
+    shortDesc: '+1% vàng & tăng 20% tốc độ sinh sôi dân số',
+    fullDesc: 'Quản lý tài chính tập trung, tăng thêm 1% vàng và gia tăng 20% tốc độ tăng trưởng dân số toàn quốc.',
     goldCost: NODE_COSTS[7].gold,
     coinCost: NODE_COSTS[7].coins,
   },
   {
     level: 8,
     name: 'Độc Quyền Ngoại Thương',
-    shortDesc: '+2% vàng & tăng sản lượng tỉnh giáp biển',
-    fullDesc: 'Nắm giữ các tuyến hải lộ chiến lược, tăng thêm 2% sản lượng vàng toàn quốc.',
+    shortDesc: '+1% vàng & tăng sản lượng tỉnh giáp biển',
+    fullDesc: 'Nắm giữ các tuyến hải lộ chiến lược, tăng thêm 1% sản lượng vàng toàn quốc.',
     goldCost: NODE_COSTS[8].gold,
     coinCost: NODE_COSTS[8].coins,
   },
   {
     level: 9,
     name: 'Đô Thị Hóa Thần Tốc',
-    shortDesc: '+2% vàng & +13.5% trần dân số',
-    fullDesc: 'Xây dựng các siêu đô thị phồn hoa, tăng thêm 2% vàng và nới rộng thêm trần dân số.',
+    shortDesc: '+1% vàng & +13.5% trần dân số',
+    fullDesc: 'Xây dựng các siêu đô thị phồn hoa, tăng thêm 1% vàng và nới rộng thêm trần dân số.',
     goldCost: NODE_COSTS[9].gold,
     coinCost: NODE_COSTS[9].coins,
   },
   {
     level: 10,
     name: '👑 Kho Vàng Bất Tận',
-    shortDesc: 'MỐC TỐI THƯỢNG: +15% Vàng, Thưởng vàng khi chiếm đất, Trần dân số +8%',
-    fullDesc: 'Kinh tế đạt cảnh giới vương quyền: Tăng thêm 15% sản lượng vàng toàn quốc (tổng +45%), mỗi khi chiếm đất địch được thưởng vàng dồi dào, trần dân số tăng thêm 8% (tổng +30%).',
+    shortDesc: 'MỐC TỐI THƯỢNG: +8% Vàng, Thưởng vàng khi chiếm đất, Trần dân số +8%',
+    fullDesc: 'Kinh tế đạt cảnh giới vương quyền: Tăng thêm 8% sản lượng vàng toàn quốc (tổng +23%), mỗi khi chiếm đất địch được thưởng vàng dồi dào, trần dân số tăng thêm 8% (tổng +30%).',
     goldCost: NODE_COSTS[10].gold,
     coinCost: NODE_COSTS[10].coins,
     isSpecialMilestone: true,
@@ -311,11 +311,11 @@ export const HYBRID_NODES: HybridNodeInfo[] = [
     branch1: 'ECONOMY',
     branch2: 'MILITARY',
     title: 'Kinh Tế + Quân Đội',
-    shortDesc: 'Giảm 40% giá xây công trình, Thành Thị +6 quân/s, Doanh trại +20 vàng/s, +5% Vàng',
-    fullDesc: 'Biến toàn bộ nền kinh tế thành cỗ máy phục vụ chiến tranh: Giảm 40% chi phí xây dựng mọi công trình (Thành Phố, Doanh Trại, Silo); Mỗi Thành Phố sản sinh thêm +6 quân/giây; Mỗi Doanh Trại đóng góp thêm +20 vàng/giây; Tăng thêm +5% sản lượng vàng toàn quốc.',
+    shortDesc: 'Giảm 40% giá xây công trình, Thành Thị +6 quân/s, Doanh trại +2 vàng/s, +5% Vàng',
+    fullDesc: 'Biến toàn bộ nền kinh tế thành cỗ máy phục vụ chiến tranh: Giảm 40% chi phí xây dựng mọi công trình (Thành Phố, Doanh Trại, Silo); Mỗi Thành Phố sản sinh thêm +6 quân/giây; Mỗi Doanh Trại đóng góp thêm +2 vàng/giây; Tăng thêm +5% sản lượng vàng toàn quốc.',
     skillPointCost: 1,
     goldCost: 0,
-    coinCost: 50,
+    coinCost: 75,
     color: '#eab308', // Vàng phối Xanh
   },
   {
@@ -324,11 +324,11 @@ export const HYBRID_NODES: HybridNodeInfo[] = [
     branch1: 'ECONOMY',
     branch2: 'HERO',
     title: 'Kinh Tế + Anh Hùng',
-    shortDesc: 'Tướng xuất chiêu thưởng 15% Kho Vàng, Giảm 40% hồi chiêu, Thắng nhận +50% Xu Pixel, +5% Vàng',
-    fullDesc: 'Sức mạnh của đồng tiền kết hợp cùng mưu lược danh tướng: Mỗi khi Tướng kích hoạt kỹ năng, ngân khố ngay lập tức được thưởng lượng vàng bằng 15% số vàng hiện có; Tướng giảm thêm 40% thời gian hồi chiêu; Phần thưởng Xu Pixel sau mỗi trận thắng tăng 50%; Tăng thêm +5% sản lượng vàng toàn quốc.',
+    shortDesc: 'Tướng xuất chiêu thưởng +2% Kho Vàng (max 500), Giảm 40% hồi chiêu, Thắng nhận +50% Xu Pixel, +5% Vàng',
+    fullDesc: 'Sức mạnh của đồng tiền kết hợp cùng mưu lược danh tướng: Mỗi khi Tướng kích hoạt kỹ năng, ngân khố ngay lập tức được thưởng lượng vàng bằng +2% số vàng hiện có (tối thiểu 100, tối đa 500); Tướng giảm thêm 40% thời gian hồi chiêu; Phần thưởng Xu Pixel sau mỗi trận thắng tăng 50%; Tăng thêm +5% sản lượng vàng toàn quốc.',
     skillPointCost: 1,
     goldCost: 0,
-    coinCost: 50,
+    coinCost: 75,
     color: '#f59e0b', // Vàng phối Đỏ
   },
   {
@@ -341,7 +341,7 @@ export const HYBRID_NODES: HybridNodeInfo[] = [
     fullDesc: 'Lối chơi công phá thần tốc: Khi Tướng dẫn dắt đợt hành quân, sức mạnh đợt tấn công tăng thêm +20%; Tốc độ di chuyển sóng công kích nhanh hơn 40%; Hoàn trả ngay 50% quân số tiêu hao sau khi chiếm xong cứ điểm đối phương; Tăng thêm +1 nhịp burst càn quét liên tiếp.',
     skillPointCost: 1,
     goldCost: 0,
-    coinCost: 50,
+    coinCost: 75,
     color: '#ef4444', // Xanh phối Đỏ
   },
 ];
@@ -374,9 +374,9 @@ export function getSkillTreeBonuses(tree: PlayerSkillTree | undefined) {
   const { economyLevel, militaryLevel, heroLevel, chosenHybrid } = tree;
 
   // 1. Kinh Tế
-  let goldMult = 1 + economyLevel * 0.02;
-  if (economyLevel >= 5) goldMult += 0.10;
-  if (economyLevel >= 10) goldMult += 0.15;
+  let goldMult = 1 + economyLevel * 0.01;
+  if (economyLevel >= 5) goldMult += 0.05;
+  if (economyLevel >= 10) goldMult += 0.08;
 
   let popCapMult = 1 + economyLevel * 0.015;
   if (economyLevel >= 4) popCapMult += 0.07;
@@ -385,7 +385,7 @@ export function getSkillTreeBonuses(tree: PlayerSkillTree | undefined) {
   let popGrowthMult = 1 + (economyLevel >= 7 ? 0.20 : 0);
 
   let buildCostDiscount = economyLevel >= 5 ? 0.20 : 0;
-  let shipGoldMult = economyLevel >= 5 ? 2.0 : 1.0;
+  let shipGoldMult = economyLevel >= 5 ? 1.3 : 1.0;
 
   // 2. Quân Đội
   let troopsMaxMult = 1 + militaryLevel * 0.03;

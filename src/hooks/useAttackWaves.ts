@@ -4,6 +4,9 @@ import { soundManager } from '../utils/audio';
 import { 
   TILE_PIXEL_SIZE, DARK_TITAN_CONFIG, formatPopulation, formatGameTime, getSkillPower 
 } from '../utils/constants';
+import { recordGeneralContribution } from '../utils/generalEvolution';
+import { awardGeneralExp } from '../utils/generalCombat';
+import { applyCasualties } from '../utils/casualties';
 
 export interface UseAttackWavesParams {
   gameDataRef: React.MutableRefObject<any>;
@@ -68,6 +71,13 @@ export function useAttackWaves({
             });
 
             wave.troops = Math.max(0, wave.troops - 10);
+            applyCasualties(attackerNation, 10);
+
+            // PIXEL EMPIRE 1.4: Tướng dẫn đầu đợt quân tấn công Tà Thần nhận EXP
+            if (wave.hasGeneral && attackerNation?.general) {
+              recordGeneralContribution(attackerNation.general, 'DAMAGE_DEALT', attackerNation.general.attack);
+              awardGeneralExp(attackerNation.general, attackerNation, 25, 'Gây sát thương lên Tà Thần Cổ Đại');
+            }
 
             // Kiểm tra ĐÁNH GỤC TÀ THẦN
             if (titan.hp <= 0) {
@@ -75,6 +85,10 @@ export function useAttackWaves({
               soundManager.playGeneralHorn();
 
               if (attackerNation) {
+                if (wave.hasGeneral && attackerNation.general) {
+                  recordGeneralContribution(attackerNation.general, 'TACTICAL_CAPTURE', 3);
+                  awardGeneralExp(attackerNation.general, attackerNation, 150, 'Đánh gục Tà Thần Cổ Đại');
+                }
                 attackerNation.gold += DARK_TITAN_CONFIG.BOUNTY_GOLD;
                 attackerNation.titanBuffTimer = DARK_TITAN_CONFIG.BUFF_DURATION_SECONDS;
 
@@ -86,6 +100,8 @@ export function useAttackWaves({
                   targetNationId: attackerNation.id,
                   timestamp: formatGameTime(data.gameTimeSeconds),
                 });
+
+                if (data.events.length > 50) data.events.length = 50;
 
                 if (attackerNation.isPlayer && !unlockedAchievementsRef.current.has('KILL_TITAN')) {
                   unlockedAchievementsRef.current.add('KILL_TITAN');
@@ -110,7 +126,10 @@ export function useAttackWaves({
       }
     });
 
-    data.attackWaves = data.attackWaves.filter((_: any, idx: number) => !finishedWaves.includes(idx));
+    if (finishedWaves.length > 0) {
+      const finishedSet = new Set(finishedWaves);
+      data.attackWaves = data.attackWaves.filter((_: any, idx: number) => !finishedSet.has(idx));
+    }
   }, [gameDataRef, gameSpeed, unlockedAchievementsRef, cameraRef]);
 
   return { updateAttackWaves };

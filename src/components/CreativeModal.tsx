@@ -27,6 +27,8 @@ interface CreativeModalProps {
   godModeLocked: boolean;
   onToggleGodModeLocked: () => void;
   onTriggerCoalition?: () => void;
+  gameMode?: string;
+  onAddReserveGeneral?: () => void;
 }
 
 export const CreativeModal: React.FC<CreativeModalProps> = ({
@@ -50,6 +52,8 @@ export const CreativeModal: React.FC<CreativeModalProps> = ({
   godModeLocked,
   onToggleGodModeLocked,
   onTriggerCoalition,
+  gameMode,
+  onAddReserveGeneral,
 }) => {
   const [customGold, setCustomGold] = useState<string>('999999');
   const [customTroops, setCustomTroops] = useState<string>('50000');
@@ -324,6 +328,16 @@ export const CreativeModal: React.FC<CreativeModalProps> = ({
                 <span>Thanh Lọc Đất Cháy</span>
               </button>
             </div>
+
+            {/* Pixel Empire 1.7: Nút thêm tướng dự bị chỉ hiện khi gameMode === 'CREATIVE' */}
+            {gameMode === 'CREATIVE' && onAddReserveGeneral && (
+              <button
+                onClick={onAddReserveGeneral}
+                className="w-full py-2 bg-gradient-to-r from-amber-950/80 via-yellow-950/80 to-amber-950/80 hover:from-amber-900 hover:to-yellow-900 border border-amber-500/70 active:scale-95 text-amber-200 font-extrabold rounded-xl flex items-center justify-center gap-1.5 shadow-md"
+              >
+                <span>➕ Thêm tướng dự bị</span>
+              </button>
+            )}
 
             {onTriggerCoalition && (
               <button
