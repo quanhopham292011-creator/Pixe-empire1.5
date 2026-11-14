@@ -5,6 +5,35 @@ import { BUILDING_INFO, formatGameTime } from '../utils/constants';
 import { GENERAL_CONSTANTS, canDeployGeneral } from '../utils/generalCombat';
 import { getStyleAIWeights } from '../utils/generalEvolution';
 import { countActiveAlliances, reconcileNationAlliances } from './useTradeRoutes';
+import {
+  SUPER_BUILDING_CONFIG,
+  isSuperBuilding,
+  hasUnlockedSuperBuildings,
+  createEmptyBuildingCounts,
+  canBuildSuperBuilding,
+  initSuperBuildingOnTile,
+  getSuperBuildingState,
+  startSuperRepair,
+  getAcademyResearchSpeedMult,
+} from '../utils/superBuildings';
+import { SUPREME_TECH_CONFIG } from '../data/gameData';
+import { isExtractor } from '../utils/resources';
+import {
+  applySupremeResearchCompletion,
+  canBuildBunker,
+  canLaunchFighterPlane,
+  countActiveFighterPlanes,
+  countAdvancedExtractors,
+  countNationBunkers,
+  deployInitialBorderBunkers,
+  FIGHTER_PLANE_CONFIG,
+  getMaxAdvancedExtractors,
+  getSupremeBranchLevel,
+  MAX_BUNKERS_PER_NATION,
+  MAX_FIGHTERS_PER_NATION,
+  startSupremeResearchForNation,
+  upgradeAdvancedExtractor,
+} from '../utils/supremeTech';
 
 const DX = [1, -1, 0, 0];
 const DY = [0, 0, 1, -1];
@@ -367,12 +396,16 @@ export function useBotAI({
       humanNationIds.add(myNationIdRef.current);
     }
 
-    // TỐI ƯU: gom ô đất theo từng nước chỉ 1 lần mỗi nhịp
+    // TỐI ƯU: gom ô đất theo từng nước & danh sách Siêu Công Trình chỉ 1 lần mỗi nhịp
     const ownedByNation: Tile[][] = [];
+    const mapSuperTiles: Tile[] = [];
     for (let y = 0; y < size; y++) {
       const row = tiles[y];
       for (let x = 0; x < size; x++) {
         const t = row[x];
+        if (isSuperBuilding(t.building) && t.owner > 0) {
+          mapSuperTiles.push(t);
+        }
         if (t.owner > 1) {
           let list = ownedByNation[t.owner];
           if (!list) {
@@ -412,8 +445,10 @@ export function useBotAI({
       // --- 2. TỰ ĐỘNG PHÁT TRIỂN KINH TẾ, DÂN SỐ & CÔNG NGHỆ (Dynamic Economy & Tech) ---
       const isBoss = bot.tier === 'BOSS';
 
-      // 2a. Nâng cấp công nghệ theo tính cách quốc gia & độ khó
-      const techMod = difficulty === 'EXTREME' ? 2 : difficulty === 'HARD' ? 3 : difficulty === 'NORMAL' ? 6 : 12;
+      // 2a. Nâng cấp công nghệ theo tính cách quốc gia & độ khó (Đại Học Viện tăng tốc nghiên cứu cho Bot)
+      const baseTechMod = difficulty === 'EXTREME' ? 2 : difficulty === 'HARD' ? 3 : difficulty === 'NORMAL' ? 6 : 12;
+      const botAcademySpeed = getAcademyResearchSpeedMult(tiles, bot.id);
+      const techMod = Math.max(1, Math.round(baseTechMod / botAcademySpeed));
       const maxBotTech = difficulty === 'EXTREME' ? 5 : difficulty === 'HARD' ? 4 : difficulty === 'NORMAL' ? 3 : 2;
       const techMinGold = difficulty === 'EXTREME' ? 90 : difficulty === 'HARD' ? 100 : difficulty === 'NORMAL' ? 120 : 160;
       if (bot.gold >= techMinGold && (bot.id + gameTime) % techMod === 0) {
@@ -430,11 +465,57 @@ export function useBotAI({
           preferredTech = Math.random() < 0.5 ? 'military' : 'economy';
         }
 
+        if ((bot.techLevels[preferredTech] || 1) >= maxBotTech) {
+          const fallbackBranch = (['economy', 'military', 'defense'] as const).find(
+            br => (bot.techLevels[br] || 1) < maxBotTech
+          );
+          if (fallbackBranch) preferredTech = fallbackBranch;
+        }
+
         const currentLvl = bot.techLevels[preferredTech] || 1;
         const upgradeCost = currentLvl * 90;
         if (currentLvl < maxBotTech && bot.gold >= upgradeCost) {
           bot.gold -= upgradeCost;
           bot.techLevels[preferredTech] = currentLvl + 1;
+        }
+      }
+
+      // 2a2. Bot & Boss nghiên cứu Công Nghệ Tối Thượng (chỉ khi đã mở khóa supremeTechUnlocked, trả đủ vàng/dầu/khoáng như người chơi)
+      if (bot.supremeTechUnlocked) {
+        if (bot.supremeResearching) {
+          bot.supremeResearching.remainingTime -= botAcademySpeed;
+          if (bot.supremeResearching.remainingTime <= 0) {
+            const completedTechId = bot.supremeResearching.techId;
+            applySupremeResearchCompletion(bot, completedTechId);
+            if (completedTechId === 'sup_def_3') {
+              const placed = deployInitialBorderBunkers(tiles, bot);
+              if (placed.length > 0) {
+                offscreenTerritoryDirtyRef.current = true;
+              }
+            }
+            bot.supremeResearching = null;
+          }
+        } else if ((bot.id + gameTime) % 4 === 0) {
+          const prefBranches: ('economy' | 'military' | 'defense')[] =
+            bot.personality === 'AGGRESSIVE'
+              ? ['military', 'economy', 'defense']
+              : bot.personality === 'DEFENSIVE'
+              ? ['defense', 'economy', 'military']
+              : ['economy', 'military', 'defense'];
+          for (const brKey of prefBranches) {
+            const curSupLvl = getSupremeBranchLevel(bot, brKey);
+            if (curSupLvl >= SUPREME_TECH_CONFIG.MAX_LEVEL) continue;
+            const nextSup = SUPREME_TECH_CONFIG.TECHS.find(
+              (t) => t.branchKey === brKey && t.level === curSupLvl + 1
+            );
+            if (nextSup) {
+              const res = startSupremeResearchForNation(bot, nextSup.id, bot.supremeResearching);
+              if (res.ok && res.researching) {
+                bot.supremeResearching = res.researching;
+                break;
+              }
+            }
+          }
         }
       }
 
@@ -494,12 +575,14 @@ export function useBotAI({
                   }
                   const dip = bot.diplomacy[neighborTile.owner]?.status;
                   if (dip !== 'ALLIANCE' && dip !== 'TRUCE') {
+                    const isEnemySuper = isSuperBuilding(neighborTile.building);
                     if (neighborTile.owner === 1) {
                       threat += (difficulty === 'EXTREME' ? 65 : difficulty === 'HARD' ? 45 : difficulty === 'NORMAL' ? 25 : 12);
-                      enemySrc = neighborTile;
+                      if (isEnemySuper) threat += 160;
+                      if (!enemySrc || isEnemySuper) enemySrc = neighborTile;
                     } else if (neighborTile.owner > 1 && dip === 'WAR') {
-                      threat += 20;
-                      if (!enemySrc) enemySrc = neighborTile;
+                      threat += 20 + (isEnemySuper ? 160 : 0);
+                      if (!enemySrc || isEnemySuper) enemySrc = neighborTile;
                     }
                   }
                 }
@@ -514,6 +597,7 @@ export function useBotAI({
 
           let strategicValue = 0;
           if (isCapital) strategicValue += 130;
+          if (isSuperBuilding(t.building)) strategicValue += 150;
           if (t.building === 'FORTRESS') strategicValue += 50 * buildingLvl;
           if (t.building === 'CITY') strategicValue += 35 * buildingLvl;
           if (t.building === 'PORT' || t.building === 'BARRACKS') strategicValue += 30 * buildingLvl;
@@ -655,7 +739,118 @@ export function useBotAI({
         gen.behavior = newBehavior;
       }
 
-      // --- 6. AI XÂY DỰNG CÂN ĐỐI (Kinh tế, Quân sự, Phòng thủ) ---
+      // --- 6. AI XÂY DỰNG CÂN ĐỐI & SIÊU CÔNG TRÌNH (chỉ mở khi đủ cả 3 nhánh công nghệ cấp 3) ---
+      // 6a. Tự động sửa Siêu Công Trình bị hư hại
+      for (let oi = 0; oi < ownedList.length; oi++) {
+        const stTile = ownedList[oi];
+        if (isSuperBuilding(stTile.building) && getSuperBuildingState(stTile) === 'DAMAGED') {
+          const rep = startSuperRepair(stTile, bot);
+          if (rep.ok) {
+            offscreenTerritoryDirtyRef.current = true;
+            break;
+          }
+        }
+      }
+
+      // 6b. Xây Siêu Công Trình nếu đã mở khóa đủ 3 nhánh công nghệ cấp 3 và đủ vàng
+      if (hasUnlockedSuperBuildings(bot) && bot.gold >= 25000 && (bot.id + gameTime) % 3 === 0) {
+        const botCounts = createEmptyBuildingCounts();
+        let superTotal = 0;
+        let superSite: Tile | null = null;
+        for (let oi = 0; oi < ownedList.length; oi++) {
+          const ot = ownedList[oi];
+          if (ot.building !== 'NONE') {
+            botCounts[ot.building] = (botCounts[ot.building] || 0) + (ot.buildingLevel || 1);
+            if (isSuperBuilding(ot.building)) superTotal++;
+          } else if (!superSite && !(ot.x === bot.capitalX && ot.y === bot.capitalY)) {
+            superSite = ot;
+          }
+        }
+        if (superTotal < SUPER_BUILDING_CONFIG.MAX_TOTAL_PER_NATION && superSite) {
+          const needAcademy =
+            !bot.supremeTechUnlocked ||
+            (bot.techLevels?.economy || 0) < maxBotTech ||
+            (bot.techLevels?.military || 0) < maxBotTech ||
+            (bot.techLevels?.defense || 0) < maxBotTech;
+          const prefOrder: ('SUPREME_FORTRESS' | 'GRAND_ACADEMY' | 'GRAND_ARSENAL')[] =
+            bot.personality === 'DEFENSIVE'
+              ? ['SUPREME_FORTRESS', 'GRAND_ACADEMY', 'GRAND_ARSENAL']
+              : bot.personality === 'AGGRESSIVE'
+              ? ['GRAND_ARSENAL', 'GRAND_ACADEMY', 'SUPREME_FORTRESS']
+              : needAcademy
+              ? ['GRAND_ACADEMY', 'GRAND_ARSENAL', 'SUPREME_FORTRESS']
+              : ['SUPREME_FORTRESS', 'GRAND_ARSENAL', 'GRAND_ACADEMY'];
+          for (const sType of prefOrder) {
+            if (sType === 'GRAND_ACADEMY' && !needAcademy) continue;
+            if (canBuildSuperBuilding(bot, sType, botCounts).ok) {
+              bot.gold -= BUILDING_INFO[sType].baseCost;
+              initSuperBuildingOnTile(superSite, sType);
+              offscreenTerritoryDirtyRef.current = true;
+              fogBaseDirtyRef.current = true;
+              dirtyTerritoryTilesRef.current.push({ x: superSite.x, y: superSite.y });
+              break;
+            }
+          }
+        }
+      }
+
+      // 6c. Bot nâng cấp Mỏ / Giàn Dầu Cao Cấp (tối đa 2 hoặc 4)
+      const botMaxAdv = getMaxAdvancedExtractors(bot);
+      if (botMaxAdv > 0 && (bot.minerals || 0) >= 120 && (bot.id + gameTime) % 5 === 0) {
+        if (countAdvancedExtractors(tiles, bot.id) < botMaxAdv) {
+          const advTarget = ownedList.find(
+            (ot) => isExtractor(ot.building) && !ot.isAdvancedExtractor && !(ot.inactiveTimer && ot.inactiveTimer > 0)
+          );
+          if (advTarget && upgradeAdvancedExtractor(advTarget, bot, tiles).ok) {
+            offscreenTerritoryDirtyRef.current = true;
+          }
+        }
+      }
+
+      // 6d. Bot xây thêm Lô Cốt (tối đa 10) trên biên giới khi mở Phòng Thủ Tối Thượng 3
+      if (canBuildBunker(bot) && bot.gold >= BUILDING_INFO.BUNKER.baseCost && (bot.id + gameTime) % 6 === 0) {
+        if (countNationBunkers(tiles, bot.id) < MAX_BUNKERS_PER_NATION) {
+          const emptyBorder = borderThreats.find(
+            (b) => b.tile.building === 'NONE' && !(b.tile.x === bot.capitalX && b.tile.y === bot.capitalY)
+          );
+          if (emptyBorder) {
+            bot.gold -= BUILDING_INFO.BUNKER.baseCost;
+            emptyBorder.tile.building = 'BUNKER';
+            emptyBorder.tile.buildingLevel = 1;
+            offscreenTerritoryDirtyRef.current = true;
+            dirtyTerritoryTilesRef.current.push({ x: emptyBorder.tile.x, y: emptyBorder.tile.y });
+          }
+        }
+      }
+
+      // 6e. Bot xuất kích Máy Bay Chiến Đấu (Quân Sự Tối Thượng 3, tối đa 5 chiếc)
+      if (
+        canLaunchFighterPlane(bot) &&
+        (bot.id + gameTime) % 8 === 0 &&
+        bot.gold >= FIGHTER_PLANE_CONFIG.goldCost + 300 &&
+        (bot.oil || 0) >= FIGHTER_PLANE_CONFIG.oilCost
+      ) {
+        data.fighterPlanes = data.fighterPlanes || [];
+        if (countActiveFighterPlanes(data.fighterPlanes, bot.id) < MAX_FIGHTERS_PER_NATION) {
+          const enemyThreat = borderThreats.find((b) => b.enemySource && b.enemySource.owner > 0);
+          const airTarget = enemyThreat?.enemySource;
+          if (airTarget) {
+            bot.gold -= FIGHTER_PLANE_CONFIG.goldCost;
+            bot.oil = Math.max(0, (bot.oil || 0) - FIGHTER_PLANE_CONFIG.oilCost);
+            data.fighterPlanes.push({
+              id: Math.random().toString(),
+              nationId: bot.id,
+              sourceX: bot.capitalX,
+              sourceY: bot.capitalY,
+              targetX: airTarget.x,
+              targetY: airTarget.y,
+              progress: 0,
+              speed: FIGHTER_PLANE_CONFIG.speed,
+            });
+          }
+        }
+      }
+
       const buildProb = difficulty === 'EXTREME' ? (isBoss ? 0.95 : 0.90) : difficulty === 'HARD' ? (isBoss ? 0.85 : 0.72) : difficulty === 'NORMAL' ? (isBoss ? 0.55 : 0.45) : (isBoss ? 0.32 : 0.22);
       const maxBuildLvl = difficulty === 'EXTREME' ? 5 : difficulty === 'HARD' ? 4 : difficulty === 'NORMAL' ? 3 : 2;
       if (bot.gold >= 80 && Math.random() < buildProb) {
@@ -719,6 +914,12 @@ export function useBotAI({
       if (bot.troops >= minTroopsReq && (Math.random() < attackProb || isUnderAttack)) {
         const validTargets: { source: Tile; target: Tile; isPlayer: boolean; priority: number }[] = [];
 
+        const enemySuperTargets = mapSuperTiles.filter(st => {
+          if (st.owner <= 0 || st.owner === bot.id) return false;
+          const dip = bot.diplomacy?.[st.owner]?.status;
+          return dip !== 'ALLIANCE' && dip !== 'TRUCE';
+        });
+
         borderThreats.forEach(bt => {
           if (bt.enemySource) {
             const isPlayerTarget = bt.enemySource.owner === 1;
@@ -733,6 +934,17 @@ export function useBotAI({
             let priority = bt.strategicScore + weaknessScore * 6;
             if (bt.isCapital) priority += 120;
             if (bt.enemySource.owner === 1) priority += (difficulty === 'EXTREME' ? 90 : difficulty === 'HARD' ? 60 : difficulty === 'NORMAL' ? 30 : 15);
+            if (isSuperBuilding(bt.enemySource.building)) priority += 280;
+
+            for (let si = 0; si < enemySuperTargets.length; si++) {
+              const st = enemySuperTargets[si];
+              if (st.owner === bt.enemySource.owner) {
+                const dist = Math.hypot(st.x - bt.enemySource.x, st.y - bt.enemySource.y);
+                if (dist <= 12) {
+                  priority += Math.max(20, 140 - dist * 10);
+                }
+              }
+            }
 
             validTargets.push({
               source: bt.tile,

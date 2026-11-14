@@ -3,6 +3,15 @@ import { BuildingType, Tile, Nation } from '../types';
 import { BUILDING_INFO, formatPopulation } from '../utils/constants';
 import { RESOURCE_CONFIG } from '../data/gameData';
 import { areResourcesEnabled, getBuildingMineralCost, getExtractorBuildCost, extractorFor, isExtractor } from '../utils/resources';
+import {
+  SUPER_BUILDING_TYPES,
+  SUPER_BUILDING_CONFIG,
+  hasUnlockedSuperBuildings,
+  canBuildSuperBuilding,
+  countSuperBuildingsFromCounts,
+  isSuperBuilding,
+} from '../utils/superBuildings';
+import { canBuildBunker, MAX_BUNKERS_PER_NATION } from '../utils/supremeTech';
 import { X } from 'lucide-react';
 import { BuildingSvgIcon } from './BuildingSvgIcon';
 
@@ -30,6 +39,10 @@ const SHORT_NAME: Record<BuildableType, string> = {
   LASER: 'Tháp Laser',
   OIL_RIG: 'Giàn Dầu',
   MINE: 'Mỏ Khoáng',
+  BUNKER: 'Lô Cốt',
+  SUPREME_FORTRESS: 'Pháo Đài Tối Thượng',
+  GRAND_ACADEMY: 'Đại Học Viện',
+  GRAND_ARSENAL: 'Đại Công Xưởng',
 };
 
 const ALL_TYPES: BuildableType[] = ['CITY', 'BARRACKS', 'FORTRESS', 'PORT', 'LASER', 'MISSILE_SILO', 'AIR_DEFENSE'];
@@ -53,7 +66,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
 
   const calculateBatchCost = (type: BuildableType, goal: BatchOption) => {
     if (isExtractor(type)) {
-      const c = getExtractorBuildCost(selectedTile);
+      const c = getExtractorBuildCost(selectedTile, playerNation);
       return { totalCost: c.gold, totalMinerals: c.minerals, actualCount: 1 };
     }
 
@@ -66,7 +79,10 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     let totalCost = 0;
     let totalMinerals = 0;
     let actualCount = 0;
-    const limit = goal === 'MAX' ? 9999 : goal;
+    const rawLimit = goal === 'MAX' ? 9999 : goal;
+    const limit = type === 'BUNKER'
+      ? Math.min(rawLimit, Math.max(0, MAX_BUNKERS_PER_NATION - currentCount))
+      : rawLimit;
 
     for (let i = 0; i < limit; i++) {
       const singleCost = Math.floor(base * Math.pow(1.15, currentCount + i) * discount);
@@ -96,13 +112,18 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   // Chỉ hiện công trình xây được: Hải Cảng chỉ hiện khi ô giáp biển; Giàn Dầu/Mỏ Khoáng khi ô có mỏ đã phát hiện
   const hasExtractorSpot = resOn && !!selectedTile.deposit && !!selectedTile.discovered && (selectedTile.reserve || 0) > 0;
   const extractorType: BuildableType | null = hasExtractorSpot ? extractorFor(selectedTile.deposit!) : null;
+  const bunkerUnlocked = canBuildBunker(playerNation);
   const baseTypes = ALL_TYPES.filter((t) => t !== 'PORT' || selectedTile.hasHarborAccess);
-  const buildingTypes: BuildableType[] = extractorType ? [extractorType, ...baseTypes] : baseTypes;
+  const withBunker: BuildableType[] = bunkerUnlocked ? [...baseTypes, 'BUNKER'] : baseTypes;
+  const buildingTypes: BuildableType[] = extractorType ? [extractorType, ...withBunker] : withBunker;
   const n = buildingTypes.length;
   const RADIUS = 37;
 
   const existing: BuildableType | null =
     selectedTile.building && selectedTile.building !== 'NONE' ? (selectedTile.building as BuildableType) : null;
+  const superUnlocked = hasUnlockedSuperBuildings(playerNation);
+  const ownedSuperTotal = countSuperBuildingsFromCounts(existingBuildingCounts);
+  const onSuperTile = isSuperBuilding(selectedTile.building);
 
   const terrainLabel =
     selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi';
@@ -154,11 +175,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
 
             const { totalCost, totalMinerals, actualCount } = calculateBatchCost(type, selectedBatch);
             const atMaxExtractor = isExtractor(type) && selectedTile.building === type && (selectedTile.buildingLevel || 1) >= RESOURCE_CONFIG.MAX_EXTRACTOR_LEVEL;
-            const canAfford = gold >= totalCost && minerals >= totalMinerals && !atMaxExtractor;
+            const bunkerCount = existingBuildingCounts.BUNKER || 0;
+            const atMaxBunker = type === 'BUNKER' && bunkerCount >= MAX_BUNKERS_PER_NATION;
+            const canAfford = gold >= totalCost && minerals >= totalMinerals && !atMaxExtractor && !atMaxBunker && actualCount > 0;
             const isCurrent = selectedTile.building === type;
 
             let badge: string | null = null;
             if (atMaxExtractor) badge = 'MAX';
+            else if (type === 'BUNKER') badge = atMaxBunker ? `${bunkerCount}/${MAX_BUNKERS_PER_NATION}` : `${bunkerCount}/${MAX_BUNKERS_PER_NATION}${actualCount > 1 ? ` +${actualCount}` : ''}`;
             else if (isCurrent) badge = `Lv${selectedTile.buildingLevel || 1}+${actualCount}`;
             else if (actualCount > 1) badge = `x${actualCount}`;
 
@@ -215,6 +239,73 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             );
           })}
         </div>
+
+        {superUnlocked && (
+          <div className="w-full rounded-2xl bg-slate-950/85 border border-amber-500/40 p-2.5">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
+                Siêu Công Trình
+              </span>
+              <span className="text-[11px] font-mono text-slate-300">
+                {ownedSuperTotal}/{SUPER_BUILDING_CONFIG.MAX_TOTAL_PER_NATION}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {SUPER_BUILDING_TYPES.map((sType) => {
+                const cost = BUILDING_INFO[sType].baseCost;
+                const alreadyOwned = (existingBuildingCounts[sType] || 0) >= SUPER_BUILDING_CONFIG.MAX_PER_TYPE;
+                const check = canBuildSuperBuilding(playerNation, sType, existingBuildingCounts);
+                const enabled = check.ok && !onSuperTile;
+                const badge = alreadyOwned
+                  ? 'ĐÃ CÓ'
+                  : ownedSuperTotal >= SUPER_BUILDING_CONFIG.MAX_TOTAL_PER_NATION
+                  ? 'TỐI ĐA'
+                  : `${SUPER_BUILDING_CONFIG.BUILD_TIME_SECONDS}s`;
+
+                return (
+                  <button
+                    key={sType}
+                    disabled={!enabled}
+                    onClick={() => {
+                      onBuild(sType, 1);
+                      onClose();
+                    }}
+                    title={BUILDING_INFO[sType].desc}
+                    className={`flex flex-col items-center gap-1 rounded-xl p-1.5 transition-transform active:scale-95 ${
+                      enabled ? 'hover:bg-slate-900/70' : 'opacity-40 grayscale cursor-not-allowed'
+                    }`}
+                  >
+                    <span className="relative w-14 h-14 rounded-full bg-slate-900 border-2 border-amber-400/70 flex items-center justify-center shadow-lg">
+                      <BuildingSvgIcon
+                        type={sType}
+                        className="w-7 h-7 text-white [&_*]:stroke-current [&_*]:fill-none"
+                      />
+                      <span
+                        className={`absolute -top-1 -right-2 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none ${
+                          alreadyOwned
+                            ? 'bg-emerald-500 text-slate-950'
+                            : 'bg-amber-500 text-slate-950'
+                        }`}
+                      >
+                        {badge}
+                      </span>
+                    </span>
+                    <span className="text-[10px] font-bold leading-tight text-white text-center">
+                      {SHORT_NAME[sType]}
+                    </span>
+                    <span
+                      className={`text-[11px] font-mono font-bold leading-none whitespace-nowrap ${
+                        gold >= cost ? 'text-amber-300' : 'text-red-400'
+                      }`}
+                    >
+                      {formatPopulation(cost)} 💰
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <div className="w-full rounded-2xl bg-slate-950/80 border border-slate-800 p-2">
           <p className="text-[11px] text-center text-slate-400 mb-1.5">

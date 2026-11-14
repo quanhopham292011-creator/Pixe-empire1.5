@@ -8,7 +8,7 @@ import {
   BuildingType, MapDimension, GameDifficulty, GameMode, Tile, Nation, 
   AttackWave, GameParticle, GameEvent, ResearchingTech, TechNode, QuestStep, General, GeneralSkillId,
   WeatherType, WeatherParticle, WeatherCloudPuff, DarkTitan, PendingTitanSpawn, MissileType, FlyingMissile,
-  SeaTradeRoute, SeaTradeShip, PlayerProfile, VictoryReward, MarketState, DepositType, TradeOffer
+  FighterPlane, SeaTradeRoute, SeaTradeShip, PlayerProfile, VictoryReward, MarketState, DepositType, TradeOffer
 } from './types';
 import { generateWorldMap } from './utils/mapGenerator';
 import { 
@@ -22,6 +22,44 @@ import {
   TILE_PIXEL_SIZE, BUILDING_INFO, TECH_TREE, formatPopulation, DARK_TITAN_CONFIG, formatGameTime,
   MISSILE_CONFIG, MISSILE_SETTINGS, GENERAL_ROSTER, getSkillPower
 } from './utils/constants';
+import { SUPREME_TECH_CONFIG } from './data/gameData';
+import {
+  SUPER_BUILDING_CONFIG,
+  isSuperBuilding,
+  hasUnlockedSuperBuildings,
+  countNationSuperBuildings,
+  createEmptyBuildingCounts,
+  canBuildSuperBuilding,
+  initSuperBuildingOnTile,
+  damageSuperBuilding,
+  handleSuperBuildingCapture,
+  getSuperMissileProtectionForTile,
+  getAcademyResearchSpeedMult,
+  getArsenalBonusesFromState,
+  getSuperBuildingState,
+} from './utils/superBuildings';
+import {
+  ensureNationSupremeTech,
+  findSupremeTechById,
+  isSupremeTechId,
+  startSupremeResearchForNation,
+  applySupremeResearchCompletion,
+  getSupremeGoldIncomeMult,
+  hasUpgradedHydro,
+  getMissileEffectiveCost,
+  BURN_ZONE_DURATION_SECONDS,
+  getAtomEffectiveStats,
+  canLaunchFighterPlane,
+  countActiveFighterPlanes,
+  MAX_FIGHTERS_PER_NATION,
+  FIGHTER_PLANE_CONFIG,
+  getSupremeBorderDefenseMult,
+  canBuildBunker,
+  countNationBunkers,
+  MAX_BUNKERS_PER_NATION,
+  deployInitialBorderBunkers,
+  upgradeAdvancedExtractor,
+} from './utils/supremeTech';
 import { 
   loadPlayerProfile, savePlayerProfile, calculateVictoryReward, calculateDefeatReward,
   getRequiredExpForNextLevel, MAX_PLAYER_LEVEL,
@@ -150,7 +188,7 @@ export default function App() {
           playerProfileRef.current = profile;
           savePlayerProfile(profile);
         } catch (err) {
-          console.error('Lỗi tải tiến trình từ Firestore:', err);
+          console.warn('Không thể đồng bộ hồ sơ Firestore (có thể đang ngoại tuyến):', err);
         }
       }
     });
@@ -218,6 +256,9 @@ export default function App() {
   const [missileAimingMode, setMissileAimingMode] = useState<MissileType | null>(null);
   const missileAimingModeRef = useRef<MissileType | null>(null);
   missileAimingModeRef.current = missileAimingMode;
+  const [fighterAimingMode, setFighterAimingMode] = useState<boolean>(false);
+  const fighterAimingModeRef = useRef<boolean>(false);
+  fighterAimingModeRef.current = fighterAimingMode;
   const [missileFeedbackToast, setMissileFeedbackToast] = useState<string | null>(null);
   const flyingMissilesRef = useRef<FlyingMissile[]>([]);
 
@@ -261,6 +302,7 @@ export default function App() {
   const [isMultiplayerModalOpen, setIsMultiplayerModalOpen] = useState<boolean>(false);
   const [urlRoomCode, setUrlRoomCode] = useState<string | null>(null);
   const [multiplayerBanner, setMultiplayerBanner] = useState<string | null>(null);
+  const pendingSupremeResearchRef = useRef<{ techId: string; gold: number; oil: number; minerals: number } | null>(null);
 
   // HUD stats
   const [hudStats, setHudStats] = useState({
@@ -338,6 +380,7 @@ export default function App() {
     pendingTitanSpawn?: PendingTitanSpawn | null;
     nextTitanSpawnAt?: number;
     flyingMissiles: FlyingMissile[];
+    fighterPlanes?: FighterPlane[];
     tradeRoutes: SeaTradeRoute[];
     tradeShips: SeaTradeShip[];
     activeSeasonEvent: {
@@ -368,6 +411,7 @@ export default function App() {
     pendingTitanSpawn: null,
     nextTitanSpawnAt: DARK_TITAN_CONFIG.SPAWN_TIME_SECONDS,
     flyingMissiles: [],
+    fighterPlanes: [],
     tradeRoutes: [],
     tradeShips: [],
     activeSeasonEvent: null,
@@ -794,6 +838,7 @@ export default function App() {
           progress: -(mIdx * 0.08), // Phóng liên hoàn thành đợt
           speed: 1 / 4.5,
           fromNation: nation.id,
+          isGeneralBarrage: true,
         });
       });
     } else if (gen.skillId === 'SUPPLY_REINFORCE') {
@@ -929,6 +974,7 @@ export default function App() {
       pendingTitanSpawn: null,
       nextTitanSpawnAt: DARK_TITAN_CONFIG.SPAWN_TIME_SECONDS,
       flyingMissiles: [],
+      fighterPlanes: [],
       tradeRoutes: [],
       tradeShips: [],
       activeSeasonEvent: null,
@@ -1037,18 +1083,38 @@ export default function App() {
       id: n.id,
       gold: n.gold,
       goldIncome: n.goldIncome,
+      oil: n.oil,
+      minerals: n.minerals,
       troops: n.troops,
       maxTroops: n.maxTroops,
       population: n.population,
       territoryCount: n.territoryCount,
       isEliminated: n.isEliminated,
+      techLevels: n.techLevels,
+      supremeTechUnlocked: Boolean(n.supremeTechUnlocked),
+      supremeTechLevels: n.supremeTechLevels,
     }));
+    const superCountsMap: Record<number, Record<string, number>> = {};
+    if (Array.isArray(data.tiles)) {
+      for (let r = 0; r < data.tiles.length; r++) {
+        const row = data.tiles[r];
+        if (!row) continue;
+        for (let c = 0; c < row.length; c++) {
+          const t = row[c];
+          if (t && t.owner > 0 && isSuperBuilding(t.building)) {
+            if (!superCountsMap[t.owner]) superCountsMap[t.owner] = {};
+            superCountsMap[t.owner][t.building] = (superCountsMap[t.owner][t.building] || 0) + 1;
+          }
+        }
+      }
+    }
     multiplayerClient.sendStateSync(
       syncNations,
       data.darkTitans,
       data.gameTimeSeconds,
       data.pendingTitanSpawn || null,
-      data.nextTitanSpawnAt
+      data.nextTitanSpawnAt,
+      superCountsMap
     );
   }, []);
   const { updateDarkTitans } = useDarkTitanAI({
@@ -1248,6 +1314,8 @@ export default function App() {
       capitalY: spot.y,
       hasPort: false,
       techLevels: { economy: 0, military: 0, defense: 0 },
+      supremeTechUnlocked: false,
+      supremeTechLevels: { economy: 0, military: 0, defense: 0 },
       diplomacy: {},
       allianceInvites: [],
       lastRejectedInviteTimer: {},
@@ -1615,6 +1683,10 @@ export default function App() {
       const isTenSec = data.gameTimeSeconds > 0 && data.gameTimeSeconds % 10 === 0;
       const portList: { x: number; y: number; owner: number; nation: Nation }[] = [];
       const laserList: Tile[] = [];
+      const bunkerList: Tile[] = [];
+      const arsenalStates: Record<number, 'ACTIVE' | 'DAMAGED'> = {};
+      const burnTilesByNation: Record<number, number> = {};
+      const radTilesByNation: Record<number, number> = {};
 
       for (let y = 0; y < size; y++) {
         for (let x = 0; x < size; x++) {
@@ -1630,7 +1702,66 @@ export default function App() {
 
           if (t.inactiveTimer && t.inactiveTimer > 0) t.inactiveTimer -= 1;
 
-          // Đất Cháy
+          // Tiến trình xây dựng / sửa chữa Siêu Công Trình (60s xây, 10-30s sửa)
+          if (isSuperBuilding(t.building) && (t.superState === 'BUILDING' || t.superState === 'REPAIRING') && !(t.inactiveTimer && t.inactiveTimer > 0)) {
+            t.superBuildTimeLeft = Math.max(0, (t.superBuildTimeLeft || 0) - 1);
+            if (t.superBuildTimeLeft <= 0) {
+              const wasRepair = t.superState === 'REPAIRING';
+              t.superState = 'ACTIVE';
+              t.superHp = SUPER_BUILDING_CONFIG.MAX_HP;
+              t.superMaxHp = SUPER_BUILDING_CONFIG.MAX_HP;
+              t.superBuildTimeLeft = 0;
+              t.superBuildTotal = 0;
+              offscreenTerritoryDirtyRef.current = true;
+              fogBaseDirtyRef.current = true;
+              // Xây xong Đại Học Viện mở khóa VĨNH VIỄN Công Nghệ Tối Thượng cho quốc gia sở hữu
+              if (!wasRepair && t.building === 'GRAND_ACADEMY') {
+                const ownerNat = nations[t.owner];
+                if (ownerNat) {
+                  ensureNationSupremeTech(ownerNat);
+                  if (!ownerNat.supremeTechUnlocked) {
+                    ownerNat.supremeTechUnlocked = true;
+                    const localId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+                    if (t.owner === localId) {
+                      data.events.unshift({
+                        id: Math.random().toString(),
+                        title: '🌟 Mở Khóa Công Nghệ Tối Thượng',
+                        description: 'Đại Học Viện đã hoàn thành! Mở khóa vĩnh viễn cây Công Nghệ Tối Thượng trong mục Công Nghệ.',
+                        type: 'DIPLOMACY',
+                        targetNationId: t.owner,
+                        timestamp: formatGameTime(data.gameTimeSeconds),
+                      });
+                    }
+                    if (isMultiplayerRef.current && myNationIdRef.current === 1) {
+                      syncTitanStateNow();
+                    }
+                  }
+                }
+              }
+              if (t.owner === 1) {
+                soundManager.playAchievement();
+                data.particles.push({
+                  x: x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  y: y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  color: '#fbbf24', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.7,
+                  type: 'FLOAT_TEXT',
+                  text: wasRepair
+                    ? `✨ ${BUILDING_INFO[t.building].name} đã sửa xong!`
+                    : `🏛️ ${BUILDING_INFO[t.building].name} đã hoàn thành!`
+                });
+                data.events.unshift({
+                  id: Math.random().toString(),
+                  title: wasRepair ? '🔧 Sửa Siêu Công Trình Hoàn Tất' : '🏛️ Siêu Công Trình Hoàn Thành',
+                  description: `${BUILDING_INFO[t.building].name} tại (${x}, ${y}) đã đi vào hoạt động!`,
+                  type: 'DIPLOMACY',
+                  targetNationId: 1,
+                  timestamp: formatGameTime(data.gameTimeSeconds),
+                });
+              }
+            }
+          }
+
+          // Đất Cháy, Vùng Cháy (Thermobaric) & Vùng Phóng Xạ (ATOM nâng cấp)
           if (t.scorchedTimer && t.scorchedTimer > 0) {
             t.scorchedTimer -= 1;
             if (Math.random() < 0.2) {
@@ -1644,6 +1775,24 @@ export default function App() {
               });
             }
           }
+          if (t.burnZoneTimer && t.burnZoneTimer > 0) {
+            t.burnZoneTimer -= 1;
+            if (t.burnZoneTimer <= 0) {
+              t.burnZoneTimer = 0;
+              t.burnZoneOwner = undefined;
+            } else if (t.owner > 0 && t.owner !== t.burnZoneOwner) {
+              burnTilesByNation[t.owner] = (burnTilesByNation[t.owner] || 0) + 1;
+            }
+          }
+          if (t.radiationTimer && t.radiationTimer > 0) {
+            t.radiationTimer -= 1;
+            if (t.radiationTimer <= 0) {
+              t.radiationTimer = 0;
+              t.radiationOwner = undefined;
+            } else if (t.owner > 0) {
+              radTilesByNation[t.owner] = (radTilesByNation[t.owner] || 0) + 1;
+            }
+          }
 
           // Thống kê lãnh thổ & công trình
           if (t.owner > 0) {
@@ -1654,14 +1803,22 @@ export default function App() {
             centersSum[t.owner].count += 1;
 
             if (t.building !== 'NONE' && !(t.inactiveTimer && t.inactiveTimer > 0)) {
-              if (!buildingCounts[t.owner]) buildingCounts[t.owner] = { NONE: 0, CITY: 0, BARRACKS: 0, FORTRESS: 0, PORT: 0, MISSILE_SILO: 0, AIR_DEFENSE: 0, LASER: 0, OIL_RIG: 0, MINE: 0 };
+              if (!buildingCounts[t.owner]) buildingCounts[t.owner] = createEmptyBuildingCounts();
               const levelWeight = t.buildingLevel || 1;
               buildingCounts[t.owner][t.building] = (buildingCounts[t.owner][t.building] || 0) + levelWeight;
+
+              if (t.building === 'GRAND_ARSENAL') {
+                const st = getSuperBuildingState(t);
+                if (st === 'ACTIVE') arsenalStates[t.owner] = 'ACTIVE';
+                else if (st === 'DAMAGED' && arsenalStates[t.owner] !== 'ACTIVE') arsenalStates[t.owner] = 'DAMAGED';
+              }
 
               if (t.building === 'PORT' && isEightSec && nations[t.owner] && !nations[t.owner].isEliminated) {
                 portList.push({ x, y, owner: t.owner, nation: nations[t.owner] });
               } else if (t.building === 'LASER' && isTenSec) {
                 laserList.push(t);
+              } else if (t.building === 'BUNKER') {
+                bunkerList.push(t);
               }
             }
           }
@@ -1754,13 +1911,37 @@ export default function App() {
           : (difficulty === 'EXTREME' ? 1.42 : difficulty === 'HARD' ? 1.14 : difficulty === 'NORMAL' ? 0.95 : 0.72);
         const isMil3B = n.techLevels?.military === 3 && n.techChoices?.military === 'B';
         const milTechTroopBonus = isMil3B ? 60 : (n.techLevels?.military >= 2 ? 30 : 0);
+        const arsenalBonus = getArsenalBonusesFromState(arsenalStates[n.id] || null);
         const baseMaxTroops = n.population * 1.5 + n.territoryCount * 4 + barracksCount * 40 + milTechTroopBonus;
-        n.maxTroops = Math.max(15, Math.floor(baseMaxTroops * (n.id > 1 ? botEconArmyMult : skillBonuses ? skillBonuses.troopsMaxMult : 1.0) * titanBuff));
+        const computedMaxTroops = Math.max(
+          15,
+          Math.floor(baseMaxTroops * (n.id > 1 ? botEconArmyMult : skillBonuses ? skillBonuses.troopsMaxMult : 1.0) * titanBuff * arsenalBonus.maxTroopsMult)
+        );
+        n.maxTroops = Math.min(SUPER_BUILDING_CONFIG.HARD_MAX_TROOPS_CAP, computedMaxTroops);
         
+        // Tác động của Vùng Cháy (Thermobaric) & Vùng Phóng Xạ (ATOM nâng cấp)
+        const burnTileCount = burnTilesByNation[n.id] || 0;
+        const radTileCount = radTilesByNation[n.id] || 0;
+        const hasRadiation = radTileCount > 0;
+        if (burnTileCount > 0 || hasRadiation) {
+          const burnLoss = Math.min(180, burnTileCount * 6);
+          const radLoss = Math.min(450, radTileCount * 15);
+          const totalHazardLoss = burnLoss + radLoss;
+          if (totalHazardLoss > 0) {
+            n.troops = Math.max(0, n.troops - totalHazardLoss);
+            applyCasualties(n, totalHazardLoss);
+          }
+        }
+
         // Hiệu ứng mốc kết hợp Kinh Tế + Quân Đội: Thành thị cấp quân đội (+6 quân/s)
         const hybridCityTroops = (n.isPlayer && skillBonuses?.isEconomyMilitaryHybrid) ? (cityCount * 6) : 0;
         const milTechRegenMult = isMil3B ? 1.10 : 1.0;
-        const growth = Math.max(1, Math.floor(((n.population * 0.04 + barracksCount * 3 + hybridCityTroops) * milTechRegenMult * (n.id > 1 ? botEconArmyMult : skillBonuses ? skillBonuses.troopsRegenMult : 1.0) * titanBuff * (1 + Math.min(0.25, n.territoryCount * 0.0004)))));
+        const radRegenMult = hasRadiation ? (1 - SUPREME_TECH_CONFIG.EFFECTS.MILITARY_2_RADIATION_REGEN_PENALTY) : 1.0;
+        const computedGrowth = Math.max(
+          1,
+          Math.floor(((n.population * 0.04 + barracksCount * 3 + hybridCityTroops) * milTechRegenMult * (n.id > 1 ? botEconArmyMult : skillBonuses ? skillBonuses.troopsRegenMult : 1.0) * titanBuff * arsenalBonus.regenMult * radRegenMult * (1 + Math.min(0.25, n.territoryCount * 0.0004))))
+        );
+        const growth = Math.min(SUPER_BUILDING_CONFIG.HARD_MAX_TROOP_REGEN_CAP, computedGrowth);
         if (n.troops < n.maxTroops) {
           n.troops = Math.min(n.maxTroops, Math.round(n.troops + growth));
         }
@@ -1774,9 +1955,11 @@ export default function App() {
         const cityGold = cityCount * 1.5 * (isEco3B ? 1.15 : 1.0);
         const seasonMult = data.activeSeasonEvent?.type === 'GOLDEN_HARVEST' ? 2.0 : data.activeSeasonEvent?.type === 'DROUGHT' ? 0.5 : 1.0;
         const earlyGameBonus = (n.isPlayer && data.gameTimeSeconds < 300) ? 0.12 : 0.0;
-        const playerEcoMult = ecoMult * (skillBonuses ? skillBonuses.goldMult : 1.0) + earlyGameBonus;
+        const supremeGoldMult = getSupremeGoldIncomeMult(n);
+        const radGoldMult = hasRadiation ? (1 - SUPREME_TECH_CONFIG.EFFECTS.MILITARY_2_RADIATION_GOLD_PENALTY) : 1.0;
+        const playerEcoMult = (ecoMult * (skillBonuses ? skillBonuses.goldMult : 1.0) + earlyGameBonus) * supremeGoldMult;
         const baseGold = n.population * 0.03 + n.territoryCount * 0.03 + cityGold + hybridBarracksGold;
-        n.goldIncome = Math.max(1, Math.floor(baseGold * (n.id > 1 ? botEconArmyMult : playerEcoMult) * titanBuff * seasonMult));
+        n.goldIncome = Math.max(1, Math.floor(baseGold * (n.id > 1 ? botEconArmyMult * supremeGoldMult : playerEcoMult) * titanBuff * seasonMult * radGoldMult));
         n.gold += n.goldIncome;
 
         // Quản lý Đại Tướng quốc gia: Kỹ năng, Hồi phục sinh tồn v1.1
@@ -1865,54 +2048,121 @@ export default function App() {
           id: n.id,
           gold: n.gold,
           goldIncome: n.goldIncome,
+          oil: n.oil,
+          minerals: n.minerals,
           troops: n.troops,
           maxTroops: n.maxTroops,
           population: n.population,
           territoryCount: n.territoryCount,
           isEliminated: n.isEliminated,
+          techLevels: n.techLevels,
+          supremeTechUnlocked: Boolean(n.supremeTechUnlocked),
+          supremeTechLevels: n.supremeTechLevels,
         }));
+        const superCountsMap: Record<number, Record<string, number>> = {};
+        nations.forEach(n => {
+          if (n && n.id > 0 && buildingCounts[n.id]) {
+            const bc = buildingCounts[n.id];
+            if (bc.SUPREME_FORTRESS || bc.GRAND_ACADEMY || bc.GRAND_ARSENAL) {
+              superCountsMap[n.id] = {
+                SUPREME_FORTRESS: bc.SUPREME_FORTRESS || 0,
+                GRAND_ACADEMY: bc.GRAND_ACADEMY || 0,
+                GRAND_ARSENAL: bc.GRAND_ARSENAL || 0,
+              };
+            }
+          }
+        });
         multiplayerClient.sendStateSync(
           syncNations,
           data.darkTitans,
           data.gameTimeSeconds,
           data.pendingTitanSpawn || null,
-          data.nextTitanSpawnAt
+          data.nextTitanSpawnAt,
+          superCountsMap
         );
       }
 
-      // 3. Nghiên cứu công nghệ
+      // 3. Nghiên cứu công nghệ (Đại Học Viện tăng tốc x2 khi hoạt động)
       if (data.researching) {
-        data.researching.remainingTime -= 1;
+        const myResearchNationId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+        const academySpeed = getAcademyResearchSpeedMult(tiles, myResearchNationId);
+        data.researching.remainingTime -= academySpeed;
         if (data.researching.remainingTime <= 0) {
           const tech = TECH_TREE.find(t => t.id === data.researching?.techId);
+          const supTech = !tech ? findSupremeTechById(data.researching?.techId) : undefined;
           if (tech) {
-            const player = nations[1];
-            if (!player.techChoices) player.techChoices = {};
-            if (tech.branch === 'ECONOMY') {
-              player.techLevels.economy = tech.level;
-              if (tech.choice) player.techChoices.economy = tech.choice;
+            const player = nations[myResearchNationId];
+            if (player) {
+              if (!player.techChoices) player.techChoices = {};
+              if (tech.branch === 'ECONOMY') {
+                player.techLevels.economy = tech.level;
+                if (tech.choice) player.techChoices.economy = tech.choice;
+              }
+              if (tech.branch === 'MILITARY') {
+                player.techLevels.military = tech.level;
+                if (tech.choice) player.techChoices.military = tech.choice;
+              }
+              if (tech.branch === 'DEFENSE') {
+                player.techLevels.defense = tech.level;
+                if (tech.choice) player.techChoices.defense = tech.choice;
+              }
+              if (player.general) {
+                calculateGeneralStats(player.general, player, playerProfileRef.current);
+              }
+              if (isMultiplayerRef.current) {
+                multiplayerClient.sendTechSync(player.techLevels);
+              }
+              soundManager.playBuild();
+              if (currentQuest === 4) {
+                setCurrentQuest(5);
+                player.gold += 60;
+                data.events.unshift({
+                  id: Math.random().toString(),
+                  title: '🎁 HOÀN THÀNH NHIỆM VỤ 4',
+                  description: '🌟 Công nghệ hoàn tất: Nâng cấp kỹ thuật! Thưởng +60 Vàng.',
+                  type: 'HARVEST',
+                  targetNationId: myResearchNationId,
+                  timestamp: formatGameTime(data.gameTimeSeconds),
+                });
+              }
             }
-            if (tech.branch === 'MILITARY') {
-              player.techLevels.military = tech.level;
-              if (tech.choice) player.techChoices.military = tech.choice;
-            }
-            if (tech.branch === 'DEFENSE') {
-              player.techLevels.defense = tech.level;
-              if (tech.choice) player.techChoices.defense = tech.choice;
-            }
-            if (player.general) {
-              calculateGeneralStats(player.general, player, playerProfileRef.current);
-            }
-            soundManager.playBuild();
-            if (currentQuest === 4) {
-              setCurrentQuest(5);
-              player.gold += 60;
+          } else if (supTech) {
+            const player = nations[myResearchNationId];
+            if (player) {
+              applySupremeResearchCompletion(player, supTech.id);
+              if (supTech.id === 'sup_def_3') {
+                const autoPlaced = deployInitialBorderBunkers(tiles, player);
+                if (autoPlaced.length > 0) {
+                  offscreenTerritoryDirtyRef.current = true;
+                  data.particles.push({
+                    x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                    y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2 - 14,
+                    color: '#34d399', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.7,
+                    type: 'FLOAT_TEXT',
+                    text: `🪖 Tự động xây ${autoPlaced.length} Lô Cốt biên giới!`
+                  });
+                }
+              }
+              if (pendingSupremeResearchRef.current?.techId === supTech.id) {
+                pendingSupremeResearchRef.current = null;
+              }
+              if (isMultiplayerRef.current && player.supremeTechLevels) {
+                multiplayerClient.sendSupremeTechSync(player.supremeTechLevels);
+              }
+              soundManager.playAchievement();
+              data.particles.push({
+                x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                color: '#f59e0b', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.7,
+                type: 'FLOAT_TEXT',
+                text: `✨ Hoàn tất Công Nghệ Tối Thượng: ${supTech.name}!`
+              });
               data.events.unshift({
                 id: Math.random().toString(),
-                title: '🎁 HOÀN THÀNH NHIỆM VỤ 4',
-                description: '🌟 Công nghệ hoàn tất: Nâng cấp kỹ thuật! Thưởng +60 Vàng.',
+                title: '✨ Công Nghệ Tối Thượng Hoàn Tất',
+                description: `Đã nghiên cứu xong ${supTech.name} (Cấp ${supTech.level}): ${supTech.description}`,
                 type: 'HARVEST',
-                targetNationId: 1,
+                targetNationId: myResearchNationId,
                 timestamp: formatGameTime(data.gameTimeSeconds),
               });
             }
@@ -2092,6 +2342,153 @@ export default function App() {
         }
       }
 
+      // Xử lý Lô Cốt chống bộ binh & Vùng Cháy / Phóng Xạ gây tiêu hao lên đợt quân địch đang đi qua
+      if (data.attackWaves && data.attackWaves.length > 0) {
+        data.attackWaves.forEach((w: AttackWave) => {
+          if (w.troops <= 0) return;
+          const wx = Math.round(w.sourceX + (w.targetX - w.sourceX) * w.progress);
+          const wy = Math.round(w.sourceY + (w.targetY - w.sourceY) * w.progress);
+          const underTile = tiles[wy]?.[wx];
+          if (underTile) {
+            if (underTile.burnZoneTimer && underTile.burnZoneTimer > 0 && w.fromNation !== underTile.burnZoneOwner) {
+              const loss = Math.max(4, Math.floor(w.troops * 0.08));
+              w.troops = Math.max(0, w.troops - loss);
+              applyCasualties(nations[w.fromNation], loss);
+            }
+            if (underTile.radiationTimer && underTile.radiationTimer > 0 && w.fromNation !== underTile.radiationOwner) {
+              const loss = Math.max(8, Math.floor(w.troops * 0.15));
+              w.troops = Math.max(0, w.troops - loss);
+              applyCasualties(nations[w.fromNation], loss);
+            }
+          }
+          if (bunkerList.length > 0 && w.troops > 0) {
+            for (let bi = 0; bi < bunkerList.length; bi++) {
+              const bk = bunkerList[bi];
+              if (bk.owner > 0 && bk.owner !== w.fromNation) {
+                const dip = nations[bk.owner]?.diplomacy?.[w.fromNation]?.status;
+                if (dip !== 'ALLIANCE' && dip !== 'TRUCE') {
+                  const d = Math.hypot(wx - bk.x, wy - bk.y);
+                  if (d <= 3.5) {
+                    const bDmg = SUPREME_TECH_CONFIG.EFFECTS.DEFENSE_3_BUNKER_WAVE_DAMAGE;
+                    w.troops = Math.max(0, w.troops - bDmg);
+                    applyCasualties(nations[w.fromNation], bDmg);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+        });
+        data.attackWaves = data.attackWaves.filter((w: AttackWave) => w.troops > 0);
+      }
+
+      // Cập nhật Máy Bay Chiến Đấu (Fighter Planes - Quân Sự Tối Thượng 3)
+      data.fighterPlanes = data.fighterPlanes || [];
+      if (data.fighterPlanes.length > 0) {
+        const finishedPlanes: number[] = [];
+        data.fighterPlanes.forEach((p: FighterPlane, idx: number) => {
+          if (p.progress >= 1.0) {
+            finishedPlanes.push(idx);
+            const tgt = tiles[p.targetY]?.[p.targetX];
+            if (!tgt || tgt.terrain === 'WATER') return;
+
+            // Phòng không (SAM) có thể bắn hạ Máy Bay Chiến Đấu
+            let shotDown = false;
+            if (tgt.owner > 0 && tgt.owner !== p.nationId) {
+              const defNat = nations[tgt.owner];
+              const hasTech3B = defNat?.techLevels?.defense === 3 && defNat?.techChoices?.defense === 'B';
+              const samR = hasTech3B ? 6 : 5;
+              const samChance = hasTech3B ? 0.80 : 0.65;
+              for (let dy = -samR; dy <= samR && !shotDown; dy++) {
+                for (let dx = -samR; dx <= samR; dx++) {
+                  const sx = tgt.x + dx;
+                  const sy = tgt.y + dy;
+                  const adTile = tiles[sy]?.[sx];
+                  if (adTile && adTile.owner === tgt.owner && adTile.building === 'AIR_DEFENSE' && !(adTile.inactiveTimer && adTile.inactiveTimer > 0)) {
+                    if (Math.random() < samChance) {
+                      shotDown = true;
+                      break;
+                    }
+                  }
+                }
+              }
+            }
+
+            if (shotDown) {
+              soundManager.playThunder();
+              data.particles.push({
+                x: tgt.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                y: tgt.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                color: '#10b981', size: 0, life: 45, maxLife: 45, vx: 0, vy: -0.8,
+                type: 'FLOAT_TEXT',
+                text: '🛡️ Máy bay bị Phòng Không (SAM) bắn hạ!'
+              });
+              return;
+            }
+
+            soundManager.playAttack();
+            const strikeR = FIGHTER_PLANE_CONFIG.aoeRadius;
+            (data as any).blasts = (data as any).blasts || [];
+            (data as any).blasts.push({
+              x: tgt.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              y: tgt.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              radiusPx: strikeR * TILE_PIXEL_SIZE,
+              kind: 'FIGHTER',
+              start: performance.now(),
+              duration: 900,
+            });
+
+            // Đánh trúng các đợt quân địch gần mục tiêu
+            (data.attackWaves || []).forEach((w: AttackWave) => {
+              if (w.fromNation === p.nationId) return;
+              const wx = w.sourceX + (w.targetX - w.sourceX) * w.progress;
+              const wy = w.sourceY + (w.targetY - w.sourceY) * w.progress;
+              if (Math.hypot(wx - tgt.x, wy - tgt.y) <= strikeR + 1.2) {
+                const waveLoss = Math.max(FIGHTER_PLANE_CONFIG.minWaveDamage, Math.floor(w.troops * FIGHTER_PLANE_CONFIG.waveDamageRatio));
+                w.troops = Math.max(0, w.troops - waveLoss);
+                applyCasualties(nations[w.fromNation], waveLoss);
+              }
+            });
+            data.attackWaves = (data.attackWaves || []).filter((w: AttackWave) => w.troops > 0);
+
+            const hitEnemyIds = new Set<number>();
+            for (let dy = -Math.ceil(strikeR); dy <= Math.ceil(strikeR); dy++) {
+              for (let dx = -Math.ceil(strikeR); dx <= Math.ceil(strikeR); dx++) {
+                if (dx * dx + dy * dy > strikeR * strikeR) continue;
+                const ht = tiles[tgt.y + dy]?.[tgt.x + dx];
+                if (!ht || ht.terrain === 'WATER') continue;
+                if (ht.owner > 0 && ht.owner !== p.nationId) {
+                  hitEnemyIds.add(ht.owner);
+                  ht.scorchedTimer = Math.max(ht.scorchedTimer || 0, FIGHTER_PLANE_CONFIG.scorchSeconds);
+                  if (isSuperBuilding(ht.building)) {
+                    damageSuperBuilding(ht, FIGHTER_PLANE_CONFIG.superBuildingDamage);
+                  }
+                }
+              }
+            }
+            hitEnemyIds.forEach((eid) => {
+              const en = nations[eid];
+              if (en && !en.isEliminated) {
+                en.troops = Math.max(0, en.troops - FIGHTER_PLANE_CONFIG.tileTroopDamage);
+                applyCasualties(en, FIGHTER_PLANE_CONFIG.tileTroopDamage);
+              }
+            });
+            offscreenTerritoryDirtyRef.current = true;
+            data.particles.push({
+              x: tgt.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              y: tgt.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              color: '#38bdf8', size: 0, life: 45, maxLife: 45, vx: 0, vy: -0.8,
+              type: 'FLOAT_TEXT',
+              text: '✈️ Không kích trúng mục tiêu!'
+            });
+          }
+        });
+        if (finishedPlanes.length > 0) {
+          const donePlaneSet = new Set(finishedPlanes);
+          data.fighterPlanes = data.fighterPlanes.filter((_: FighterPlane, idx: number) => !donePlaneSet.has(idx));
+        }
+      }
+
       // Cập nhật tên lửa đang bay (Flying Missiles)
       const finishedMissiles: number[] = [];
       data.flyingMissiles = data.flyingMissiles || [];
@@ -2142,12 +2539,18 @@ export default function App() {
             return;
           }
 
+          const firingNation = nations[m.fromNation];
+          const atomEffective = m.type === 'ATOM' && !m.isGeneralBarrage
+            ? getAtomEffectiveStats(firingNation)
+            : null;
+          const effectiveRadius = atomEffective ? atomEffective.radius : cfg.radius;
+
           // Hàm nổ vụ nổ hạt nhân chuẩn 4 bước: (1) Lưu chủ đất -> (2) Trừ quân -> (3) Xóa/Cập nhật chủ đất -> (4) Kích hoạt vẽ lại bản đồ
           const triggerExplosion = (cx: number, cy: number, radius: number, isMirvSub: boolean = false) => {
             soundManager.playThunder();
 
             // Bước 1: Lưu thông tin các ô và chủ đất (owner) của các ô bị ảnh hưởng TRƯỚC KHI bị xóa
-            const affectedTiles: { tile: Tile; oldOwner: number }[] = [];
+            const affectedTiles: { tile: Tile; oldOwner: number; dist: number }[] = [];
             const affectedNationIds = new Set<number>();
 
             for (let dy = -Math.ceil(radius); dy <= Math.ceil(radius); dy++) {
@@ -2158,7 +2561,7 @@ export default function App() {
                   const hitTile = tiles[ty][tx];
                   const dist = Math.hypot(dx, dy);
                   if (dist <= radius && hitTile.terrain !== 'WATER') {
-                    affectedTiles.push({ tile: hitTile, oldOwner: hitTile.owner });
+                    affectedTiles.push({ tile: hitTile, oldOwner: hitTile.owner, dist });
                     if (hitTile.owner > 0) {
                       affectedNationIds.add(hitTile.owner);
                     }
@@ -2172,28 +2575,112 @@ export default function App() {
               affectedNationIds.add(targetTile.owner);
             }
 
-            // Bước 2: Thực hiện trừ quân bị thiệt hại của các quốc gia bị trúng bom TRƯỚC KHI xóa chủ đất
-            const troopLoss = m.type === 'HYDRO' ? 800 : m.type === 'MIRV' ? 200 : 350;
+            // Bước 2: Thực hiện trừ quân bị thiệt hại của các quốc gia bị trúng bom TRƯỚC KHI xóa chủ đất (Pháo Đài Tối Thượng 80%, hoặc 90% nếu có Phòng Thủ Tối Thượng 2, KHÔNG cộng dồn)
+            const troopLoss = m.type === 'HYDRO'
+              ? 800
+              : m.type === 'MIRV'
+              ? 200
+              : atomEffective
+              ? atomEffective.troopLoss
+              : 350;
+            let shieldTriggered = false;
             affectedNationIds.forEach(nationId => {
               const hitNation = nations[nationId];
               if (hitNation && !hitNation.isEliminated) {
-                hitNation.troops = Math.max(0, hitNation.troops - troopLoss);
-                applyCasualties(hitNation, troopLoss);
+                const centerProt = getSuperMissileProtectionForTile(tiles, cx, cy, nationId, hitNation);
+                const targetProt = targetTile.owner === nationId
+                  ? getSuperMissileProtectionForTile(tiles, targetTile.x, targetTile.y, nationId, hitNation)
+                  : 0;
+                const prot = Math.max(centerProt, targetProt);
+                if (prot > 0) shieldTriggered = true;
+                const finalTroopLoss = Math.round(troopLoss * (1 - prot));
+                hitNation.troops = Math.max(0, hitNation.troops - finalTroopLoss);
+                applyCasualties(hitNation, finalTroopLoss);
               }
             });
 
-            // Bước 3: Cập nhật trạng thái các ô bị nổ (xóa chủ đất thành 0, phá công trình, tạo đất cháy)
-            affectedTiles.forEach(({ tile }) => {
+            if (shieldTriggered && !isMirvSub) {
+              data.particles.push({
+                x: cx * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                y: cy * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2 - 14,
+                color: '#38bdf8', size: 0, life: 55, maxLife: 55, vx: 0, vy: -0.9,
+                type: 'FLOAT_TEXT',
+                text: '🛡️ Pháo Đài Tối Thượng cản sát thương tên lửa!'
+              });
+            }
+
+            // Bước 3: Cập nhật trạng thái các ô bị nổ
+            const baseSuperDmg = m.type === 'HYDRO'
+              ? 250
+              : m.type === 'MIRV'
+              ? 90
+              : atomEffective
+              ? atomEffective.superBuildingDmg
+              : 125;
+
+            const attackerNation = m.fromNation > 0 ? nations[m.fromNation] : undefined;
+            const upgradedHydro = hasUpgradedHydro(attackerNation);
+
+            affectedTiles.forEach(({ tile, oldOwner, dist }) => {
+              const oldOwnerNation = oldOwner > 0 ? nations[oldOwner] : undefined;
+              const tileProt = oldOwner > 0 ? getSuperMissileProtectionForTile(tiles, tile.x, tile.y, oldOwner, oldOwnerNation) : 0;
+
+              // Tên lửa Hydro nâng cấp (Quân Sự 1): để lại Vùng Cháy 15s
+              if (m.type === 'HYDRO' && upgradedHydro) {
+                tile.burnZoneTimer = BURN_ZONE_DURATION_SECONDS;
+                tile.burnZoneOwner = m.fromNation;
+              }
+              // Bom Nguyên Tử nâng cấp (ATOM Quân Sự 2): để lại Vùng Phóng Xạ 50s
+              if (atomEffective?.isUpgraded && atomEffective.radiationDuration > 0) {
+                tile.radiationTimer = atomEffective.radiationDuration;
+                tile.radiationOwner = m.fromNation;
+              }
+
+              if (isSuperBuilding(tile.building)) {
+                const finalDmg = Math.max(8, Math.round(baseSuperDmg * (1 - tileProt)));
+                const dmgRes = damageSuperBuilding(tile, finalDmg);
+                if (dmgRes === 'DESTROYED') {
+                  tile.owner = 0;
+                  tile.scorchedTimer = 90;
+                  data.particles.push({
+                    x: tile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                    y: tile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                    color: '#ef4444', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.8,
+                    type: 'FLOAT_TEXT',
+                    text: '💥 Siêu Công Trình bị phá hủy!'
+                  });
+                } else {
+                  tile.scorchedTimer = Math.max(tile.scorchedTimer || 0, 15);
+                }
+                return;
+              }
+              if (tileProt > 0 && Math.random() >= 1 - tileProt) {
+                tile.scorchedTimer = Math.max(tile.scorchedTimer || 0, 10);
+                return;
+              }
+
+              // Bom Nguyên Tử nâng cấp xóa sạch vùng lõi (<= 3.2 ô), rìa ngoài phá công trình & nhiễm phóng xạ
+              if (atomEffective?.isUpgraded && dist > 3.2) {
+                tile.building = 'NONE';
+                tile.buildingLevel = 1;
+                tile.isAdvancedExtractor = false;
+                tile.scorchedTimer = Math.max(tile.scorchedTimer || 0, 50);
+                return;
+              }
               tile.building = 'NONE';
               tile.buildingLevel = 1;
+              tile.isAdvancedExtractor = false;
               tile.owner = 0; // Trở thành đất hoang trung lập
-              tile.scorchedTimer = 90; // Vùng nhiễm phóng xạ 90s
+              tile.scorchedTimer = 90; // Vùng đất cháy 90s
             });
 
             // Bước 4: Kích hoạt vẽ lại toàn bộ bản đồ ngay lập tức & Rung màn hình + SFX
             offscreenTerrainDirtyRef.current = true;
             offscreenTerritoryDirtyRef.current = true;
-            screenShakeRef.current = { intensity: m.type === 'HYDRO' ? 18 : m.type === 'MIRV' ? 14 : 12, duration: 35 };
+            screenShakeRef.current = {
+              intensity: m.type === 'HYDRO' || atomEffective?.isUpgraded ? 18 : m.type === 'MIRV' ? 14 : 12,
+              duration: 35,
+            };
             soundManager.playNukeExplosion();
 
             // Hiệu ứng nổ riêng cho từng loại tên lửa (vẽ trong useGameRenderer)
@@ -2204,7 +2691,7 @@ export default function App() {
               radiusPx: radius * TILE_PIXEL_SIZE,
               kind: isMirvSub ? 'MIRV' : m.type,
               start: performance.now(),
-              duration: m.type === 'HYDRO' ? 1800 : 1200
+              duration: m.type === 'HYDRO' || atomEffective?.isUpgraded ? 1800 : 1200
             });
 
             // Hiệu ứng vụ nổ lan ra
@@ -2213,13 +2700,17 @@ export default function App() {
               y: cy * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
               color: cfg.color, size: 0, life: 60, maxLife: 60, vx: 0, vy: -1.0,
               type: 'FLOAT_TEXT',
-              text: isMirvSub ? `💥 MIRV ĐẦU ĐẠN NỔ!` : `💥 VỤ NỔ ${cfg.name}!`
+              text: isMirvSub
+                ? `💥 MIRV ĐẦU ĐẠN NỔ!`
+                : atomEffective?.isUpgraded
+                ? `☢️ NGUYÊN TỬ NÂNG CẤP NỔ!`
+                : `💥 VỤ NỔ ${cfg.name}!`
             });
           };
 
           if (m.type === 'MIRV') {
             // MIRV rải 12 đầu đạn con phân tán ngẫu nhiên trong bán kính
-            triggerExplosion(targetTile.x, targetTile.y, cfg.radius, false);
+            triggerExplosion(targetTile.x, targetTile.y, effectiveRadius, false);
             const subCount = cfg.mirvCount || 12;
             const spread = cfg.mirvSpreadRadius || 9.0;
             for (let s = 0; s < subCount; s++) {
@@ -2230,12 +2721,12 @@ export default function App() {
               if (subX >= 0 && subX < size && subY >= 0 && subY < size) {
                 const subTile = tiles[subY][subX];
                 if (subTile && subTile.terrain !== 'WATER') {
-                  triggerExplosion(subTile.x, subTile.y, cfg.radius, true);
+                  triggerExplosion(subTile.x, subTile.y, effectiveRadius, true);
                 }
               }
             }
           } else {
-            triggerExplosion(targetTile.x, targetTile.y, cfg.radius, false);
+            triggerExplosion(targetTile.x, targetTile.y, effectiveRadius, false);
           }
 
           // Đánh dấu redraw canvas sau vụ nổ
@@ -2648,7 +3139,7 @@ export default function App() {
     const now = Date.now();
     const last = lastTapRef.current;
     const isDouble = (now - last.time < 500) && Math.max(Math.abs(last.x - mapX), Math.abs(last.y - mapY)) <= 2;
-    if (isDouble && targetTile.owner !== 1 && targetTile.terrain !== 'WATER' && !missileAimingModeRef.current) {
+    if (isDouble && targetTile.owner !== 1 && targetTile.terrain !== 'WATER' && !missileAimingModeRef.current && !fighterAimingModeRef.current) {
       if (smartAttackTile(targetTile)) {
         setSelectedTile(null);
         selectedTileRef.current = null;
@@ -2663,19 +3154,65 @@ export default function App() {
       return;
     }
 
+    // Nếu đang ở chế độ ngắm không kích Máy Bay Chiến Đấu (Quân Sự Tối Thượng 3)
+    if (fighterAimingModeRef.current) {
+      const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
+      const nation = nations[myNation];
+      if (!nation || !canLaunchFighterPlane(nation)) {
+        setFighterAimingMode(false);
+        fighterAimingModeRef.current = false;
+        showMissileToast('Cần Quân Sự Tối Thượng Cấp 3 để xuất kích Máy Bay Chiến Đấu!');
+        return;
+      }
+      if (targetTile.terrain === 'WATER' || targetTile.owner === myNation) {
+        showMissileToast('Hãy chạm vào đất liền ngoài lãnh thổ của bạn!');
+        return;
+      }
+      data.fighterPlanes = data.fighterPlanes || [];
+      if (countActiveFighterPlanes(data.fighterPlanes, myNation) >= MAX_FIGHTERS_PER_NATION) {
+        showMissileToast(`Đã đạt tối đa ${MAX_FIGHTERS_PER_NATION} Máy Bay Chiến Đấu đang bay!`);
+        setFighterAimingMode(false);
+        fighterAimingModeRef.current = false;
+        return;
+      }
+      if (nation.gold < FIGHTER_PLANE_CONFIG.goldCost || (nation.oil || 0) < FIGHTER_PLANE_CONFIG.oilCost) {
+        showMissileToast(`Cần ${FIGHTER_PLANE_CONFIG.goldCost} Vàng và ${FIGHTER_PLANE_CONFIG.oilCost} Dầu để xuất kích!`);
+        return;
+      }
+      nation.gold -= FIGHTER_PLANE_CONFIG.goldCost;
+      nation.oil = Math.max(0, (nation.oil || 0) - FIGHTER_PLANE_CONFIG.oilCost);
+      data.fighterPlanes.push({
+        id: Math.random().toString(),
+        nationId: myNation,
+        sourceX: nation.capitalX,
+        sourceY: nation.capitalY,
+        targetX: targetTile.x,
+        targetY: targetTile.y,
+        progress: 0,
+        speed: FIGHTER_PLANE_CONFIG.speed,
+      });
+      setFighterAimingMode(false);
+      fighterAimingModeRef.current = false;
+      soundManager.playAttack();
+      showMissileToast(`✈️ Máy Bay Chiến Đấu đã cất cánh tới (${targetTile.x}, ${targetTile.y})!`);
+      return;
+    }
+
     // Nếu đang ở chế độ ngắm bắn tên lửa
     const aimingType = missileAimingModeRef.current;
     if (aimingType) {
       const cfg = MISSILE_CONFIG[aimingType];
       const player = nations[1];
+      const effCost = getMissileEffectiveCost(aimingType, player);
+      const missileGoldCost = effCost.cost;
 
       // 1. Kiểm tra đủ vàng & tài nguyên không
-      if (player.gold < cfg.cost) {
-        showMissileToast(`Thiếu ${formatPopulation(cfg.cost - player.gold)} Vàng để phóng ${cfg.name}!`);
+      if (player.gold < missileGoldCost) {
+        showMissileToast(`Thiếu ${formatPopulation(missileGoldCost - player.gold)} Vàng để phóng ${cfg.name}!`);
         return;
       }
       if (!canAffordMissileResources(player, aimingType)) {
-        const rc = getMissileResourceCost(aimingType);
+        const rc = getMissileResourceCost(aimingType, player);
         showMissileToast(`Thiếu tài nguyên để phóng ${cfg.name} (cần ${rc.oil} Dầu, ${rc.minerals} Khoáng)!`);
         return;
       }
@@ -2712,7 +3249,7 @@ export default function App() {
       }
 
       // 4. Đúng điều kiện: Trừ vàng & tài nguyên, đặt hồi chiêu bệ phóng, tạo tên lửa bay
-      player.gold -= cfg.cost;
+      player.gold -= missileGoldCost;
       payMissileResources(player, aimingType);
       bestSilo.missileCooldown = MISSILE_SETTINGS.COOLDOWN_SECONDS;
 
@@ -2884,11 +3421,50 @@ export default function App() {
       const data = gameDataRef.current;
       const tgt = data.tiles[action.targetY]?.[action.targetX];
       if (tgt) {
-        tgt.building = action.buildingType;
-        tgt.buildingLevel = (tgt.buildingLevel || 1) + (action.count || 1);
+        if (isSuperBuilding(action.buildingType)) {
+          const builder = data.nations[action.nationId];
+          if (!builder || !hasUnlockedSuperBuildings(builder) || action.count !== 1) return;
+          const owned = countNationSuperBuildings(data.tiles, action.nationId);
+          if (owned.byType[action.buildingType] >= SUPER_BUILDING_CONFIG.MAX_PER_TYPE) return;
+          if (owned.total >= SUPER_BUILDING_CONFIG.MAX_TOTAL_PER_NATION) return;
+          initSuperBuildingOnTile(tgt, action.buildingType);
+        } else {
+          tgt.building = action.buildingType;
+          tgt.buildingLevel = (tgt.buildingLevel || 1) + (action.count || 1);
+        }
         offscreenTerritoryDirtyRef.current = true;
         fogBaseDirtyRef.current = true;
         dirtyTerritoryTilesRef.current.push({ x: tgt.x, y: tgt.y });
+      }
+    };
+
+    multiplayerClient.onActionTech = (action) => {
+      const data = gameDataRef.current;
+      const nat = data.nations?.[action.nationId];
+      if (nat && action.techLevels) {
+        nat.techLevels = {
+          economy: Math.max(nat.techLevels?.economy || 0, action.techLevels.economy || 0),
+          military: Math.max(nat.techLevels?.military || 0, action.techLevels.military || 0),
+          defense: Math.max(nat.techLevels?.defense || 0, action.techLevels.defense || 0),
+        };
+      }
+    };
+
+    multiplayerClient.onActionSupremeTech = (action) => {
+      const data = gameDataRef.current;
+      const nat = data.nations?.[action.nationId];
+      if (nat) {
+        ensureNationSupremeTech(nat);
+        if (action.supremeTechUnlocked) {
+          nat.supremeTechUnlocked = true;
+        }
+        if (action.supremeTechLevels) {
+          nat.supremeTechLevels = {
+            economy: Math.max(nat.supremeTechLevels?.economy || 0, action.supremeTechLevels.economy || 0),
+            military: Math.max(nat.supremeTechLevels?.military || 0, action.supremeTechLevels.military || 0),
+            defense: Math.max(nat.supremeTechLevels?.defense || 0, action.supremeTechLevels.defense || 0),
+          };
+        }
       }
     };
 
@@ -2902,10 +3478,30 @@ export default function App() {
         if (n) {
           n.gold = nSync.gold;
           n.goldIncome = nSync.goldIncome;
+          if (typeof nSync.oil === 'number' && n.id !== myNationIdRef.current) {
+            n.oil = nSync.oil;
+          }
+          if (typeof nSync.minerals === 'number' && n.id !== myNationIdRef.current) {
+            n.minerals = nSync.minerals;
+          }
           n.troops = nSync.troops;
           n.maxTroops = nSync.maxTroops;
           n.population = nSync.population;
           n.territoryCount = nSync.territoryCount;
+          if (nSync.techLevels && n.id !== myNationIdRef.current) {
+            n.techLevels = nSync.techLevels;
+          }
+          if (nSync.supremeTechUnlocked) {
+            n.supremeTechUnlocked = true;
+          }
+          if (nSync.supremeTechLevels && n.id !== myNationIdRef.current) {
+            ensureNationSupremeTech(n);
+            n.supremeTechLevels = {
+              economy: Math.max(n.supremeTechLevels?.economy || 0, nSync.supremeTechLevels.economy || 0),
+              military: Math.max(n.supremeTechLevels?.military || 0, nSync.supremeTechLevels.military || 0),
+              defense: Math.max(n.supremeTechLevels?.defense || 0, nSync.supremeTechLevels.defense || 0),
+            };
+          }
           const wasElim = n.isEliminated;
           n.isEliminated = nSync.isEliminated;
           if (!wasElim && n.isEliminated) {
@@ -2967,13 +3563,34 @@ export default function App() {
       setTimeout(() => setMultiplayerBanner(null), 6000);
     };
 
+    multiplayerClient.onError = (message) => {
+      const data = gameDataRef.current;
+      const pending = pendingSupremeResearchRef.current;
+      if (pending && data?.researching?.techId === pending.techId) {
+        const myNat = data.nations?.[myNationIdRef.current || 1];
+        if (myNat) {
+          myNat.gold = (myNat.gold || 0) + pending.gold;
+          myNat.oil = (myNat.oil || 0) + pending.oil;
+          myNat.minerals = (myNat.minerals || 0) + pending.minerals;
+        }
+        data.researching = null;
+        pendingSupremeResearchRef.current = null;
+        refreshHudStats();
+      }
+      setMultiplayerBanner(`⚠️ ${message}`);
+      setTimeout(() => setMultiplayerBanner(prev => (prev === `⚠️ ${message}` ? null : prev)), 4500);
+    };
+
     return () => {
       multiplayerClient.onActionAttack = null;
       multiplayerClient.onActionBuild = null;
+      multiplayerClient.onActionTech = null;
+      multiplayerClient.onActionSupremeTech = null;
       multiplayerClient.onStateSync = null;
       multiplayerClient.onRoomUpdated = null;
       multiplayerClient.onConnectionChange = null;
       multiplayerClient.onPlayerDisconnected = null;
+      multiplayerClient.onError = null;
     };
   }, [isMultiplayer]);
 
@@ -3023,7 +3640,9 @@ export default function App() {
       if (ownerNation && cluster.some(t => t.x === ownerNation.capitalX && t.y === ownerNation.capitalY)) continue;
       cluster.forEach(t => {
         t.owner = fromNation;
-        if (t.building && t.building !== 'NONE') {
+        if (isSuperBuilding(t.building)) {
+          handleSuperBuildingCapture(t, fromNation, tiles, 0);
+        } else if (t.building && t.building !== 'NONE') {
           if (!t.buildingLevel) t.buildingLevel = 1;
           t.inactiveTimer = CAPTURED_BUILDING_DELAY_SECONDS;
         }
@@ -3052,32 +3671,50 @@ export default function App() {
     const attacker = data.nations[wave.fromNation];
     const defender = data.nations[tgt.owner];
 
+    // Kiểm tra kỹ năng "Đột Kích Bóng Đêm" của Đại Tướng Dạ Ảnh (bỏ qua phòng thủ địch, tốn ít hơn 50% quân)
+    const attackerHasShadowRaid = attacker?.general?.skillId === 'SHADOW_RAID' && (attacker.general.skillActiveTimer || 0) > 0;
+
     let cost = tgt.terrain === 'MOUNTAIN' ? 12 : 5;
     if (tgt.building === 'FORTRESS' && !(tgt.inactiveTimer && tgt.inactiveTimer > 0)) {
       cost = 18 + ((tgt.buildingLevel || 1) - 1) * 8;
+    } else if (tgt.building === 'BUNKER' && !(tgt.inactiveTimer && tgt.inactiveTimer > 0)) {
+      cost = 14 + ((tgt.buildingLevel || 1) - 1) * 4;
+    } else if (isSuperBuilding(tgt.building) && !(tgt.inactiveTimer && tgt.inactiveTimer > 0)) {
+      const sSt = getSuperBuildingState(tgt);
+      if (sSt === 'ACTIVE' || sSt === 'DAMAGED') {
+        if (tgt.building === 'SUPREME_FORTRESS') {
+          cost = sSt === 'ACTIVE' ? 32 : 20;
+        } else {
+          cost = sSt === 'ACTIVE' ? 22 : 14;
+        }
+      }
     }
 
     if (tgt.scorchedTimer && tgt.scorchedTimer > 0) {
       cost += 5;
     }
 
-    // Kiểm tra kỹ năng "Đột Kích Bóng Đêm" của Đại Tướng Dạ Ảnh (bỏ qua phòng thủ địch, tốn ít hơn 50% quân)
-    const attackerHasShadowRaid = attacker?.general?.skillId === 'SHADOW_RAID' && (attacker.general.skillActiveTimer || 0) > 0;
-
-    // Hiệu ứng Pháo Đài (FORTRESS) xung quanh trong bán kính 4 ô (Bỏ qua nếu kẻ địch có Đột Kích Bóng Đêm)
+    // Hiệu ứng Pháo Đài (FORTRESS) xung quanh trong bán kính 4 ô & Lô Cốt (BUNKER) kề bên 1.5 ô
     if (!attackerHasShadowRaid && tgt.owner > 0) {
       const fortressBonuses: number[] = [];
+      let hasNearbyBunker = false;
       const size = data.tiles.length;
       const fortressRadius = 4.0;
 
       for (let y = 0; y < size; y++) {
         for (let x = 0; x < size; x++) {
           const ft = data.tiles[y][x];
-          if (ft && ft.owner === tgt.owner && ft.building === 'FORTRESS' && !(ft.inactiveTimer && ft.inactiveTimer > 0)) {
-            const dist = Math.hypot(ft.x - tgt.x, ft.y - tgt.y);
-            if (dist <= fortressRadius) {
-              const fLvl = ft.buildingLevel || 1;
-              fortressBonuses.push(0.20 * fLvl);
+          if (ft && ft.owner === tgt.owner && !(ft.inactiveTimer && ft.inactiveTimer > 0)) {
+            if (ft.building === 'FORTRESS') {
+              const dist = Math.hypot(ft.x - tgt.x, ft.y - tgt.y);
+              if (dist <= fortressRadius) {
+                const fLvl = ft.buildingLevel || 1;
+                fortressBonuses.push(0.20 * fLvl);
+              }
+            } else if (!hasNearbyBunker && ft.building === 'BUNKER') {
+              if (Math.hypot(ft.x - tgt.x, ft.y - tgt.y) <= 1.5) {
+                hasNearbyBunker = true;
+              }
             }
           }
         }
@@ -3092,6 +3729,8 @@ export default function App() {
           currentWeight *= 0.5;
         }
         cost = Math.round(cost * totalMultiplier);
+      } else if (hasNearbyBunker) {
+        cost = Math.round(cost * 1.15);
       }
     }
 
@@ -3126,6 +3765,10 @@ export default function App() {
       const defChoice = defender.techChoices?.defense;
       const defMult = (defLvl === 3 && defChoice === 'A') ? 1.25 : (defLvl >= 2) ? 1.18 : 1.10;
       cost = Math.round(cost * defMult);
+    }
+    // Công nghệ Tối Thượng Phòng Thủ Cấp 1: Ô biên giới nhận +25% phòng thủ (không cộng dồn)
+    if (!attackerHasShadowRaid && defender) {
+      cost = Math.round(cost * getSupremeBorderDefenseMult(defender, tgt));
     }
     if (defender && tgt.owner > 0) {
       const cache = tileCountCacheRef.current;
@@ -3171,6 +3814,22 @@ export default function App() {
         tgt.building = 'NONE';
         tgt.buildingLevel = 1;
         tgt.inactiveTimer = 0;
+      } else if (isSuperBuilding(tgt.building)) {
+        const capOutcome = handleSuperBuildingCapture(tgt, wave.fromNation, data.tiles, 15);
+        if (attacker.isPlayer || defender?.isPlayer) {
+          data.particles.push({
+            x: tgt.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+            y: tgt.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2 - 12,
+            color: capOutcome === 'TRANSFERRED' ? '#fbbf24' : '#ef4444',
+            size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.7,
+            type: 'FLOAT_TEXT',
+            text: capOutcome === 'TRANSFERRED'
+              ? `🏛️ Chiếm được ${BUILDING_INFO[prevBuilding as Exclude<BuildingType, 'NONE'>].name}!`
+              : capOutcome === 'DESTROYED_LIMIT'
+              ? '💥 Siêu Công Trình sụp đổ do vượt giới hạn!'
+              : '💥 Siêu Công Trình đã bị phá hủy!'
+          });
+        }
       } else {
         // Giữ nguyên công trình và cấp, nhưng chưa hoạt động vài giây
         if (!tgt.buildingLevel) tgt.buildingLevel = 1;
@@ -3498,6 +4157,20 @@ export default function App() {
         }
       }
     } else {
+      // Đợt công không đủ quân vượt qua phòng thủ: vẫn gây hư hại cho Siêu Công Trình nếu đánh tập trung
+      if (isSuperBuilding(tgt.building) && wave.troops >= Math.max(8, cost * 0.35)) {
+        const structDmg = Math.min(42, Math.max(12, Math.round((wave.troops / Math.max(1, cost)) * 28)));
+        const dmgRes = damageSuperBuilding(tgt, structDmg);
+        if (dmgRes === 'DESTROYED') {
+          data.particles.push({
+            x: tgt.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+            y: tgt.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+            color: '#ef4444', size: 0, life: 55, maxLife: 55, vx: 0, vy: -0.8,
+            type: 'FLOAT_TEXT',
+            text: '💥 Siêu Công Trình bị phá hủy!'
+          });
+        }
+      }
       // Đợt công không đủ quân vượt qua phòng thủ: Đại Tướng nhận sát thương từ phòng tuyến địch
       if (wave.hasGeneral && attacker.general) {
         const repelledDmg = Math.min(250, Math.max(30, Math.round(cost * 0.85)));
@@ -3570,8 +4243,85 @@ export default function App() {
       return;
     }
 
+    // Xử lý xây Siêu Công Trình (yêu cầu mở khóa 3 nhánh công nghệ cấp 3, tối đa 1/loại & 2/quốc gia, mất 60s xây dựng)
+    if (isSuperBuilding(buildingType)) {
+      const counts = createEmptyBuildingCounts();
+      const size = data.tiles.length;
+      let fallbackTile: Tile | null = null;
+      for (let r = 0; r < size; r++) {
+        for (let c = 0; c < size; c++) {
+          const t = data.tiles[r]?.[c];
+          if (!t || t.owner !== myNation) continue;
+          if (t.building !== 'NONE') {
+            counts[t.building] = (counts[t.building] || 0) + (t.buildingLevel || 1);
+          } else if (!fallbackTile) {
+            fallbackTile = t;
+          }
+        }
+      }
+      const check = canBuildSuperBuilding(player, buildingType, counts);
+      if (!check.ok) {
+        data.particles.push({
+          x: (targetTile?.x ?? player.capitalX) * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+          y: (targetTile?.y ?? player.capitalY) * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+          color: '#ef4444', size: 0, life: 45, maxLife: 45, vx: 0, vy: -0.6,
+          type: 'FLOAT_TEXT', text: check.reason || 'Không thể xây Siêu Công Trình!'
+        });
+        return;
+      }
+      const chosenTile = (targetTile && targetTile.owner === myNation && !isSuperBuilding(targetTile.building))
+        ? targetTile
+        : fallbackTile;
+      if (!chosenTile) {
+        data.particles.push({
+          x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+          y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+          color: '#ef4444', size: 0, life: 40, maxLife: 40, vx: 0, vy: -0.6,
+          type: 'FLOAT_TEXT', text: 'Hãy chọn ô đất hợp lệ không có Siêu Công Trình khác!'
+        });
+        return;
+      }
+      const superCost = BUILDING_INFO[buildingType].baseCost;
+      player.gold -= superCost;
+      initSuperBuildingOnTile(chosenTile, buildingType);
+      data.stats.buildingsCount += 1;
+      soundManager.playBuild();
+      setIsBuildOpen(false);
+      offscreenTerritoryDirtyRef.current = true;
+      fogBaseDirtyRef.current = true;
+      dirtyTerritoryTilesRef.current.push({ x: chosenTile.x, y: chosenTile.y });
+      if (isMultiplayerRef.current) {
+        multiplayerClient.sendBuild(chosenTile.x, chosenTile.y, buildingType, 1);
+      }
+      setSelectedTile({ ...chosenTile });
+      selectedTileRef.current = { ...chosenTile };
+      data.particles.push({
+        x: chosenTile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        y: chosenTile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        color: '#38bdf8', size: 0, life: 55, maxLife: 55, vx: 0, vy: -0.7,
+        type: 'FLOAT_TEXT',
+        text: `🏗️ Đang xây ${BUILDING_INFO[buildingType].name} (${SUPER_BUILDING_CONFIG.BUILD_TIME_SECONDS}s)...`
+      });
+      return;
+    }
+
+    // Kiểm tra mở khóa & giới hạn tối đa Lô Cốt (BUNKER)
+    if (buildingType === 'BUNKER') {
+      if (!canBuildBunker(player)) {
+        showMissileToast('Cần Phòng Thủ Tối Thượng Cấp 3 để xây Lô Cốt!');
+        return;
+      }
+      const existingBunkers = countNationBunkers(data.tiles, myNation);
+      const room = Math.max(0, MAX_BUNKERS_PER_NATION - existingBunkers);
+      if (room <= 0) {
+        showMissileToast(`Đã đạt giới hạn tối đa ${MAX_BUNKERS_PER_NATION} Lô Cốt!`);
+        return;
+      }
+      count = Math.min(count, room);
+    }
+
     const baseCost = BUILDING_INFO[buildingType as Exclude<BuildingType, 'NONE'>].baseCost;
-    // Giảm chi phí xây dựng: Kinh tế Cấp 2 (0.92) và Cấp 3B Thợ Xây (giảm thêm 20%: 0.92 * 0.80 = 0.736)
+    // Giảm chi phí xây dựng: Kinh tế Cấp 2 (0.92), Cấp 3B Thợ Xây (0.80)
     let discount = 1.0;
     if (player.techLevels?.economy >= 2) discount *= 0.92;
     if (player.techLevels?.economy === 3 && player.techChoices?.economy === 'B') discount *= 0.80;
@@ -3624,7 +4374,7 @@ export default function App() {
     let currentExistingCount = 0;
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
-        if (data.tiles[y][x].owner === 1 && data.tiles[y][x].building === buildingType) {
+        if (data.tiles[y][x].owner === myNation && data.tiles[y][x].building === buildingType) {
           currentExistingCount += (data.tiles[y][x].buildingLevel || 1);
         }
       }
@@ -3673,6 +4423,7 @@ export default function App() {
         // Đặt công trình mới
         t.building = buildingType;
         t.buildingLevel = 1;
+        t.isAdvancedExtractor = false;
         remainingToPlace--;
 
         if (remainingToPlace > 0 && t === targetTile) {
@@ -3987,6 +4738,70 @@ export default function App() {
             gameMode={gameMode}
             setIsCreativeOpen={setIsCreativeOpen}
             setIsMarketOpen={setIsMarketOpen}
+            fighterAimingMode={fighterAimingMode}
+            onToggleFighterAiming={() => {
+              const next = !fighterAimingMode;
+              if (next) {
+                setMissileAimingMode(null);
+                missileAimingModeRef.current = null;
+              }
+              setFighterAimingMode(next);
+              fighterAimingModeRef.current = next;
+              if (next) {
+                showMissileToast('✈️ Hãy chạm vào mục tiêu địch trên bản đồ để xuất kích Máy Bay Chiến Đấu!');
+              }
+            }}
+            onLaunchFighterAtTile={(tile) => {
+              const data = gameDataRef.current;
+              const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
+              const nation = data.nations?.[myNation];
+              if (!nation || !canLaunchFighterPlane(nation)) return;
+              data.fighterPlanes = data.fighterPlanes || [];
+              if (countActiveFighterPlanes(data.fighterPlanes, myNation) >= MAX_FIGHTERS_PER_NATION) {
+                showMissileToast(`Đã đạt tối đa ${MAX_FIGHTERS_PER_NATION} Máy Bay Chiến Đấu đang bay!`);
+                return;
+              }
+              if (nation.gold < FIGHTER_PLANE_CONFIG.goldCost || (nation.oil || 0) < FIGHTER_PLANE_CONFIG.oilCost) {
+                showMissileToast(`Cần ${FIGHTER_PLANE_CONFIG.goldCost} Vàng và ${FIGHTER_PLANE_CONFIG.oilCost} Dầu để xuất kích!`);
+                return;
+              }
+              nation.gold -= FIGHTER_PLANE_CONFIG.goldCost;
+              nation.oil = Math.max(0, (nation.oil || 0) - FIGHTER_PLANE_CONFIG.oilCost);
+              data.fighterPlanes.push({
+                id: Math.random().toString(),
+                nationId: myNation,
+                sourceX: nation.capitalX,
+                sourceY: nation.capitalY,
+                targetX: tile.x,
+                targetY: tile.y,
+                progress: 0,
+                speed: FIGHTER_PLANE_CONFIG.speed,
+              });
+              soundManager.playAttack();
+              showMissileToast(`✈️ Máy Bay Chiến Đấu đã cất cánh tới (${tile.x}, ${tile.y})!`);
+            }}
+            onUpgradeAdvancedExtractor={(tile) => {
+              const data = gameDataRef.current;
+              const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
+              const nation = data.nations?.[myNation];
+              if (!nation) return;
+              const res = upgradeAdvancedExtractor(tile, nation, data.tiles);
+              if (!res.ok) {
+                showMissileToast(res.message);
+                return;
+              }
+              soundManager.playBuild();
+              offscreenTerritoryDirtyRef.current = true;
+              setSelectedTile({ ...tile });
+              selectedTileRef.current = { ...tile };
+              data.particles.push({
+                x: tile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                y: tile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                color: '#fbbf24', size: 0, life: 45, maxLife: 45, vx: 0, vy: -0.7,
+                type: 'FLOAT_TEXT',
+                text: res.message,
+              });
+            }}
             onProposeTruce={(id) => {
               const data = gameDataRef.current;
               const player = data.nations[1];
@@ -4181,18 +4996,19 @@ export default function App() {
         onFocusNation={focusOnNation}
       />
       {(() => {
-        const player = gameDataRef.current.nations[1];
+        const myId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+        const player = gameDataRef.current.nations[myId];
         const activeBuildTarget = selectedTile ||
           (player ? gameDataRef.current.tiles[player.capitalY]?.[player.capitalX] : null);
 
-        const buildingCounts: Record<BuildingType, number> = { NONE: 0, CITY: 0, BARRACKS: 0, FORTRESS: 0, PORT: 0, MISSILE_SILO: 0, AIR_DEFENSE: 0, LASER: 0, OIL_RIG: 0, MINE: 0 };
+        const buildingCounts: Record<BuildingType, number> = createEmptyBuildingCounts();
         if (isBuildOpen) {
           const tiles = gameDataRef.current.tiles;
           for (let r = 0; r < tiles.length; r++) {
             const row = tiles[r];
             for (let c = 0; c < row.length; c++) {
               const t = row[c];
-              if (t.owner === 1 && t.building !== 'NONE') {
+              if (t.owner === myId && t.building !== 'NONE') {
                 buildingCounts[t.building] = (buildingCounts[t.building] || 0) + (t.buildingLevel || 1);
               }
             }
@@ -4211,26 +5027,51 @@ export default function App() {
         );
       })()}
 
-      <TechModal
-        isOpen={isTechOpen}
-        onClose={() => setIsTechOpen(false)}
-        playerNation={gameDataRef.current.nations[1] || {}}
-        researching={gameDataRef.current.researching}
-        onStartResearch={(tech) => {
-          const data = gameDataRef.current;
-          const player = data.nations[1];
-          const territoryCount = player.territoryCount || 0;
-          const actualCost = Math.round(tech.cost * (1 + territoryCount / 150));
-          const rc = getTechResourceCost(tech.id);
-          if (player.gold >= actualCost && (player.oil || 0) >= rc.oil && (player.minerals || 0) >= rc.minerals) {
-            player.gold -= actualCost;
-            player.oil = (player.oil || 0) - rc.oil;
-            player.minerals = (player.minerals || 0) - rc.minerals;
-            data.researching = { techId: tech.id, remainingTime: tech.researchTime, totalTime: tech.researchTime };
-            soundManager.playClick();
-          }
-        }}
-      />
+      {(() => {
+        const myId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+        const player = gameDataRef.current.nations[myId];
+        return (
+          <TechModal
+            isOpen={isTechOpen}
+            onClose={() => setIsTechOpen(false)}
+            playerNation={player || {}}
+            researching={gameDataRef.current.researching}
+            academySpeedMult={isTechOpen ? getAcademyResearchSpeedMult(gameDataRef.current.tiles, myId) : 1}
+            onStartResearch={(tech) => {
+              const data = gameDataRef.current;
+              const p = data.nations[myId];
+              if (!p || data.researching) return;
+              if ((tech as any).isSupreme || isSupremeTechId(tech.id)) {
+                const res = startSupremeResearchForNation(p, tech.id, data.researching);
+                if (res.ok && res.researching && res.tech) {
+                  data.researching = res.researching;
+                  if (isMultiplayerRef.current) {
+                    pendingSupremeResearchRef.current = {
+                      techId: res.tech.id,
+                      gold: res.tech.cost,
+                      oil: res.tech.oilCost,
+                      minerals: res.tech.mineralCost,
+                    };
+                    multiplayerClient.sendSupremeResearch(res.tech.id);
+                  }
+                  soundManager.playClick();
+                }
+                return;
+              }
+              const territoryCount = p.territoryCount || 0;
+              const actualCost = Math.round(tech.cost * (1 + territoryCount / 150));
+              const rc = getTechResourceCost(tech.id);
+              if (p.gold >= actualCost && (p.oil || 0) >= rc.oil && (p.minerals || 0) >= rc.minerals) {
+                p.gold -= actualCost;
+                p.oil = (p.oil || 0) - rc.oil;
+                p.minerals = (p.minerals || 0) - rc.minerals;
+                data.researching = { techId: tech.id, remainingTime: tech.researchTime, totalTime: tech.researchTime };
+                soundManager.playClick();
+              }
+            }}
+          />
+        );
+      })()}
 
       <MarketModal
         isOpen={isMarketOpen}
@@ -4594,6 +5435,30 @@ export default function App() {
         </div>
       )}
 
+      {/* BANNER HƯỚNG DẪN KHI ĐANG Ở CHẾ ĐỘ NGẮM KHÔNG KÍCH MÁY BAY CHIẾN ĐẤU */}
+      {fighterAimingMode && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-sky-950/90 via-slate-900/95 to-amber-950/90 border border-sky-400/80 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md animate-in slide-in-from-top">
+          <div className="text-left">
+            <div className="text-xs font-black text-sky-300">
+              ✈️ Đang chọn mục tiêu Không Kích ({FIGHTER_PLANE_CONFIG.goldCost}💰 {FIGHTER_PLANE_CONFIG.oilCost}🛢️)
+            </div>
+            <div className="text-[11px] text-slate-300">
+              Chạm vào vùng đất địch trên bản đồ để phóng Máy Bay Chiến Đấu!
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setFighterAimingMode(false);
+              fighterAimingModeRef.current = false;
+              showMissileToast('Đã hủy lệnh không kích.');
+            }}
+            className="ml-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 active:scale-95"
+          >
+            Hủy Bỏ
+          </button>
+        </div>
+      )}
+
       {/* BANNER HƯỚNG DẪN KHI ĐANG Ở CHẾ ĐỘ NGẮM BẮN TÊN LỬA */}
       {missileAimingMode && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-rose-950/90 via-slate-900/95 to-amber-950/90 border border-rose-500/80 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md animate-in slide-in-from-top pointer-events-none">
@@ -4612,7 +5477,7 @@ export default function App() {
               missileAimingModeRef.current = null;
               showMissileToast('Đã hủy ngắm bắn tên lửa.');
             }}
-            className="ml-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 active:scale-95"
+            className="ml-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 active:scale-95 pointer-events-auto"
           >
             Hủy Bỏ
           </button>

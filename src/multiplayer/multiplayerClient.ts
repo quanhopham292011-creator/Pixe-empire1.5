@@ -1,5 +1,5 @@
 import { ClientMessage, ServerMessage, RoomState, RoomSettings, BuildingType } from './types';
-import { PendingTitanSpawn } from '../types';
+import { PendingTitanSpawn, SupremeTechLevels } from '../types';
 
 type Listener<T> = (data: T) => void;
 
@@ -29,17 +29,33 @@ class MultiplayerClient {
     buildingType: BuildingType;
     count: number;
   }> | null = null;
+  public onActionTech: Listener<{
+    nationId: number;
+    techLevels: { economy: number; military: number; defense: number };
+  }> | null = null;
+  public onActionSupremeTech: Listener<{
+    nationId: number;
+    supremeTechUnlocked: boolean;
+    supremeTechLevels: SupremeTechLevels;
+    researchingTechId?: string;
+  }> | null = null;
   public onStateSync: Listener<{
     nations: Array<{
       id: number;
       gold: number;
       goldIncome: number;
+      oil?: number;
+      minerals?: number;
       troops: number;
       maxTroops: number;
       population: number;
       territoryCount: number;
       isEliminated: boolean;
+      techLevels?: { economy: number; military: number; defense: number };
+      supremeTechUnlocked?: boolean;
+      supremeTechLevels?: SupremeTechLevels;
     }>;
+    superBuildingCounts?: Record<number, Record<string, number>>;
     darkTitans?: any[];
     pendingTitanSpawn?: PendingTitanSpawn | null;
     nextTitanSpawnAt?: number;
@@ -158,6 +174,12 @@ class MultiplayerClient {
       case 'ACTION_BUILD':
         if (this.onActionBuild) this.onActionBuild(msg);
         break;
+      case 'ACTION_TECH':
+        if (this.onActionTech) this.onActionTech(msg);
+        break;
+      case 'ACTION_SUPREME_TECH':
+        if (this.onActionSupremeTech) this.onActionSupremeTech(msg);
+        break;
       case 'STATE_SYNC':
         if (this.onStateSync) this.onStateSync(msg);
         break;
@@ -215,25 +237,53 @@ class MultiplayerClient {
     });
   }
 
+  public sendTechSync(techLevels: { economy: number; military: number; defense: number }) {
+    this.send({
+      type: 'PLAYER_TECH_SYNC',
+      techLevels,
+    });
+  }
+
+  public sendSupremeResearch(techId: string) {
+    this.send({
+      type: 'PLAYER_SUPREME_RESEARCH',
+      techId,
+    });
+  }
+
+  public sendSupremeTechSync(supremeTechLevels: SupremeTechLevels) {
+    this.send({
+      type: 'PLAYER_SUPREME_TECH_SYNC',
+      supremeTechLevels,
+    });
+  }
+
   public sendStateSync(
     nations: Array<{
       id: number;
       gold: number;
       goldIncome: number;
+      oil?: number;
+      minerals?: number;
       troops: number;
       maxTroops: number;
       population: number;
       territoryCount: number;
       isEliminated: boolean;
+      techLevels?: { economy: number; military: number; defense: number };
+      supremeTechUnlocked?: boolean;
+      supremeTechLevels?: SupremeTechLevels;
     }>,
     darkTitans?: any[],
     gameTimeSeconds?: number,
     pendingTitanSpawn?: PendingTitanSpawn | null,
-    nextTitanSpawnAt?: number
+    nextTitanSpawnAt?: number,
+    superBuildingCounts?: Record<number, Record<string, number>>
   ) {
     this.send({
       type: 'STATE_SYNC',
       nations,
+      superBuildingCounts,
       darkTitans,
       pendingTitanSpawn,
       nextTitanSpawnAt,

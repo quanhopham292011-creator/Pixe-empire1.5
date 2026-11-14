@@ -1,4 +1,4 @@
-import { GameDifficulty, MapDimension, BuildingType, PendingTitanSpawn } from '../types';
+import { GameDifficulty, MapDimension, BuildingType, PendingTitanSpawn, SupremeTechLevels } from '../types';
 export type { BuildingType };
 
 export interface RoomPlayer {
@@ -56,17 +56,35 @@ export type ClientMessage =
       count: number;
     }
   | {
+      type: 'PLAYER_TECH_SYNC';
+      techLevels: { economy: number; military: number; defense: number };
+    }
+  | {
+      type: 'PLAYER_SUPREME_RESEARCH';
+      techId: string;
+    }
+  | {
+      type: 'PLAYER_SUPREME_TECH_SYNC';
+      supremeTechLevels: SupremeTechLevels;
+    }
+  | {
       type: 'STATE_SYNC';
       nations: Array<{
         id: number;
         gold: number;
         goldIncome: number;
+        oil?: number;
+        minerals?: number;
         troops: number;
         maxTroops: number;
         population: number;
         territoryCount: number;
         isEliminated: boolean;
+        techLevels?: { economy: number; military: number; defense: number };
+        supremeTechUnlocked?: boolean;
+        supremeTechLevels?: SupremeTechLevels;
       }>;
+      superBuildingCounts?: Record<number, Record<string, number>>;
       darkTitans?: any[];
       pendingTitanSpawn?: PendingTitanSpawn | null;
       nextTitanSpawnAt?: number;
@@ -98,17 +116,35 @@ export type ServerMessage =
       count: number;
     }
   | {
+      type: 'ACTION_TECH';
+      nationId: number;
+      techLevels: { economy: number; military: number; defense: number };
+    }
+  | {
+      type: 'ACTION_SUPREME_TECH';
+      nationId: number;
+      supremeTechUnlocked: boolean;
+      supremeTechLevels: SupremeTechLevels;
+      researchingTechId?: string;
+    }
+  | {
       type: 'STATE_SYNC';
       nations: Array<{
         id: number;
         gold: number;
         goldIncome: number;
+        oil?: number;
+        minerals?: number;
         troops: number;
         maxTroops: number;
         population: number;
         territoryCount: number;
         isEliminated: boolean;
+        techLevels?: { economy: number; military: number; defense: number };
+        supremeTechUnlocked?: boolean;
+        supremeTechLevels?: SupremeTechLevels;
       }>;
+      superBuildingCounts?: Record<number, Record<string, number>>;
       darkTitans?: any[];
       pendingTitanSpawn?: PendingTitanSpawn | null;
       nextTitanSpawnAt?: number;

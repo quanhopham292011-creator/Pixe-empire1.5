@@ -5,6 +5,8 @@ import {
   MISSILE_CONFIG, MISSILE_SETTINGS, TILE_PIXEL_SIZE, formatGameTime 
 } from '../utils/constants';
 import { canAffordMissileResources, payMissileResources } from '../utils/resources';
+import { isSuperBuilding } from '../utils/superBuildings';
+import { getMissileEffectiveCost } from '../utils/supremeTech';
 
 export interface UseBotMissilesParams {
   gameDataRef: React.MutableRefObject<any>;
@@ -32,6 +34,16 @@ export function useBotMissiles({
     const { tiles, nations } = data;
     const size = tiles.length;
 
+    const mapSuperTiles: Tile[] = [];
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const t = tiles[y][x];
+        if (isSuperBuilding(t.building) && t.owner > 0) {
+          mapSuperTiles.push(t);
+        }
+      }
+    }
+
     nations.forEach((bot: any) => {
       if (bot.id <= 1 || bot.isEliminated || bot.colonyCategory === 'FOREST' || bot.gold < minMissileGold) return;
       if (isMultiplayerRef.current && (myNationIdRef.current !== 1 || (room && room.players.some((p: any) => p.connected && p.nationId === bot.id)))) return;
@@ -50,22 +62,43 @@ export function useBotMissiles({
       }
 
       if (botSilo && bot.gold >= minMissileGold) {
-        // Tìm mục tiêu kẻ thù gần nhất
+        // Ưu tiên mục tiêu là Siêu Công Trình của kẻ thù đang có chiến tranh
         let bestEnemyTile: Tile | null = null;
-        let minDist = 999;
-        for (let dy = -8; dy <= 8; dy++) {
-          for (let dx = -8; dx <= 8; dx++) {
-            const tx = botSilo.x + dx;
-            const ty = botSilo.y + dy;
-            if (tx >= 0 && tx < size && ty >= 0 && ty < size) {
-              const candidate = tiles[ty][tx];
-              if (candidate.owner > 0 && candidate.owner !== bot.id && candidate.terrain !== 'WATER') {
-                const dip = bot.diplomacy[candidate.owner]?.status;
-                if (dip !== 'ALLIANCE' && dip !== 'TRUCE') {
-                  const dist = Math.hypot(dx, dy);
-                  if (dist < minDist) {
-                    minDist = dist;
-                    bestEnemyTile = candidate;
+        let isTargetingSuper = false;
+        let bestSuperDist = 22;
+        for (let i = 0; i < mapSuperTiles.length; i++) {
+          const st = mapSuperTiles[i];
+          if (st.owner > 0 && st.owner !== bot.id && st.terrain !== 'WATER') {
+            const dip = bot.diplomacy?.[st.owner]?.status;
+            if (dip !== 'ALLIANCE' && dip !== 'TRUCE') {
+              const dist = Math.hypot(st.x - botSilo.x, st.y - botSilo.y);
+              if (dist < bestSuperDist) {
+                bestSuperDist = dist;
+                bestEnemyTile = st;
+                isTargetingSuper = true;
+              }
+            }
+          }
+        }
+
+        // Nếu không có Siêu Công Trình địch gần đó, tìm mục tiêu kẻ thù gần nhất
+        if (!bestEnemyTile) {
+          let minDist = 999;
+          const scanR = 8;
+          for (let dy = -scanR; dy <= scanR; dy++) {
+            for (let dx = -scanR; dx <= scanR; dx++) {
+              const tx = botSilo.x + dx;
+              const ty = botSilo.y + dy;
+              if (tx >= 0 && tx < size && ty >= 0 && ty < size) {
+                const candidate = tiles[ty][tx];
+                if (candidate.owner > 0 && candidate.owner !== bot.id && candidate.terrain !== 'WATER') {
+                  const dip = bot.diplomacy[candidate.owner]?.status;
+                  if (dip !== 'ALLIANCE' && dip !== 'TRUCE') {
+                    const dist = Math.hypot(dx, dy);
+                    if (dist < minDist) {
+                      minDist = dist;
+                      bestEnemyTile = candidate;
+                    }
                   }
                 }
               }
@@ -74,10 +107,18 @@ export function useBotMissiles({
         }
 
         if (bestEnemyTile) {
-          const missileType: MissileType = bot.gold >= 50000 ? (Math.random() < 0.4 ? 'MIRV' : 'HYDRO') : bot.gold >= 7000 ? 'HYDRO' : 'ATOM';
+          const missileType: MissileType =
+            (isTargetingSuper && bot.gold >= 15000 && Math.random() < 0.55)
+              ? 'HYDRO'
+              : bot.gold >= 50000
+              ? (Math.random() < 0.4 ? 'MIRV' : 'HYDRO')
+              : bot.gold >= 7000
+              ? 'HYDRO'
+              : 'ATOM';
+          const effCost = getMissileEffectiveCost(missileType, bot);
           const cfg = MISSILE_CONFIG[missileType];
-          if (bot.gold >= cfg.cost && canAffordMissileResources(bot, missileType)) {
-            bot.gold -= cfg.cost;
+          if (bot.gold >= effCost.cost && canAffordMissileResources(bot, missileType)) {
+            bot.gold -= effCost.cost;
             payMissileResources(bot, missileType);
             botSilo.missileCooldown = MISSILE_SETTINGS.COOLDOWN_SECONDS;
 

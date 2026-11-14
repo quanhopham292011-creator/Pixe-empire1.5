@@ -1,6 +1,5 @@
 export function getNationColor(nation: any): string {
   if (!nation) return '#1e293b';
-  if (nation.colonyCategory === 'FOREST') return '#ffffff';
   return nation.color || '#64748b';
 }
 
@@ -114,6 +113,32 @@ export function drawBuildingSprite(ctx: CanvasRenderingContext2D, type: string, 
     ctx.beginPath(); ctx.arc(0, 0.5, 4, 0, Math.PI * 2);
     ctx.fillStyle = '#ec4899'; ctx.fill();
     ctx.strokeStyle = DARK; ctx.lineWidth = 1; ctx.stroke();
+  } else if (type === 'SUPREME_FORTRESS') {
+    poly(ctx, [[-9, -5], [0, -9], [9, -5], [8, 3], [0, 9], [-8, 3]], '#38bdf8');
+    poly(ctx, [[-6, -3], [0, -6], [6, -3], [5, 2], [0, 6], [-5, 2]], '#0f172a');
+    thickLine(ctx, 0, -4, 0, 4, '#facc15', 1.8);
+    thickLine(ctx, -3, -1, 3, -1, '#facc15', 1.8);
+  } else if (type === 'GRAND_ACADEMY') {
+    box(ctx, -8, 4, 16, 4, '#cbd5e1');
+    box(ctx, -6, -2, 12, 6, '#e2e8f0');
+    poly(ctx, [[-9, -2], [0, -9], [9, -2]], '#60a5fa');
+    ctx.beginPath(); ctx.arc(0, 1, 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = '#facc15'; ctx.fill();
+    ctx.strokeStyle = DARK; ctx.lineWidth = 1; ctx.stroke();
+  } else if (type === 'BUNKER') {
+    box(ctx, -8, 2, 16, 6, '#57534e');
+    poly(ctx, [[-7, 2], [-5, -4], [5, -4], [7, 2]], '#a8a29e');
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(-5, -2, 10, 2.2);
+    ctx.fillStyle = '#d6d3d1';
+    ctx.fillRect(-7, 5, 14, 1.5);
+  } else if (type === 'GRAND_ARSENAL') {
+    box(ctx, -8, 1, 16, 7, '#64748b');
+    poly(ctx, [[-8, 1], [-4, -4], [-4, 1], [0, -4], [0, 1], [4, -4], [4, 1], [8, 1]], '#94a3b8');
+    box(ctx, 4, -8, 2.6, 5, '#475569');
+    box(ctx, -6, -7, 2.6, 4, '#475569');
+    ctx.fillStyle = '#fb923c';
+    ctx.fillRect(-3, 3.5, 6, 2.2);
   }
   ctx.restore();
 }

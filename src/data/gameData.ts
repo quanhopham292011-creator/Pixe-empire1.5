@@ -1,4 +1,4 @@
-import { TechNode, BuildingType, MissileType, GeneralSkillId } from '../types';
+import { TechNode, BuildingType, MissileType, GeneralSkillId, SupremeTechBranch, TechBranch } from '../types';
 
 export const TECH_TREE: TechNode[] = [
   // KINH TẾ
@@ -182,6 +182,12 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
     baseCost: 90,
     icon: 'Shield',
   },
+  BUNKER: {
+    name: 'Lô Cốt / Chiến Hào',
+    desc: 'Phòng tuyến biên giới chống bộ binh, tăng thủ ô và bắn tỉa quân địch xung quanh (tối đa 10).',
+    baseCost: 50,
+    icon: 'Shield',
+  },
   PORT: {
     name: 'Hải Cảng',
     desc: 'Xây ven biển để quân đội vượt biển đổ bộ. Hỗ trợ xây chồng tăng thu nhập!',
@@ -190,7 +196,7 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
   },
   MISSILE_SILO: {
     name: 'Bệ Tên Lửa (Silo)',
-    desc: 'Bệ phóng tên lửa hạt nhân chiến lược (Atom, Hydro, MIRV). Chi phí: 1.000 vàng.',
+    desc: 'Bệ phóng tên lửa hạt nhân chiến lược (Atom, Nhiệt Hạch, Hydro, MIRV). Chi phí: 1.000 vàng.',
     baseCost: 1_000,
     icon: 'Rocket',
   },
@@ -218,6 +224,24 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
     baseCost: 220,
     icon: 'Zap',
   },
+  SUPREME_FORTRESS: {
+    name: 'Pháo Đài Tối Thượng',
+    desc: 'Giảm 80% sát thương tên lửa nhận vào trong bán kính 8 ô (xây 60s, tối đa 1).',
+    baseCost: 25_000,
+    icon: 'Shield',
+  },
+  GRAND_ACADEMY: {
+    name: 'Đại Học Viện',
+    desc: 'Tốc độ nghiên cứu công nghệ nhanh gấp đôi khi hoạt động (xây 60s, tối đa 1).',
+    baseCost: 30_000,
+    icon: 'GraduationCap',
+  },
+  GRAND_ARSENAL: {
+    name: 'Đại Công Xưởng',
+    desc: 'Tăng 40% tốc độ hồi quân và +25% giới hạn quân (xây 60s, tối đa 1).',
+    baseCost: 30_000,
+    icon: 'Factory',
+  },
 };
 
 export interface MissileConfigItem {
@@ -241,7 +265,7 @@ export const MISSILE_CONFIG: Record<MissileType, MissileConfigItem> = {
     oilCost: 40,
     mineralCost: 30,
     radius: 2.1,
-    description: 'Bán kính nổ nhỏ, phá hủy toàn bộ công trình và quét sạch quân phòng thủ trong phạm vi.',
+    description: 'Bán kính nổ nhỏ, phá hủy công trình và quét sạch quân phòng thủ (nâng cấp mạnh tại Quân Sự Tối Thượng 2).',
     color: '#eab308',
   },
   HYDRO: {
@@ -251,7 +275,7 @@ export const MISSILE_CONFIG: Record<MissileType, MissileConfigItem> = {
     oilCost: 90,
     mineralCost: 70,
     radius: 5.4,
-    description: 'Bán kính nổ khổng lồ, xóa sổ hoàn toàn căn cứ và quét sạch lãnh thổ đối phương thành đất trống!',
+    description: 'Bán kính nổ khổng lồ, xóa sổ hoàn toàn căn cứ và quét sạch lãnh thổ đối phương! Nâng cấp bởi Quân Sự Tối Thượng 1: để lại Vùng Cháy.',
     color: '#f97316',
   },
   MIRV: {
@@ -422,3 +446,184 @@ export const TECH_RESOURCE_COST: Record<string, { oil: number; minerals: number 
   def_3a: { oil: 0, minerals: 120 },
   def_3b: { oil: 20, minerals: 120 },
 };
+
+export interface SupremeTechItem {
+  id: string;
+  branch: TechBranch;
+  branchKey: SupremeTechBranch;
+  level: 1 | 2 | 3;
+  name: string;
+  description: string;
+  cost: number;
+  oilCost: number;
+  mineralCost: number;
+  researchTime: number;
+  isSupreme: true;
+}
+
+const SUPREME_LEVEL_COSTS = {
+  1: { gold: 15_000, oil: 1_500, minerals: 1_500, researchTime: 60 },
+  2: { gold: 25_000, oil: 3_000, minerals: 3_000, researchTime: 75 },
+  3: { gold: 40_000, oil: 5_000, minerals: 5_000, researchTime: 90 },
+} as const;
+
+export const SUPREME_TECH_CONFIG = {
+  MAX_LEVEL: 3,
+  COSTS_BY_LEVEL: SUPREME_LEVEL_COSTS,
+  EFFECTS: {
+    ECONOMY_1_RESOURCE_PROD_BONUS: 0.25, // +25% sản lượng Dầu & Khoáng sản
+    ECONOMY_1_GOLD_INCOME_BONUS: 0.05, // +5% thu nhập Vàng
+    ECONOMY_2_ADVANCED_EXTRACTOR_LIMIT: 2, // Tối đa 2 Mỏ/Giàn Dầu Cao Cấp
+    ECONOMY_3_ADVANCED_EXTRACTOR_LIMIT: 4, // Thêm 2 -> tổng tối đa 4
+    ADVANCED_EXTRACTOR_MULT: 1.5, // Sản lượng x1.5
+    ADVANCED_EXTRACTOR_MINERAL_COST: 120, // Chi phí nâng cấp bằng Khoáng sản
+    MILITARY_1_BURN_ZONE_SECONDS: 15, // Vùng Cháy 15s (10-20s)
+    MILITARY_2_ATOM_RADIUS: 6.0, // Bom Atom nâng cấp: bán kính lớn hơn (~x8-10 diện tích & x10 sát thương)
+    MILITARY_2_ATOM_TROOP_LOSS: 3500, // x10 sát thương quân (350 -> 3500)
+    MILITARY_2_ATOM_SUPER_DAMAGE: 420,
+    MILITARY_2_RADIATION_SECONDS: 50, // Vùng Phóng Xạ 50s (40-60s)
+    MILITARY_2_RADIATION_RES_PENALTY: 0.75, // Giảm mạnh sản lượng Dầu & Khoáng (-75%)
+    MILITARY_2_RADIATION_GOLD_PENALTY: 0.35, // Giảm mạnh thu nhập Vàng trong vùng phóng xạ (-35%)
+    MILITARY_2_RADIATION_REGEN_PENALTY: 0.35, // Chậm hồi quân trong vùng phóng xạ (-35%)
+    MILITARY_3_MAX_FIGHTERS: 5, // Tối đa 5 máy bay chiến đấu hoạt động cùng lúc
+    MILITARY_3_FIGHTER_GOLD_COST: 600,
+    MILITARY_3_FIGHTER_OIL_COST: 40,
+    DEFENSE_1_BORDER_DEFENSE_BONUS: 0.25, // +25% phòng thủ ô biên giới
+    DEFENSE_2_FORTRESS_RADIUS: 11, // Pháo Đài Tối Thượng: 8 -> 11 ô
+    DEFENSE_2_FORTRESS_REDUCTION_ACTIVE: 0.90, // 80% -> 90% (thay thế, không cộng dồn)
+    DEFENSE_2_FORTRESS_REDUCTION_DAMAGED: 0.40, // 30% -> 40% khi hư hại
+    DEFENSE_3_AUTO_BUNKERS: 4, // Tự xây 4 lô cốt dọc biên giới (3-5)
+    DEFENSE_3_MAX_BUNKERS: 10, // Tối đa 10 lô cốt / nước
+    DEFENSE_3_BUNKER_WAVE_DAMAGE: 18, // Sát thương bắn tỉa chống bộ binh của Lô Cốt
+    SUPREME_MISSILE_PRICE_MULT: 2.0, // Hệ số nhân giá tên lửa sau khi nâng cấp (HYDRO cấp 1, ATOM cấp 2)
+  },
+  BRANCHES: [
+    { key: 'economy' as SupremeTechBranch, branch: 'ECONOMY' as TechBranch, label: 'Kinh Tế' },
+    { key: 'military' as SupremeTechBranch, branch: 'MILITARY' as TechBranch, label: 'Quân Sự' },
+    { key: 'defense' as SupremeTechBranch, branch: 'DEFENSE' as TechBranch, label: 'Phòng Thủ' },
+  ],
+  TECHS: [
+    // KINH TẾ TỐI THƯỢNG
+    {
+      id: 'sup_eco_1',
+      branch: 'ECONOMY',
+      branchKey: 'economy',
+      level: 1,
+      name: 'Khai Thác Tối Ưu',
+      description: 'Sản lượng khai thác Dầu & Khoáng sản +25%, thu nhập Vàng +5%.',
+      cost: SUPREME_LEVEL_COSTS[1].gold,
+      oilCost: SUPREME_LEVEL_COSTS[1].oil,
+      mineralCost: SUPREME_LEVEL_COSTS[1].minerals,
+      researchTime: SUPREME_LEVEL_COSTS[1].researchTime,
+      isSupreme: true,
+    },
+    {
+      id: 'sup_eco_2',
+      branch: 'ECONOMY',
+      branchKey: 'economy',
+      level: 2,
+      name: 'Mỏ / Giàn Dầu Cao Cấp',
+      description: 'Nâng cấp tối đa 2 Mỏ Khoáng hoặc Giàn Dầu lên bản Cao Cấp (sản lượng x1.5), tốn Khoáng sản.',
+      cost: SUPREME_LEVEL_COSTS[2].gold,
+      oilCost: SUPREME_LEVEL_COSTS[2].oil,
+      mineralCost: SUPREME_LEVEL_COSTS[2].minerals,
+      researchTime: SUPREME_LEVEL_COSTS[2].researchTime,
+      isSupreme: true,
+    },
+    {
+      id: 'sup_eco_3',
+      branch: 'ECONOMY',
+      branchKey: 'economy',
+      level: 3,
+      name: 'Mở Rộng Cao Cấp',
+      description: 'Cho phép nâng cấp thêm 2 Mỏ Khoáng hoặc Giàn Dầu Cao Cấp (tổng tối đa 4 công trình).',
+      cost: SUPREME_LEVEL_COSTS[3].gold,
+      oilCost: SUPREME_LEVEL_COSTS[3].oil,
+      mineralCost: SUPREME_LEVEL_COSTS[3].minerals,
+      researchTime: SUPREME_LEVEL_COSTS[3].researchTime,
+      isSupreme: true,
+    },
+
+    // QUÂN SỰ TỐI THƯỢNG
+    {
+      id: 'sup_mil_1',
+      branch: 'MILITARY',
+      branchKey: 'military',
+      level: 1,
+      name: 'Nâng cấp tên lửa Hydro',
+      description: 'Nâng cấp tên lửa Hydro: khi nổ để lại Vùng Cháy thiêu đốt quân địch trong 15 giây.',
+      cost: SUPREME_LEVEL_COSTS[1].gold,
+      oilCost: SUPREME_LEVEL_COSTS[1].oil,
+      mineralCost: SUPREME_LEVEL_COSTS[1].minerals,
+      researchTime: SUPREME_LEVEL_COSTS[1].researchTime,
+      isSupreme: true,
+    },
+    {
+      id: 'sup_mil_2',
+      branch: 'MILITARY',
+      branchKey: 'military',
+      level: 2,
+      name: 'Bom Nguyên Tử Nâng Cấp',
+      description: 'Nâng cấp tên lửa Atom sẵn có: sức công phá ~x10 và để lại Vùng Phóng Xạ 50s (đốt quân, giảm mạnh dầu/khoáng/vàng & chậm hồi quân).',
+      cost: SUPREME_LEVEL_COSTS[2].gold,
+      oilCost: SUPREME_LEVEL_COSTS[2].oil,
+      mineralCost: SUPREME_LEVEL_COSTS[2].minerals,
+      researchTime: SUPREME_LEVEL_COSTS[2].researchTime,
+      isSupreme: true,
+    },
+    {
+      id: 'sup_mil_3',
+      branch: 'MILITARY',
+      branchKey: 'military',
+      level: 3,
+      name: 'Máy Bay Chiến Đấu',
+      description: 'Mở khóa Phi Đội Chiến Đấu bay từ Thủ Đô (tối đa 5 chiếc cùng lúc, tốn Vàng + Dầu), oanh tạc mục tiêu; có thể bị SAM bắn hạ.',
+      cost: SUPREME_LEVEL_COSTS[3].gold,
+      oilCost: SUPREME_LEVEL_COSTS[3].oil,
+      mineralCost: SUPREME_LEVEL_COSTS[3].minerals,
+      researchTime: SUPREME_LEVEL_COSTS[3].researchTime,
+      isSupreme: true,
+    },
+
+    // PHÒNG THỦ TỐI THƯỢNG
+    {
+      id: 'sup_def_1',
+      branch: 'DEFENSE',
+      branchKey: 'defense',
+      level: 1,
+      name: 'Phòng Thủ Biên Giới',
+      description: 'Các ô biên giới của quốc gia nhận +25% chỉ số phòng thủ.',
+      cost: SUPREME_LEVEL_COSTS[1].gold,
+      oilCost: SUPREME_LEVEL_COSTS[1].oil,
+      mineralCost: SUPREME_LEVEL_COSTS[1].minerals,
+      researchTime: SUPREME_LEVEL_COSTS[1].researchTime,
+      isSupreme: true,
+    },
+    {
+      id: 'sup_def_2',
+      branch: 'DEFENSE',
+      branchKey: 'defense',
+      level: 2,
+      name: 'Pháo Đài Tối Thượng Nâng Cấp',
+      description: 'Tăng tầm bảo vệ Pháo Đài Tối Thượng lên 11 ô và giảm sát thương tên lửa lên 90% (thay thế mức cũ, không cộng dồn).',
+      cost: SUPREME_LEVEL_COSTS[2].gold,
+      oilCost: SUPREME_LEVEL_COSTS[2].oil,
+      mineralCost: SUPREME_LEVEL_COSTS[2].minerals,
+      researchTime: SUPREME_LEVEL_COSTS[2].researchTime,
+      isSupreme: true,
+    },
+    {
+      id: 'sup_def_3',
+      branch: 'DEFENSE',
+      branchKey: 'defense',
+      level: 3,
+      name: 'Lô Cốt / Chiến Hào',
+      description: 'Tự động xây 4 Lô Cốt biên giới và mở khóa xây thêm tối đa 10 Lô Cốt chống bộ binh, tăng phòng thủ ô.',
+      cost: SUPREME_LEVEL_COSTS[3].gold,
+      oilCost: SUPREME_LEVEL_COSTS[3].oil,
+      mineralCost: SUPREME_LEVEL_COSTS[3].minerals,
+      researchTime: SUPREME_LEVEL_COSTS[3].researchTime,
+      isSupreme: true,
+    },
+  ] as SupremeTechItem[],
+} as const;

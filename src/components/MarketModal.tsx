@@ -82,7 +82,7 @@ export const MarketModal: React.FC<MarketModalProps> = ({
     const stock = Math.floor(isOil ? (player.oil || 0) : (player.minerals || 0));
     const income = isOil ? (player.oilIncome || 0) : (player.mineralIncome || 0);
     const buyPrice = getBuyPrice(market, res);
-    const sellPrice = getSellPrice(market, res);
+    const sellPrice = getSellPrice(market, res, player);
     const history = isOil ? market.oilHistory : market.mineralHistory;
     const prevPrice = history.length >= 2 ? history[history.length - 2] : buyPrice;
     const isUp = buyPrice >= prevPrice;

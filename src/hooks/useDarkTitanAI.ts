@@ -5,6 +5,7 @@ import { soundManager } from '../utils/audio';
 import { 
   TILE_PIXEL_SIZE, DARK_TITAN_CONFIG, formatGameTime, BUILDING_INFO 
 } from '../utils/constants';
+import { isSuperBuilding, damageSuperBuilding } from '../utils/superBuildings';
 
 export interface UseDarkTitanAIParams {
   gameDataRef: React.MutableRefObject<any>;
@@ -402,14 +403,25 @@ export function stepDarkTitanSystem({
           const t = tiles[yy][xx];
           if (t.owner > 0) {
             victims.add(t.owner);
-            if (t.building !== 'NONE') {
-              t.building = (!destroyAll && t.building === 'FORTRESS') ? 'CITY' : 'NONE';
-            }
-            if (destroyAll) t.scorchedTimer = 25;
-            if (eat > 0 && Math.random() < eat) {
-              t.owner = 0;
-              t.building = 'NONE';
-              t.scorchedTimer = 25;
+            if (isSuperBuilding(t.building)) {
+              const dmgRes = damageSuperBuilding(t, destroyAll ? 55 : 35);
+              if (destroyAll) t.scorchedTimer = 25;
+              if (dmgRes === 'DESTROYED' && eat > 0 && Math.random() < eat) {
+                t.owner = 0;
+                t.scorchedTimer = 25;
+              }
+            } else {
+              if (t.building !== 'NONE') {
+                t.building = (!destroyAll && t.building === 'FORTRESS') ? 'CITY' : 'NONE';
+                if (t.building === 'NONE') t.isAdvancedExtractor = false;
+              }
+              if (destroyAll) t.scorchedTimer = 25;
+              if (eat > 0 && Math.random() < eat) {
+                t.owner = 0;
+                t.building = 'NONE';
+                t.isAdvancedExtractor = false;
+                t.scorchedTimer = 25;
+              }
             }
           }
         }
@@ -442,6 +454,24 @@ export function stepDarkTitanSystem({
       for (let yy = Math.max(0, titan.y - radius); yy <= Math.min(size - 1, titan.y + radius); yy++) {
         for (let xx = Math.max(0, titan.x - radius); xx <= Math.min(size - 1, titan.x + radius); xx++) {
           if (tiles[yy][xx].owner > 0) {
+            const d = Math.hypot(xx - titan.x, yy - titan.y);
+            if (d <= radius && d < bd) {
+              bd = d;
+              best = { x: xx, y: yy };
+            }
+          }
+        }
+      }
+      return best;
+    };
+
+    const nearestSuperBuilding = (radius: number) => {
+      let best: { x: number; y: number } | null = null;
+      let bd = Infinity;
+      for (let yy = Math.max(0, titan.y - radius); yy <= Math.min(size - 1, titan.y + radius); yy++) {
+        for (let xx = Math.max(0, titan.x - radius); xx <= Math.min(size - 1, titan.x + radius); xx++) {
+          const t = tiles[yy][xx];
+          if (t.owner > 0 && isSuperBuilding(t.building)) {
             const d = Math.hypot(xx - titan.x, yy - titan.y);
             if (d <= radius && d < bd) {
               bd = d;
@@ -492,7 +522,8 @@ export function stepDarkTitanSystem({
         });
       }
     } else {
-      const near = nearestOwned(10);
+      const nearSuper = nearestSuperBuilding(14);
+      const near = nearSuper || nearestOwned(10);
       const wavesNear = (data.attackWaves || []).filter(
         (w: any) => Math.hypot(w.targetX - titan.x, w.targetY - titan.y) <= 7
       );
@@ -522,17 +553,23 @@ export function stepDarkTitanSystem({
         say('⛓️ Xiềng Xích Bóng Tối', '#a855f7');
         didCastSkill = true;
       } else if (cd.e <= 0) {
+        const superSpots: { x: number; y: number }[] = [];
         const spots: { x: number; y: number }[] = [];
         for (let yy = Math.max(0, titan.y - 10); yy <= Math.min(size - 1, titan.y + 10); yy++) {
           for (let xx = Math.max(0, titan.x - 10); xx <= Math.min(size - 1, titan.x + 10); xx++) {
             const d = Math.hypot(xx - titan.x, yy - titan.y);
             if (d >= 3 && d <= 10 && tiles[yy][xx].owner > 0 && tiles[yy][xx].building !== 'NONE') {
-              spots.push({ x: xx, y: yy });
+              if (isSuperBuilding(tiles[yy][xx].building)) {
+                superSpots.push({ x: xx, y: yy });
+              } else {
+                spots.push({ x: xx, y: yy });
+              }
             }
           }
         }
-        if (spots.length > 0) {
-          const spot = spots[Math.floor(Math.random() * spots.length)];
+        const pool = superSpots.length > 0 ? superSpots : spots;
+        if (pool.length > 0) {
+          const spot = pool[Math.floor(Math.random() * pool.length)];
           addFx('TELEPORT', titan.x, titan.y, 2.5, 700, '#8b5cf6');
           titan.x = spot.x;
           titan.y = spot.y;
@@ -566,9 +603,24 @@ export function stepDarkTitanSystem({
       ].filter(([nx, ny]) => nx >= 0 && nx < size && ny >= 0 && ny < size && tiles[ny][nx].terrain !== 'WATER');
 
       if (neighbors.length > 0) {
-        const targetOption =
-          neighbors.find(([nx, ny]) => tiles[ny][nx].building !== 'NONE' || tiles[ny][nx].owner > 0) ||
-          neighbors[Math.floor(Math.random() * neighbors.length)];
+        const superTarget = nearestSuperBuilding(16);
+        let targetOption: number[] | undefined;
+        if (superTarget) {
+          let bestDist = Infinity;
+          for (const nb of neighbors) {
+            const d = Math.hypot(nb[0] - superTarget.x, nb[1] - superTarget.y);
+            if (d < bestDist) {
+              bestDist = d;
+              targetOption = nb;
+            }
+          }
+        }
+        if (!targetOption) {
+          targetOption =
+            neighbors.find(([nx, ny]) => isSuperBuilding(tiles[ny][nx].building)) ||
+            neighbors.find(([nx, ny]) => tiles[ny][nx].building !== 'NONE' || tiles[ny][nx].owner > 0) ||
+            neighbors[Math.floor(Math.random() * neighbors.length)];
+        }
 
         titan.x = targetOption[0];
         titan.y = targetOption[1];
@@ -578,10 +630,15 @@ export function stepDarkTitanSystem({
         // Chỉ tác động lên ô Tà Thần vừa bước vào (tránh gây sát thương kép & xóa cả vùng bán kính 2 liên tục mỗi nhịp di chuyển)
         if (currentTile.building !== 'NONE') {
           const oldBuilding = currentTile.building;
-          if (oldBuilding === 'FORTRESS') {
-            currentTile.building = 'CITY'; // Hạ cấp Pháo Đài
+          if (isSuperBuilding(oldBuilding)) {
+            damageSuperBuilding(currentTile, 40);
           } else {
-            currentTile.building = 'NONE';
+            if (oldBuilding === 'FORTRESS') {
+              currentTile.building = 'CITY'; // Hạ cấp Pháo Đài
+            } else {
+              currentTile.building = 'NONE';
+              currentTile.isAdvancedExtractor = false;
+            }
           }
           currentTile.scorchedTimer = Math.max(currentTile.scorchedTimer || 0, 15);
           offscreenTerritoryDirtyRef.current = true;
@@ -595,7 +652,7 @@ export function stepDarkTitanSystem({
             vx: 0,
             vy: -0.7,
             type: 'FLOAT_TEXT',
-            text: `💥 Tà Thần phá hoại ${BUILDING_INFO[oldBuilding as keyof typeof BUILDING_INFO]?.name || oldBuilding}!`,
+            text: `💥 Tà Thần tấn công ${BUILDING_INFO[oldBuilding as keyof typeof BUILDING_INFO]?.name || oldBuilding}!`,
           });
         }
 

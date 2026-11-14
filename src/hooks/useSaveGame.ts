@@ -7,6 +7,7 @@ import { soundManager } from '../utils/audio';
 import { formatGameTime } from '../utils/constants';
 import { migrateGeneralData, calculateGeneralStats } from '../utils/generalCombat';
 import { setResourcesEnabled, ensureNationResources, hasAnyDeposit, generateDeposits, createMarket } from '../utils/resources';
+import { ensureNationSupremeTech } from '../utils/supremeTech';
 
 export interface SavedGameInfo {
   timestamp: string;
@@ -151,6 +152,7 @@ export function useSaveGame({
           pendingTitanSpawn: data.pendingTitanSpawn || null,
           nextTitanSpawnAt: typeof data.nextTitanSpawnAt === 'number' ? data.nextTitanSpawnAt : undefined,
           flyingMissiles: data.flyingMissiles || [],
+          fighterPlanes: data.fighterPlanes || [],
           tradeRoutes: data.tradeRoutes || [],
           tradeShips: data.tradeShips || [],
           activeSeasonEvent: data.activeSeasonEvent || null,
@@ -229,6 +231,14 @@ export function useSaveGame({
         });
       }
 
+      if (Array.isArray(gameData.flyingMissiles)) {
+        gameData.flyingMissiles.forEach((fm: any) => {
+          if (fm && fm.type === 'THERMOBARIC') {
+            fm.type = 'HYDRO';
+          }
+        });
+      }
+
       if (Array.isArray(gameData.nations)) {
         gameData.nations.forEach((n: Nation) => {
           if (n) {
@@ -236,6 +246,7 @@ export function useSaveGame({
             if (n.techLevels?.economy === 3 && !n.techChoices.economy) n.techChoices.economy = 'A';
             if (n.techLevels?.military === 3 && !n.techChoices.military) n.techChoices.military = 'A';
             if (n.techLevels?.defense === 3 && !n.techChoices.defense) n.techChoices.defense = 'A';
+            ensureNationSupremeTech(n);
 
             if (n.general) {
               // Di chuyển và khôi phục dữ liệu Đại Tướng an toàn
@@ -288,6 +299,7 @@ export function useSaveGame({
         pendingTitanSpawn: gameData.pendingTitanSpawn || null,
         nextTitanSpawnAt: typeof gameData.nextTitanSpawnAt === 'number' ? gameData.nextTitanSpawnAt : undefined,
         flyingMissiles: gameData.flyingMissiles || [],
+        fighterPlanes: gameData.fighterPlanes || [],
         tradeRoutes: gameData.tradeRoutes || [],
         tradeShips: gameData.tradeShips || [],
         activeSeasonEvent: gameData.activeSeasonEvent || null,

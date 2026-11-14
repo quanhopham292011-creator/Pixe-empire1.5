@@ -74,7 +74,12 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
         for (let x = 0; x < mapSize; x++) {
           const t = tiles[y]?.[x];
           if (t && t.owner === playerNationId) {
-            const rad = t.building === 'AIR_DEFENSE' ? 7.5 : t.building === 'MISSILE_SILO' ? 6.5 : 4.5;
+            const rad =
+              t.building === 'SUPREME_FORTRESS' ? 9.0
+              : (t.building === 'GRAND_ACADEMY' || t.building === 'GRAND_ARSENAL') ? 7.0
+              : t.building === 'AIR_DEFENSE' ? 7.5
+              : t.building === 'MISSILE_SILO' ? 6.5
+              : 4.5;
             const radSq = rad * rad;
             const rCeil = Math.ceil(rad);
             for (let dy = -rCeil; dy <= rCeil; dy++) {

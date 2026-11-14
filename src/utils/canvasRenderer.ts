@@ -167,9 +167,9 @@ function darken(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return '#000000';
   const n = parseInt(m[1], 16);
-  const r = Math.floor(((n >> 16) & 255) * 0.55);
-  const g = Math.floor(((n >> 8) & 255) * 0.55);
-  const b = Math.floor((n & 255) * 0.55);
+  const r = Math.floor(((n >> 16) & 255) * 0.72);
+  const g = Math.floor(((n >> 8) & 255) * 0.72);
+  const b = Math.floor((n & 255) * 0.72);
   const res = `rgb(${r},${g},${b})`;
   darkenedCache[hex] = res;
   return res;
@@ -181,7 +181,7 @@ function borderColor(hex: string): string {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
   if (!m) return '#000000';
   const n = parseInt(m[1], 16);
-  const res = `rgb(${Math.floor(((n >> 16) & 255) * 0.60)},${Math.floor(((n >> 8) & 255) * 0.60)},${Math.floor((n & 255) * 0.60)})`;
+  const res = `rgb(${Math.floor(((n >> 16) & 255) * 0.72)},${Math.floor(((n >> 8) & 255) * 0.72)},${Math.floor((n & 255) * 0.72)})`;
   borderCache[hex] = res;
   return res;
 }

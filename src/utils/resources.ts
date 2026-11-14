@@ -1,8 +1,9 @@
 import {
   Tile, Nation, MarketState, DepositType, GameEvent, GameParticle, BuildingType, MissileType, TradeOffer,
 } from '../types';
-import { RESOURCE_CONFIG, TECH_RESOURCE_COST, BUILDING_INFO, MISSILE_CONFIG } from '../data/gameData';
+import { RESOURCE_CONFIG, SUPREME_TECH_CONFIG, TECH_RESOURCE_COST, BUILDING_INFO, MISSILE_CONFIG } from '../data/gameData';
 import { TILE_PIXEL_SIZE, formatGameTime } from './constants';
+import { getSupremeResourceProdMult, getMissileEffectiveCost } from './supremeTech';
 
 let resourcesEnabled = true;
 export function setResourcesEnabled(v: boolean) { resourcesEnabled = v; }
@@ -179,7 +180,7 @@ export function tickMarket(m: MarketState): void {
 export function getBuyPrice(m: MarketState, res: DepositType): number {
   return res === 'OIL' ? m.oilPrice : m.mineralPrice;
 }
-export function getSellPrice(m: MarketState, res: DepositType): number {
+export function getSellPrice(m: MarketState, res: DepositType, _nation?: Nation | null): number {
   return getBuyPrice(m, res) * RESOURCE_CONFIG.MARKET_SELL_RATIO;
 }
 
@@ -213,7 +214,8 @@ export function marketTrade(
   }
 
   if ((nation[key] || 0) < qty) return { ok: false, message: `Không đủ ${label} để bán.` };
-  const gain = Math.floor(price * RESOURCE_CONFIG.MARKET_SELL_RATIO * qty);
+  const sellPrice = getSellPrice(m, res, nation);
+  const gain = Math.floor(sellPrice * qty);
   nation[key] = (nation[key] || 0) - qty;
   nation.gold += gain;
   const next = clampPrice(price * (1 - RESOURCE_CONFIG.MARKET_PRICE_IMPACT * qty), base);
@@ -228,19 +230,19 @@ export function getBuildingMineralCost(type: BuildingType | string, existingCoun
   return Math.ceil(base * Math.pow(1.1, existingCount));
 }
 
-export function getMissileResourceCost(type: MissileType): { oil: number; minerals: number } {
+export function getMissileResourceCost(type: MissileType, nation?: Nation | null): { oil: number; minerals: number } {
   if (!resourcesEnabled) return { oil: 0, minerals: 0 };
-  const cfg = MISSILE_CONFIG[type];
-  return { oil: cfg.oilCost, minerals: cfg.mineralCost };
+  const eff = getMissileEffectiveCost(type, nation);
+  return { oil: eff.oilCost, minerals: eff.mineralCost };
 }
 export function canAffordMissileResources(nation: Nation, type: MissileType): boolean {
-  const c = getMissileResourceCost(type);
+  const c = getMissileResourceCost(type, nation);
   return (nation.oil || 0) >= c.oil && (nation.minerals || 0) >= c.minerals;
 }
 export function payMissileResources(nation: Nation, type: MissileType): void {
-  const c = getMissileResourceCost(type);
-  nation.oil = (nation.oil || 0) - c.oil;
-  nation.minerals = (nation.minerals || 0) - c.minerals;
+  const c = getMissileResourceCost(type, nation);
+  nation.oil = Math.max(0, (nation.oil || 0) - c.oil);
+  nation.minerals = Math.max(0, (nation.minerals || 0) - c.minerals);
 }
 
 export function getTechResourceCost(techId: string): { oil: number; minerals: number } {
@@ -248,7 +250,7 @@ export function getTechResourceCost(techId: string): { oil: number; minerals: nu
   return TECH_RESOURCE_COST[techId] || { oil: 0, minerals: 0 };
 }
 
-export function getExtractorBuildCost(tile: Tile): { gold: number; minerals: number; isUpgrade: boolean } {
+export function getExtractorBuildCost(tile: Tile, _nation?: Nation | null): { gold: number; minerals: number; isUpgrade: boolean } {
   const type = extractorFor(tile.deposit || 'OIL');
   const base = BUILDING_INFO[type].baseCost;
   const isUpgrade = tile.building === type;
@@ -271,7 +273,7 @@ export function buildOrUpgradeExtractor(tile: Tile, nation: Nation): { ok: boole
   if (tile.building !== 'NONE' && tile.building !== type) {
     return { ok: false, message: 'Ô đang có công trình khác. Hãy phá/thay thế trước.' };
   }
-  const cost = getExtractorBuildCost(tile);
+  const cost = getExtractorBuildCost(tile, nation);
   if (cost.isUpgrade && (tile.buildingLevel || 1) >= RESOURCE_CONFIG.MAX_EXTRACTOR_LEVEL) {
     return { ok: false, message: 'Đã đạt cấp tối đa.' };
   }
@@ -319,9 +321,14 @@ export function getExtractionRate(tile: Tile, nation: Nation, difficulty: string
   const lvl = tile.buildingLevel || 1;
   const base = tile.deposit === 'OIL' ? RESOURCE_CONFIG.OIL_RATE : RESOURCE_CONFIG.MINERAL_RATE;
   const techMult = 1 + (nation.techLevels?.economy || 0) * RESOURCE_CONFIG.ECONOMY_TECH_BONUS;
+  const supProdMult = getSupremeResourceProdMult(nation);
+  const advMult = tile.isAdvancedExtractor ? SUPREME_TECH_CONFIG.EFFECTS.ADVANCED_EXTRACTOR_MULT : 1.0;
+  const radMult = (tile.radiationTimer && tile.radiationTimer > 0)
+    ? (1 - SUPREME_TECH_CONFIG.EFFECTS.MILITARY_2_RADIATION_RES_PENALTY)
+    : 1.0;
   const cond = (tile.condition ?? 100) / 100;
   const diffMult = nation.isPlayer ? 1 : (difficulty === 'EXTREME' ? 1.25 : difficulty === 'HARD' ? 1.1 : difficulty === 'EASY' ? 0.8 : 1);
-  return base * (1 + (lvl - 1) * RESOURCE_CONFIG.LEVEL_BONUS) * techMult * cond * diffMult;
+  return base * (1 + (lvl - 1) * RESOURCE_CONFIG.LEVEL_BONUS) * techMult * supProdMult * advMult * radMult * cond * diffMult;
 }
 
 export interface ResourceTickData {
@@ -435,7 +442,7 @@ export function tickResources(data: ResourceTickData, difficulty: string): boole
           const r = repairExtractor(t, bot);
           if (r.ok) needRedraw = true;
         } else if (t.building === 'NONE' || (t.building === type && (t.buildingLevel || 1) < RESOURCE_CONFIG.MAX_EXTRACTOR_LEVEL && bot.gold >= 900)) {
-          const cost = getExtractorBuildCost(t);
+          const cost = getExtractorBuildCost(t, bot);
           if (bot.gold >= cost.gold * 1.35 && (bot.minerals || 0) >= cost.minerals) {
             const b = buildOrUpgradeExtractor(t, bot);
             if (b.ok) needRedraw = true;
@@ -527,7 +534,7 @@ export function getAITradePrices(
   res: DepositType
 ): { aiSellPrice: number; aiBuyPrice: number; status: string } {
   const mBuy = getBuyPrice(market, res);
-  const mSell = getSellPrice(market, res);
+  const mSellBase = mBuy * RESOURCE_CONFIG.MARKET_SELL_RATIO;
   const dip = player.diplomacy?.[bot.id] || bot.diplomacy?.[player.id] || { status: 'WAR', relation: 0, truceTimer: 0 };
   const relNorm = Math.max(0, Math.min(1, (dip.relation || 0) / 100));
   const isAlly = dip.status === 'ALLIANCE';
@@ -542,8 +549,8 @@ export function getAITradePrices(
   buyMult = Math.max(0.60, Math.min(0.78, buyMult));
 
   // Đảm bảo tuyệt đối không có chênh lệch kiếm lời với thị trường hoặc giữa các AI
-  const aiSellPrice = Math.max(mSell * 1.08, Math.min(mBuy * 0.98, mBuy * sellMult));
-  const aiBuyPrice = Math.min(mBuy * 0.92, Math.max(mSell * 1.02, Math.min(aiSellPrice * 0.95, mBuy * buyMult)));
+  const aiSellPrice = Math.max(mSellBase * 1.08, Math.min(mBuy * 0.98, mBuy * sellMult));
+  const aiBuyPrice = Math.min(mBuy * 0.92, Math.max(mSellBase * 1.02, Math.min(aiSellPrice * 0.95, mBuy * buyMult)));
 
   return { aiSellPrice, aiBuyPrice, status: dip.status };
 }

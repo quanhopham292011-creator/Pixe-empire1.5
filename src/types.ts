@@ -3,12 +3,21 @@
  */
 
 export type TerrainType = 'LAND' | 'WATER' | 'MOUNTAIN' | 'FOREST';
-export type BuildingType = 'NONE' | 'CITY' | 'BARRACKS' | 'FORTRESS' | 'PORT' | 'MISSILE_SILO' | 'AIR_DEFENSE' | 'LASER' | 'OIL_RIG' | 'MINE';
+export type BuildingType = 'NONE' | 'CITY' | 'BARRACKS' | 'FORTRESS' | 'BUNKER' | 'PORT' | 'MISSILE_SILO' | 'AIR_DEFENSE' | 'LASER' | 'OIL_RIG' | 'MINE' | 'SUPREME_FORTRESS' | 'GRAND_ACADEMY' | 'GRAND_ARSENAL';
+export type SuperBuildingType = 'SUPREME_FORTRESS' | 'GRAND_ACADEMY' | 'GRAND_ARSENAL';
+export type SuperBuildingState = 'BUILDING' | 'ACTIVE' | 'DAMAGED' | 'REPAIRING';
 
 export type NationPersonality = 'AGGRESSIVE' | 'DEFENSIVE' | 'MERCHANT' | 'OPPORTUNIST';
 export type DiplomacyStatus = 'WAR' | 'TRUCE' | 'ALLIANCE';
 
 export type TechBranch = 'ECONOMY' | 'MILITARY' | 'DEFENSE';
+export type SupremeTechBranch = 'economy' | 'military' | 'defense';
+
+export interface SupremeTechLevels {
+  economy: number;
+  military: number;
+  defense: number;
+}
 
 export interface TechNode {
   id: string;
@@ -19,6 +28,7 @@ export interface TechNode {
   description: string;
   cost: number;
   researchTime: number;
+  isSupreme?: boolean;
 }
 
 export interface ResearchingTech {
@@ -46,6 +56,16 @@ export interface Tile {
   discovered?: boolean;
   condition?: number;
   resOwner?: number;
+  superState?: SuperBuildingState;
+  superBuildTimeLeft?: number;
+  superBuildTotal?: number;
+  superHp?: number;
+  superMaxHp?: number;
+  isAdvancedExtractor?: boolean;
+  burnZoneTimer?: number;
+  burnZoneOwner?: number;
+  radiationTimer?: number;
+  radiationOwner?: number;
 }
 
 export type DepositType = 'OIL' | 'MINERAL';
@@ -153,6 +173,9 @@ export interface Nation {
     military?: 'A' | 'B';
     defense?: 'A' | 'B';
   };
+  supremeTechUnlocked?: boolean;
+  supremeTechLevels?: SupremeTechLevels;
+  supremeResearching?: ResearchingTech | null;
   diplomacy: {
     [targetId: number]: {
       status: DiplomacyStatus;
@@ -203,6 +226,20 @@ export interface FlyingMissile {
   speed: number;
   fromNation: number;
   isMirvSub?: boolean;
+  isGeneralBarrage?: boolean;
+}
+
+export interface FighterPlane {
+  id: string;
+  nationId: number;
+  sourceX: number;
+  sourceY: number;
+  targetX: number;
+  targetY: number;
+  progress: number;
+  speed: number;
+  hp?: number;
+  maxHp?: number;
 }
 
 export interface SeaTradeRoute {

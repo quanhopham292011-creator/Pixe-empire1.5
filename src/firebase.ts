@@ -79,13 +79,14 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Test connection on boot per Firebase skill guidelines
+// Test connection on boot safely (skip offline to avoid noisy console errors)
 export async function testConnection(): Promise<void> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error('Please check your Firebase configuration.');
+      console.warn('Firebase hiện đang ngoại tuyến, chuyển sang chế độ chơi offline.');
     }
   }
 }

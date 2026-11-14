@@ -4,9 +4,25 @@ import { formatPopulation, BUILDING_INFO, GENERAL_ROSTER } from '../utils/consta
 import { canDeployGeneral, getLoyaltyState, appointReserveGeneral, calculateGeneralStats } from '../utils/generalCombat';
 import { GENERAL_STYLE_INFO } from '../utils/generalEvolution';
 import { areResourcesEnabled, formatResource, getRepairCost, repairExtractor, isExtractor, depositName } from '../utils/resources';
+import {
+  isSuperBuilding,
+  getSuperBuildingState,
+  getSuperBuildingStateLabel,
+  getSuperRepairInfo,
+  startSuperRepair,
+} from '../utils/superBuildings';
+import {
+  ADVANCED_EXTRACTOR_MINERAL_COST,
+  FIGHTER_PLANE_CONFIG,
+  MAX_FIGHTERS_PER_NATION,
+  canLaunchFighterPlane,
+  countActiveFighterPlanes,
+  countAdvancedExtractors,
+  getMaxAdvancedExtractors,
+} from '../utils/supremeTech';
 import { GeneralModel } from './GeneralModel';
 import { 
-  Coins, Users, Building2, Swords, Play, Pause, Settings, X, Shield, Handshake, Crown, Rocket, Cpu, Trophy, Wand2
+  Coins, Users, Building2, Swords, Play, Pause, Settings, X, Shield, Handshake, Crown, Rocket, Cpu, Trophy, Wand2, Plane
 } from 'lucide-react';
 
 interface GameHudProps {
@@ -54,6 +70,10 @@ interface GameHudProps {
   gameMode?: string;
   setIsCreativeOpen?: (open: boolean) => void;
   setIsMarketOpen?: (open: boolean) => void;
+  fighterAimingMode?: boolean;
+  onToggleFighterAiming?: () => void;
+  onLaunchFighterAtTile?: (tile: Tile) => void;
+  onUpgradeAdvancedExtractor?: (tile: Tile) => void;
 }
 
 export const GameHud: React.FC<GameHudProps> = ({
@@ -93,6 +113,10 @@ export const GameHud: React.FC<GameHudProps> = ({
   gameMode,
   setIsCreativeOpen,
   setIsMarketOpen,
+  fighterAimingMode,
+  onToggleFighterAiming,
+  onLaunchFighterAtTile,
+  onUpgradeAdvancedExtractor,
 }) => {
   const [showSkillDesc, setShowSkillDesc] = useState(false);
   const [showReserves, setShowReserves] = useState(false);
@@ -134,6 +158,14 @@ export const GameHud: React.FC<GameHudProps> = ({
   const isSkillActive = (pGen?.skillActiveTimer || 0) > 0;
   const isSkillOnCooldown = (pGen?.skillCooldown || 0) > 0;
   const canUseSkill = pGen && !isInjured && !isSkillOnCooldown;
+  const fighterUnlocked = canLaunchFighterPlane(playerNation);
+  const activeFightersCount = playerNation
+    ? countActiveFighterPlanes(gameDataRef.current?.fighterPlanes, playerNation.id)
+    : 0;
+  const maxAdvancedExtractors = getMaxAdvancedExtractors(playerNation);
+  const currentAdvancedExtractors = playerNation && gameDataRef.current?.tiles
+    ? countAdvancedExtractors(gameDataRef.current.tiles, playerNation.id)
+    : 0;
 
   // Lấy thông tin quốc gia sở hữu ô đất đang chọn
   const targetNation: Nation | null = selectedTile && selectedTile.owner > 1 ? gameDataRef.current?.nations?.[selectedTile.owner] || null : null;
@@ -336,19 +368,83 @@ export const GameHud: React.FC<GameHudProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1.5 text-[11px]">
             <div className="text-slate-300 min-w-0 flex-1 truncate">
               📍 ({selectedTile.x}, {selectedTile.y}) • <strong className="text-white">{selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi'}</strong>
-              {selectedTile.building !== 'NONE' && <span className="text-amber-400 ml-1">[{BUILDING_INFO[selectedTile.building].name}]</span>}
+              {selectedTile.building !== 'NONE' && (
+                <span className="text-amber-400 ml-1">
+                  [{BUILDING_INFO[selectedTile.building].name}]
+                </span>
+              )}
+              {isSuperBuilding(selectedTile.building) && (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 border border-amber-500/40 text-[10px] font-bold text-amber-300">
+                  {getSuperBuildingStateLabel(selectedTile)}
+                </span>
+              )}
               {areResourcesEnabled() && selectedTile.deposit && selectedTile.discovered && (
                 <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] font-mono text-sky-300">
                   {selectedTile.deposit === 'OIL' ? '🛢️' : '⛏️'} {depositName(selectedTile.deposit)} ({formatResource(selectedTile.reserve)})
                   {isExtractor(selectedTile.building) && ` • Độ bền ${Math.round(selectedTile.condition ?? 100)}%`}
                 </span>
               )}
+              {isExtractor(selectedTile.building) && selectedTile.isAdvancedExtractor && (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/50 text-[10px] font-bold text-amber-300">
+                  ⭐ Cao Cấp (x1.5)
+                </span>
+              )}
+              {selectedTile.burnZoneTimer && selectedTile.burnZoneTimer > 0 ? (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-orange-500/20 border border-orange-400/50 text-[10px] font-bold text-orange-300">
+                  🔥 Vùng Cháy ({Math.ceil(selectedTile.burnZoneTimer)}s)
+                </span>
+              ) : null}
+              {selectedTile.radiationTimer && selectedTile.radiationTimer > 0 ? (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-lime-500/20 border border-lime-400/50 text-[10px] font-bold text-lime-300">
+                  ☢️ Phóng Xạ ({Math.ceil(selectedTile.radiationTimer)}s)
+                </span>
+              ) : null}
+              {isSuperBuilding(selectedTile.building) && (getSuperBuildingState(selectedTile) === 'BUILDING' || getSuperBuildingState(selectedTile) === 'REPAIRING') && (() => {
+                const total = Math.max(1, selectedTile.superBuildTotal || 60);
+                const left = Math.max(0, selectedTile.superBuildTimeLeft || 0);
+                const pct = Math.min(100, Math.max(0, ((total - left) / total) * 100));
+                const isRep = getSuperBuildingState(selectedTile) === 'REPAIRING';
+                return (
+                  <div className="mt-1 h-1.5 w-full max-w-[220px] bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all ${isRep ? 'bg-emerald-400' : 'bg-cyan-400'}`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Các nút hành động chính theo trạng thái */}
             <div className="flex items-center gap-1 shrink-0 flex-wrap">
               {selectedTile.owner === 1 ? (
                 <>
+                  {isSuperBuilding(selectedTile.building) && getSuperBuildingState(selectedTile) === 'DAMAGED' && (() => {
+                    const sr = getSuperRepairInfo(selectedTile);
+                    const canAffordRepair = (playerNation?.gold || 0) >= sr.goldCost;
+                    return (
+                      <button
+                        disabled={!canAffordRepair}
+                        onClick={() => {
+                          if (playerNation) {
+                            const res = startSuperRepair(selectedTile, playerNation);
+                            if (res.ok) {
+                              soundManager.playClick();
+                              setForceUpdate(v => v + 1);
+                            }
+                          }
+                        }}
+                        className={`px-2.5 py-1 font-bold rounded-xl text-xs flex items-center gap-1 shadow ${
+                          canAffordRepair
+                            ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                            : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                        }`}
+                        title={`Sửa Siêu Công Trình (${sr.goldCost.toLocaleString()} Vàng, ${sr.durationSec}s)`}
+                      >
+                        <span>🔧 Sửa ({formatPopulation(sr.goldCost)}💰)</span>
+                      </button>
+                    );
+                  })()}
                   {areResourcesEnabled() && isExtractor(selectedTile.building) && (selectedTile.condition ?? 100) < 100 && (() => {
                     const rc = getRepairCost(selectedTile);
                     return (
@@ -366,6 +462,31 @@ export const GameHud: React.FC<GameHudProps> = ({
                         title={`Sửa chữa (${rc.gold} Vàng, ${rc.minerals} Khoáng)`}
                       >
                         <span>🔧 Sửa ({rc.gold}💰{rc.minerals > 0 ? ` ${rc.minerals}⛏️` : ''})</span>
+                      </button>
+                    );
+                  })()}
+                  {isExtractor(selectedTile.building) && !selectedTile.isAdvancedExtractor && maxAdvancedExtractors > 0 && !(selectedTile.inactiveTimer && selectedTile.inactiveTimer > 0) && (() => {
+                    const atLimit = currentAdvancedExtractors >= maxAdvancedExtractors;
+                    const canAffordAdv = !atLimit && (playerNation?.minerals || 0) >= ADVANCED_EXTRACTOR_MINERAL_COST;
+                    return (
+                      <button
+                        disabled={!canAffordAdv}
+                        onClick={() => {
+                          onUpgradeAdvancedExtractor?.(selectedTile);
+                          setForceUpdate(v => v + 1);
+                        }}
+                        className={`px-2.5 py-1 font-bold rounded-xl text-xs flex items-center gap-1 shadow ${
+                          canAffordAdv
+                            ? 'bg-gradient-to-r from-violet-600 to-amber-500 hover:brightness-110 text-white'
+                            : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                        }`}
+                        title={`Nâng cấp Cao Cấp x1.5 sản lượng (tốn ${ADVANCED_EXTRACTOR_MINERAL_COST} Khoáng sản)`}
+                      >
+                        <span>
+                          {atLimit
+                            ? `⭐ Đạt giới hạn (${currentAdvancedExtractors}/${maxAdvancedExtractors})`
+                            : `⭐ Cao Cấp (${ADVANCED_EXTRACTOR_MINERAL_COST}⛏️) • ${currentAdvancedExtractors}/${maxAdvancedExtractors}`}
+                        </span>
                       </button>
                     );
                   })()}
@@ -397,6 +518,16 @@ export const GameHud: React.FC<GameHudProps> = ({
                         <Swords className="w-3.5 h-3.5" />
                         <span>Tấn Công ({actualAttackTroops}q)</span>
                       </button>
+                      {fighterUnlocked && onLaunchFighterAtTile && (
+                        <button
+                          onClick={() => onLaunchFighterAtTile(selectedTile)}
+                          className="px-2.5 py-1 font-bold rounded-xl text-xs text-sky-200 bg-sky-700/80 hover:bg-sky-600 border border-sky-400/50 flex items-center gap-1 shadow"
+                          title={`Xuất kích Máy Bay Chiến Đấu (${FIGHTER_PLANE_CONFIG.goldCost} Vàng, ${FIGHTER_PLANE_CONFIG.oilCost} Dầu)`}
+                        >
+                          <Plane className="w-3.5 h-3.5" />
+                          <span>Không Kích</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => onProposeAlliance?.(selectedTile.owner)}
                         className="px-2 py-1 font-bold rounded-xl text-xs text-emerald-300 bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-500/50 flex items-center gap-1"
@@ -495,6 +626,31 @@ export const GameHud: React.FC<GameHudProps> = ({
             {actualAttackTroops}q
           </span>
         </div>
+
+        {/* NÚT KHÔNG KÍCH MÁY BAY CHIẾN ĐẤU (MỞ KHI ĐẠT QUÂN SỰ TỐI THƯỢNG 3) */}
+        {fighterUnlocked && onToggleFighterAiming && (
+          <div className="flex items-center justify-between gap-2 bg-sky-950/50 px-2.5 py-1.5 rounded-xl border border-sky-500/40 text-xs">
+            <div className="flex items-center gap-2 text-sky-200 font-bold truncate">
+              <Plane className="w-4 h-4 text-sky-400 shrink-0" />
+              <span className="truncate">
+                Máy Bay Chiến Đấu: <span className="font-mono text-white">{activeFightersCount}/{MAX_FIGHTERS_PER_NATION}</span>
+              </span>
+              <span className="text-[10px] font-mono text-amber-300 shrink-0">
+                ({FIGHTER_PLANE_CONFIG.goldCost}💰 {FIGHTER_PLANE_CONFIG.oilCost}🛢️)
+              </span>
+            </div>
+            <button
+              onClick={onToggleFighterAiming}
+              className={`px-3 py-1 rounded-lg font-black text-[11px] border transition-all active:scale-95 shrink-0 ${
+                fighterAimingMode
+                  ? 'bg-amber-500 text-slate-950 border-amber-300 animate-pulse'
+                  : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-400'
+              }`}
+            >
+              {fighterAimingMode ? '🎯 Đang Chọn Mục Tiêu...' : '✈️ Xuất Kích'}
+            </button>
+          </div>
+        )}
 
         {/* TƯỚNG VÀ KỸ NĂNG */}
         {(pGen || reserveGenerals.length > 0) && (
@@ -706,13 +862,13 @@ export const GameHud: React.FC<GameHudProps> = ({
 
         {/* 7. THANH DƯỚI CÙNG: 5 hoặc 6 nút icon có nhãn nhỏ */}
         <div className={`grid ${gameMode === 'CREATIVE' ? 'grid-cols-6' : 'grid-cols-5'} gap-1.5 pt-0.5`}>
-          {/* Nút 1: Tên Lửa */}
+          {/* Nút 1: Tấn Công */}
           <button
             onClick={() => setIsMissileOpen(true)}
             className="flex flex-col items-center justify-center py-2 px-1 bg-red-950/60 hover:bg-red-900/80 active:scale-95 border border-red-500/50 rounded-xl text-red-200 transition-all min-h-[44px]"
           >
             <Rocket className="w-4 h-4 text-red-400 mb-0.5" />
-            <span className="text-[10px] font-bold leading-tight">Tên Lửa</span>
+            <span className="text-[10px] font-bold leading-tight">Tấn Công</span>
           </button>
 
           {/* Nút 2: Xây Dựng */}

@@ -10,6 +10,22 @@ import { soundManager } from '../utils/audio';
 import { generateWeatherParticles } from '../utils/weatherUtils';
 import { drawTerrainBuffer, drawTerritoryBuffer } from '../utils/canvasRenderer';
 import { drawBuildingSprite, getNationColor } from '../utils/buildingSprites';
+import { isSuperBuilding, getSuperBuildingState, SUPER_BUILDING_CONFIG } from '../utils/superBuildings';
+import { getSupremeFortressStats } from '../utils/supremeTech';
+
+function drawRoundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+  if (typeof ctx.roundRect === 'function') {
+    ctx.roundRect(x, y, w, h, r);
+    return;
+  }
+  const rad = Math.min(r, w / 2, h / 2);
+  ctx.moveTo(x + rad, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rad);
+  ctx.arcTo(x + w, y + h, x, y + h, rad);
+  ctx.arcTo(x, y + h, x, y, rad);
+  ctx.arcTo(x, y, x + w, y, rad);
+  ctx.closePath();
+}
 
 interface UseGameRendererParams {
   mapSize: MapDimension;
@@ -216,6 +232,12 @@ export function useGameRenderer({
             m.progress = Math.min(1.0, m.progress + spd * deltaSec * gameSpeed);
           });
         }
+        if (gameDataRef.current.fighterPlanes) {
+          gameDataRef.current.fighterPlanes.forEach((p: any) => {
+            const spd = p.speed || 0.16;
+            p.progress = Math.min(1.0, (p.progress || 0) + spd * deltaSec * gameSpeed);
+          });
+        }
 
         // Tự động cập nhật tiến trình tàu buôn hải cảng mượt mà 60 FPS (chống cộng trùng lặp & cộng khi đang chiến tranh)
         if (gameDataRef.current.tradeShips) {
@@ -361,6 +383,8 @@ export function useGameRenderer({
           const bGrid = fogBaseGridRef.current;
 
           const getTileVisionRad = (t: Tile): number => {
+            if (t.building === 'SUPREME_FORTRESS') return 9.0;
+            if (t.building === 'GRAND_ACADEMY' || t.building === 'GRAND_ARSENAL') return 7.0;
             if (t.building === 'AIR_DEFENSE') return 7.5;
             if (t.building === 'MISSILE_SILO' || t.building === 'LASER') return 6.5;
             if (t.building === 'FORTRESS') return 5.5;
@@ -457,6 +481,28 @@ export function useGameRenderer({
           const px = x * TILE_PIXEL_SIZE;
           const py = y * TILE_PIXEL_SIZE;
 
+          // 4.1a. Vẽ Vùng Cháy (Thermobaric) & Vùng Phóng Xạ (ATOM nâng cấp)
+          if (t.burnZoneTimer && t.burnZoneTimer > 0) {
+            const burnPulse = 0.25 + 0.12 * Math.sin(timestamp * 0.01 + x + y);
+            ctx.save();
+            ctx.fillStyle = `rgba(249, 115, 22, ${burnPulse.toFixed(3)})`;
+            ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
+            ctx.strokeStyle = 'rgba(251, 113, 133, 0.55)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(px + 0.5, py + 0.5, TILE_PIXEL_SIZE - 1, TILE_PIXEL_SIZE - 1);
+            ctx.restore();
+          }
+          if (t.radiationTimer && t.radiationTimer > 0) {
+            const radPulse = 0.28 + 0.14 * Math.sin(timestamp * 0.008 + x * 0.7 + y);
+            ctx.save();
+            ctx.fillStyle = `rgba(132, 204, 22, ${radPulse.toFixed(3)})`;
+            ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
+            ctx.strokeStyle = 'rgba(163, 230, 53, 0.65)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(px + 0.5, py + 0.5, TILE_PIXEL_SIZE - 1, TILE_PIXEL_SIZE - 1);
+            ctx.restore();
+          }
+
           // 4.1b. Vẽ Mỏ Dầu / Khoáng Sản đã phát hiện (khi chưa xây trạm khai thác)
           if (t.building === 'NONE' && t.deposit && t.discovered && (t.reserve || 0) > 0 && zoom >= 0.6) {
             const cx = px + TILE_PIXEL_SIZE / 2;
@@ -478,14 +524,31 @@ export function useGameRenderer({
           }
 
           // 4.2. Vẽ Công Trình (Icon tròn nhỏ, nền màu phe, viền sáng, icon trắng ở giữa)
-          if (t.building !== 'NONE' && (zoom >= 0.6 || t.owner === 1)) {
+          if (t.building !== 'NONE' && (zoom >= 0.6 || t.owner === 1 || isSuperBuilding(t.building))) {
             const cx = px + TILE_PIXEL_SIZE / 2;
             const cy = py + TILE_PIXEL_SIZE / 2;
             const nationColor = (t.owner > 0 && nations[t.owner]) ? getNationColor(nations[t.owner]) : '#1e293b';
+            const superType = isSuperBuilding(t.building);
+            const superSt = superType ? getSuperBuildingState(t) : null;
             ctx.save();
             const isInactive = !!(t.inactiveTimer && t.inactiveTimer > 0);
             if (isInactive) ctx.globalAlpha = 0.35;
+            else if (superSt === 'BUILDING' || superSt === 'REPAIRING') ctx.globalAlpha = 0.55;
             drawBuildingSprite(ctx, t.building, cx, cy, nationColor);
+            if (superSt === 'ACTIVE') {
+              ctx.strokeStyle = 'rgba(250, 204, 21, 0.9)';
+              ctx.lineWidth = 1.6;
+              ctx.strokeRect(px + 1, py + 1, TILE_PIXEL_SIZE - 2, TILE_PIXEL_SIZE - 2);
+            } else if ((t.building === 'OIL_RIG' || t.building === 'MINE') && t.isAdvancedExtractor) {
+              ctx.strokeStyle = '#fbbf24';
+              ctx.lineWidth = 1.6;
+              ctx.strokeRect(px + 1, py + 1, TILE_PIXEL_SIZE - 2, TILE_PIXEL_SIZE - 2);
+              ctx.fillStyle = '#fbbf24';
+              ctx.font = 'bold 8px sans-serif';
+              ctx.textAlign = 'left';
+              ctx.textBaseline = 'top';
+              ctx.fillText('★', px + 2, py + 1);
+            }
             ctx.restore();
 
             if (t.inactiveTimer && t.inactiveTimer > 0) {
@@ -496,6 +559,42 @@ export function useGameRenderer({
               ctx.textBaseline = 'middle';
               ctx.fillText(`${Math.ceil(t.inactiveTimer)}`, cx, cy);
               ctx.restore();
+            }
+
+            if (superType && superSt) {
+              if (superSt === 'BUILDING' || superSt === 'REPAIRING') {
+                const total = Math.max(1, t.superBuildTotal || SUPER_BUILDING_CONFIG.BUILD_TIME_SECONDS);
+                const left = Math.max(0, t.superBuildTimeLeft || 0);
+                const ratio = Math.max(0, Math.min(1, (total - left) / total));
+                const barW = TILE_PIXEL_SIZE - 4;
+                ctx.save();
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+                ctx.fillRect(px + 2, py + TILE_PIXEL_SIZE - 5, barW, 4);
+                ctx.fillStyle = superSt === 'REPAIRING' ? '#22c55e' : '#38bdf8';
+                ctx.fillRect(px + 2, py + TILE_PIXEL_SIZE - 5, barW * ratio, 4);
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 8px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`${Math.ceil(left)}s`, cx, cy);
+                ctx.restore();
+              } else if (superSt === 'DAMAGED' || (t.superHp ?? SUPER_BUILDING_CONFIG.MAX_HP) < SUPER_BUILDING_CONFIG.MAX_HP) {
+                const maxHp = t.superMaxHp ?? SUPER_BUILDING_CONFIG.MAX_HP;
+                const hpRatio = Math.max(0, Math.min(1, (t.superHp ?? maxHp) / maxHp));
+                const barW = TILE_PIXEL_SIZE - 4;
+                ctx.save();
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+                ctx.fillRect(px + 2, py + TILE_PIXEL_SIZE - 5, barW, 4);
+                ctx.fillStyle = superSt === 'DAMAGED' ? '#ef4444' : '#f59e0b';
+                ctx.fillRect(px + 2, py + TILE_PIXEL_SIZE - 5, barW * hpRatio, 4);
+                if (superSt === 'DAMAGED') {
+                  ctx.fillStyle = '#f97316';
+                  ctx.font = 'bold 9px sans-serif';
+                  ctx.textAlign = 'center';
+                  ctx.fillText('!', px + TILE_PIXEL_SIZE - 5, py + 8);
+                }
+                ctx.restore();
+              }
             }
 
             // Hiển thị nhãn cấp độ xây chồng (L2, L3...) nhỏ gọn góc ô
@@ -533,19 +632,21 @@ export function useGameRenderer({
         const spy = st.y * TILE_PIXEL_SIZE;
         const pulse = 0.5 + 0.5 * Math.sin(timestamp * 0.007);
 
-        // Nếu ô được chọn là Pháo Đài (FORTRESS), vẽ vòng tròn hiệu lực bán kính 4 ô màu trắng mờ
-        if (st.building === 'FORTRESS') {
+        // Nếu ô được chọn là Pháo Đài (FORTRESS) hoặc Pháo Đài Tối Thượng (SUPREME_FORTRESS), vẽ vòng tròn hiệu lực
+        if (st.building === 'FORTRESS' || st.building === 'SUPREME_FORTRESS') {
           const fcx = spx + TILE_PIXEL_SIZE / 2;
           const fcy = spy + TILE_PIXEL_SIZE / 2;
-          const radiusPx = 4.0 * TILE_PIXEL_SIZE;
+          const isSupreme = st.building === 'SUPREME_FORTRESS';
+          const supremeRadius = isSupreme ? getSupremeFortressStats(nations[st.owner]).radius : 4.0;
+          const radiusPx = supremeRadius * TILE_PIXEL_SIZE;
 
           ctx.save();
           ctx.beginPath();
           ctx.arc(fcx, fcy, radiusPx, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+          ctx.fillStyle = isSupreme ? 'rgba(56, 189, 248, 0.09)' : 'rgba(255, 255, 255, 0.08)';
           ctx.fill();
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
-          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = isSupreme ? 'rgba(56, 189, 248, 0.7)' : 'rgba(255, 255, 255, 0.55)';
+          ctx.lineWidth = isSupreme ? 1.8 : 1.5;
           ctx.setLineDash([4, 4]);
           ctx.stroke();
           ctx.restore();
@@ -851,6 +952,60 @@ export function useGameRenderer({
           ctx.font = 'bold 10px sans-serif';
           ctx.textAlign = 'center';
           ctx.fillText(`🚀 ${remainingSec}s`, curX, arcY - 10);
+        });
+      }
+
+      // 6.3b. Vẽ Máy Bay Chiến Đấu (Fighter Planes)
+      if (gameDataRef.current.fighterPlanes && gameDataRef.current.fighterPlanes.length > 0) {
+        gameDataRef.current.fighterPlanes.forEach((p: any) => {
+          const sx = p.sourceX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const sy = p.sourceY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const ex = p.targetX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const ey = p.targetY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const prog = Math.min(1.0, Math.max(0.0, p.progress || 0));
+          const cx = sx + (ex - sx) * prog;
+          const cy = sy + (ey - sy) * prog;
+          const ang = Math.atan2(ey - sy, ex - sx);
+          const nColor = nations[p.nationId] ? getNationColor(nations[p.nationId]) : '#38bdf8';
+
+          ctx.save();
+          // Đường bay mờ
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
+          ctx.lineWidth = 1.4;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Bóng máy bay
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+          ctx.beginPath();
+          ctx.ellipse(cx + 4, cy + 7, 6, 3, ang, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Thân tiêm kích (Delta Wing)
+          ctx.translate(cx, cy);
+          ctx.rotate(ang);
+          ctx.fillStyle = nColor;
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(9, 0);
+          ctx.lineTo(-6, -6.5);
+          ctx.lineTo(-3, 0);
+          ctx.lineTo(-6, 6.5);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          // Đuôi lửa phản lực
+          ctx.fillStyle = '#fbbf24';
+          ctx.beginPath();
+          ctx.arc(-5, 0, 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
         });
       }
 
@@ -1325,6 +1480,18 @@ export function useGameRenderer({
             ctx.beginPath();
             ctx.arc(b.x, b.y, R * (0.2 + t * 0.9), 0, Math.PI * 2);
             ctx.stroke();
+          } else if (b.kind === 'FIGHTER') {
+            ctx.globalAlpha = (1 - t) * 0.82;
+            ctx.fillStyle = '#38bdf8';
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.3 + t * 0.55), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1 - t;
+            ctx.strokeStyle = '#fbbf24';
+            ctx.lineWidth = 2.4;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.25 + t * 1.05), 0, Math.PI * 2);
+            ctx.stroke();
           } else {
             // MIRV: chớp hồng nhỏ + vòng sóng hồng (mỗi đầu đạn con)
             ctx.globalAlpha = (1 - t) * 0.85;
@@ -1362,7 +1529,7 @@ export function useGameRenderer({
           ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
           ctx.lineWidth = 1;
           ctx.beginPath();
-          ctx.roundRect(drawX - textW / 2, drawY - textH / 2, textW, textH, 6);
+          drawRoundRectPath(ctx, drawX - textW / 2, drawY - textH / 2, textW, textH, 6);
           ctx.fill();
           ctx.stroke();
 

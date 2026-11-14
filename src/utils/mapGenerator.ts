@@ -37,21 +37,25 @@ function hslToHex(h: number, s: number, l: number): string {
   s /= 100; l /= 100;
   const k = (n: number) => (n + h / 30) % 12;
   const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => {
-    const c = l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
-    return Math.round(255 * c).toString(16).padStart(2, '0');
-  };
-  return `#${f(0)}${f(8)}${f(4)}`;
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  const to = (x: number) => Math.round(255 * x).toString(16).padStart(2, '0');
+  return `#${to(f(0))}${to(f(8))}${to(f(4))}`;
 }
 
-function getDistinctNationColor(i: number, palette: string[], isBoss = false): string {
-  if (i <= 1) return palette[i]; // 0 trung lập, 1 người chơi (xanh)
-  if (isBoss) return palette[2]; // Boss (đỏ cam sáng chói)
-  let h = (i * 137.508) % 360;
-  if (Math.abs(h - 220) < 25 || h < 18 || h > 342) h = (h + 50) % 360; // tránh trùng xanh của người chơi và đỏ của Boss
-  const s = 82 + (i % 3) * 6;
-  const l = 58 + (i % 2) * 8;
-  return hslToHex(h, s, l);
+export function getNationColor(i: number): string {
+  if (i === 0) return '#64748b';
+  if (i === 1) return '#2563eb';
+  if (i === 2) return '#dc2626';
+  const k = i - 2;
+  let hue = (k * 137.508) % 360;
+  let tries = 0;
+  while (tries < 20 && ((hue >= 195 && hue <= 245) || hue >= 345 || hue <= 15)) {
+    tries++;
+    hue = (hue + 53.7) % 360;
+  }
+  const sat = [75, 85, 70][i % 3];
+  const light = [55, 48, 62][i % 3];
+  return hslToHex(hue, sat, light);
 }
 
 /**
@@ -107,14 +111,7 @@ export function generateWorldMap(
   const ethnicExtraCount = size === 64 ? 10 : size === 96 ? 18 : size === 128 ? 30 : 44;
   const minorCount = baseMinorCount + ethnicExtraCount;
 
-  // Bảng màu rực rỡ cho Quốc gia / Tông màu xám trầm cho Thuộc địa
-  const nationColors = [
-    "#64748b", // 0: Neutral
-    "#38bdf8", // 1: Player (Xanh dương sáng rực rỡ OpenFront style)
-    "#f87171", // 2: Boss AI (Đỏ cam sáng chói rực rỡ)
-    "#71717a", "#a1a1aa", "#78716c", "#a8a29e", "#64748b", // Muted tones cho Thuộc địa
-    "#10b981", "#8b5cf6", "#f59e0b", "#0ea5e9", "#eab308", "#14b8a6", "#f43f5e", "#84cc16"
-  ];
+  // Màu quốc gia & thuộc địa được cấp tự động qua getNationColor(i) (tươi sáng, không lặp)
 
   const cleanPlayerName = (customPlayerName && customPlayerName.trim()) ? customPlayerName.trim() : 'Việt Nam';
   const officialCountryNameSet = new Set(
@@ -283,6 +280,8 @@ export function generateWorldMap(
     capitalY: 0,
     hasPort: false,
     techLevels: { economy: 0, military: 0, defense: 0 },
+    supremeTechUnlocked: false,
+    supremeTechLevels: { economy: 0, military: 0, defense: 0 },
     diplomacy: {},
     allianceInvites: [],
     lastRejectedInviteTimer: {},
@@ -414,7 +413,8 @@ export function generateWorldMap(
       }
     }
 
-    const nColor = colonyCategory === 'FOREST' ? '#ffffff' : (colonyCategory ? nationColors[3 + (i % 5)] : getDistinctNationColor(i, nationColors, isBoss));
+    const colorIdx = isPlayer ? 1 : isBoss ? 2 : (i === 2 ? actualTotalNations + 2 : i);
+    const nColor = getNationColor(colorIdx);
 
     // Chọn ngẫu nhiên 1 trong 5 Đại Tướng từ GENERAL_ROSTER cho quốc gia
     const rosterItem = GENERAL_ROSTER[Math.floor(Math.random() * GENERAL_ROSTER.length)];
@@ -444,6 +444,8 @@ export function generateWorldMap(
       general: generalObj,
       reserveGenerals: [],
       techLevels: { economy: 0, military: 0, defense: 0 },
+      supremeTechUnlocked: false,
+      supremeTechLevels: { economy: 0, military: 0, defense: 0 },
       diplomacy: defaultDiplomacy,
       allianceInvites: [],
       lastRejectedInviteTimer: {},
