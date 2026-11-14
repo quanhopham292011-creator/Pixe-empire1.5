@@ -4,9 +4,244 @@ import { RoomState } from '../multiplayer/types';
 import { BUILDING_INFO, formatGameTime } from '../utils/constants';
 import { GENERAL_CONSTANTS, canDeployGeneral } from '../utils/generalCombat';
 import { getStyleAIWeights } from '../utils/generalEvolution';
+import { countActiveAlliances, reconcileNationAlliances } from './useTradeRoutes';
 
 const DX = [1, -1, 0, 0];
 const DY = [0, 0, 1, -1];
+
+const AUTO_TRUCE_DURATION = 45;
+const AUTO_TRUCE_WAR_COOLDOWN = 180; // Chờ thêm 180s chiến tranh sau khi hết đình chiến mới được xét lại
+const AUTO_TRUCE_MIN_GOLD = 80;
+
+export interface AutoTruceContext {
+  bot: Nation;
+  nations: Nation[];
+  data: any;
+  difficulty: GameDifficulty;
+  gameTime: number;
+  playerLandPct: number;
+  waveByPair: Map<string, number>;
+  capitalAttackByPair: Map<string, number>;
+  adjacentEnemyIds: Set<number>;
+  capitalAdjacentEnemyIds: Set<number>;
+}
+
+/**
+ * Đánh giá và kích hoạt đình chiến tự động có điều kiện:
+ * - So sánh tương quan sức mạnh 2 bên (quân đội, lãnh thổ) + tình trạng chiến trường thực tế
+ * - Yêu cầu tình trạng nguy hiểm nghiêm trọng duy trì đủ lâu
+ * - Chặn spam đình chiến khi đối thủ vượt trội rõ rệt hoặc đang trong hồi chiêu
+ * - Đồng bộ trạng thái ngoại giao 2 chiều và dọn đợt quân giữa 2 bên
+ */
+export function processBotAutoTruce(ctx: AutoTruceContext): boolean {
+  const {
+    bot,
+    nations,
+    data,
+    difficulty,
+    gameTime,
+    playerLandPct,
+    waveByPair,
+    capitalAttackByPair,
+    adjacentEnemyIds,
+    capitalAdjacentEnemyIds,
+  } = ctx;
+
+  if (!bot || bot.isEliminated || bot.id <= 1 || bot.colonyCategory === 'FOREST') return false;
+  if (!bot.diplomacy) bot.diplomacy = {};
+
+  if (!bot.autoTruceState) {
+    bot.autoTruceState = {
+      dangerTicks: {},
+      cooldownUntil: {},
+      truceCounts: {},
+      prevTerritory: bot.territoryCount || 0,
+      recentLoss: 0,
+    };
+  }
+  const truceState = bot.autoTruceState;
+  if (!truceState.dangerTicks) truceState.dangerTicks = {};
+  if (!truceState.cooldownUntil) truceState.cooldownUntil = {};
+  if (!truceState.truceCounts) truceState.truceCounts = {};
+
+  const currentTer = bot.territoryCount || 0;
+  const prevTer = typeof truceState.prevTerritory === 'number' ? truceState.prevTerritory : currentTer;
+  if (currentTer < prevTer) {
+    truceState.recentLoss = Math.min(25, (truceState.recentLoss || 0) + (prevTer - currentTer));
+  } else {
+    truceState.recentLoss = Math.max(0, (truceState.recentLoss || 0) - 0.25);
+  }
+  truceState.prevTerritory = currentTer;
+
+  // Thu thập toàn bộ đối thủ đang tiếp giáp hoặc đang tấn công
+  const candidateIds = new Set<number>(adjacentEnemyIds);
+  nations.forEach((other: Nation) => {
+    if (!other || other.id <= 0 || other.id === bot.id || other.isEliminated || other.colonyCategory === 'FOREST') return;
+    if ((waveByPair.get(`${other.id}->${bot.id}`) || 0) > 0 || (truceState.dangerTicks[other.id] || 0) > 0) {
+      candidateIds.add(other.id);
+    }
+  });
+
+  const isBoss = bot.tier === 'BOSS';
+  const botTroops = bot.troops || 0;
+  const botMaxTroops = Math.max(1, bot.maxTroops || 1);
+  const troopRatio = botTroops / botMaxTroops;
+  const botTerritory = Math.max(1, currentTer);
+  const botPower = botTroops + botTerritory * 10;
+  const recentLoss = truceState.recentLoss || 0;
+
+  const requiredDangerSeconds =
+    difficulty === 'EXTREME' || difficulty === 'HARD' || isBoss
+      ? 15
+      : difficulty === 'NORMAL'
+        ? 12
+        : 10;
+
+  const eligibleEnemies: { enemyId: number; enemyNat: Nation; score: number }[] = [];
+
+  candidateIds.forEach((enemyId) => {
+    const enemyNat = nations[enemyId];
+    if (!enemyNat || enemyNat.isEliminated || enemyNat.id <= 0 || enemyNat.colonyCategory === 'FOREST') {
+      delete truceState.dangerTicks[enemyId];
+      return;
+    }
+
+    if (!enemyNat.diplomacy) enemyNat.diplomacy = {};
+    const botDip = bot.diplomacy[enemyId] || { status: 'WAR', relation: 0, truceTimer: 0 };
+    const enemyDip = enemyNat.diplomacy[bot.id] || { status: 'WAR', relation: 0, truceTimer: 0 };
+
+    // Đồng bộ trạng thái 2 chiều nếu phát hiện lệch pha (vd: tuyên chiến hoặc hết hạn đình chiến 1 phía)
+    if (botDip.status !== enemyDip.status) {
+      if (botDip.status === 'WAR' || enemyDip.status === 'WAR') {
+        bot.diplomacy[enemyId] = { status: 'WAR', relation: Math.min(botDip.relation || 0, enemyDip.relation || 0), truceTimer: 0 };
+        enemyNat.diplomacy[bot.id] = { status: 'WAR', relation: Math.min(botDip.relation || 0, enemyDip.relation || 0), truceTimer: 0 };
+      } else if (botDip.status === 'TRUCE' && (botDip.truceTimer || 0) <= 0 && enemyDip.status === 'TRUCE' && (enemyDip.truceTimer || 0) <= 0) {
+        bot.diplomacy[enemyId] = { status: 'WAR', relation: 0, truceTimer: 0 };
+        enemyNat.diplomacy[bot.id] = { status: 'WAR', relation: 0, truceTimer: 0 };
+      }
+    }
+
+    const syncedBotStatus = bot.diplomacy[enemyId]?.status || 'WAR';
+    const syncedEnemyStatus = enemyNat.diplomacy[bot.id]?.status || 'WAR';
+    if (syncedBotStatus !== 'WAR' || syncedEnemyStatus !== 'WAR') {
+      truceState.dangerTicks[enemyId] = 0;
+      return;
+    }
+
+    const enemyTroops = enemyNat.troops || 0;
+    const enemyTerritory = Math.max(1, enemyNat.territoryCount || 0);
+    const enemyPower = enemyTroops + enemyTerritory * 10;
+    const powerRatio = enemyPower / Math.max(1, botPower);
+
+    const incomingTroops = waveByPair.get(`${enemyId}->${bot.id}`) || 0;
+    const capitalIncomingTroops = capitalAttackByPair.get(`${enemyId}->${bot.id}`) || 0;
+    const outgoingTroops = waveByPair.get(`${bot.id}->${enemyId}`) || 0;
+    const capitalAdjacent = capitalAdjacentEnemyIds.has(enemyId);
+
+    // 1. Chặn đình chiến liên tục hoặc khi đối thủ / người chơi vượt trội rõ rệt
+    const cooldownUntil = truceState.cooldownUntil[enemyId] || 0;
+    const usedCount = truceState.truceCounts[enemyId] || 0;
+    const maxAllowedTruces = powerRatio >= 2.0 ? 1 : 2;
+    const isOverwhelmingEnemy =
+      powerRatio >= 2.6 ||
+      (enemyTerritory >= botTerritory * 2.5 && enemyTroops >= botTroops * 2.0) ||
+      (enemyId === 1 && playerLandPct >= 0.35) ||
+      (botTerritory <= 3 && enemyTerritory >= 12);
+
+    if (isOverwhelmingEnemy || gameTime < cooldownUntil || usedCount >= maxAllowedTruces) {
+      truceState.dangerTicks[enemyId] = 0;
+      return;
+    }
+
+    // 2. Đánh giá tương quan sức mạnh hai bên (quân đội & lãnh thổ)
+    const enemySignificantlyStronger =
+      powerRatio >= 1.35 &&
+      enemyTroops > botTroops * 1.25 &&
+      enemyTerritory >= Math.floor(botTerritory * 0.8);
+
+    // 3. Đánh giá tình trạng chiến trường thực tế (tránh xin hòa khi mới giáp biên hoặc vừa tự xuất quân)
+    const activeFrontPressure =
+      incomingTroops >= Math.max(12, botTroops * 0.35) ||
+      capitalIncomingTroops > 0 ||
+      (capitalAdjacent && recentLoss >= 2) ||
+      recentLoss >= 3;
+
+    const notCounterAttacking = outgoingTroops <= incomingTroops + botTroops * 0.25;
+
+    // 4. Ngưỡng nguy cơ thất bại nghiêm trọng (không kích hoạt chỉ vì troopRatio < 0.20 hay đe dọa thủ đô nhất thời)
+    const severeDefeatRisk =
+      (troopRatio < 0.16 && activeFrontPressure) ||
+      (capitalIncomingTroops >= Math.max(20, botTroops * 0.5) && troopRatio < 0.30) ||
+      (recentLoss >= 3 && troopRatio < 0.32 && (incomingTroops > 0 || capitalAdjacent));
+
+    const inCriticalDanger =
+      enemySignificantlyStronger &&
+      activeFrontPressure &&
+      notCounterAttacking &&
+      severeDefeatRisk &&
+      bot.gold >= AUTO_TRUCE_MIN_GOLD;
+
+    if (inCriticalDanger) {
+      truceState.dangerTicks[enemyId] = (truceState.dangerTicks[enemyId] || 0) + 1;
+    } else {
+      truceState.dangerTicks[enemyId] = Math.max(0, (truceState.dangerTicks[enemyId] || 0) - 2);
+    }
+
+    if ((truceState.dangerTicks[enemyId] || 0) >= requiredDangerSeconds) {
+      eligibleEnemies.push({
+        enemyId,
+        enemyNat,
+        score: incomingTroops + capitalIncomingTroops * 2 + powerRatio * 20,
+      });
+    }
+  });
+
+  if (eligibleEnemies.length === 0 || bot.gold < AUTO_TRUCE_MIN_GOLD) return false;
+
+  eligibleEnemies.sort((a, b) => b.score - a.score);
+  const chosen = eligibleEnemies[0];
+  const { enemyId, enemyNat } = chosen;
+
+  const tribute = Math.floor(bot.gold * 0.4);
+  if (tribute <= 0) return false;
+
+  bot.gold -= tribute;
+  enemyNat.gold = (enemyNat.gold || 0) + tribute;
+
+  // Cập nhật đồng bộ 2 chiều
+  bot.diplomacy[enemyId] = { status: 'TRUCE', relation: 30, truceTimer: AUTO_TRUCE_DURATION };
+  if (!enemyNat.diplomacy) enemyNat.diplomacy = {};
+  enemyNat.diplomacy[bot.id] = { status: 'TRUCE', relation: 30, truceTimer: AUTO_TRUCE_DURATION };
+
+  // Xóa các đợt quân đang di chuyển giữa 2 nước để không đánh chồng lên trạng thái đình chiến
+  if (Array.isArray(data.attackWaves)) {
+    data.attackWaves = data.attackWaves.filter(
+      (w: any) => !((w.fromNation === bot.id && w.toNation === enemyId) || (w.fromNation === enemyId && w.toNation === bot.id))
+    );
+  }
+
+  truceState.cooldownUntil[enemyId] = gameTime + AUTO_TRUCE_DURATION + AUTO_TRUCE_WAR_COOLDOWN;
+  truceState.truceCounts[enemyId] = (truceState.truceCounts[enemyId] || 0) + 1;
+  truceState.dangerTicks[enemyId] = 0;
+  if (enemyNat.autoTruceState?.dangerTicks) {
+    enemyNat.autoTruceState.dangerTicks[bot.id] = 0;
+  }
+
+  if (enemyId === 1) {
+    if (!Array.isArray(data.events)) data.events = [];
+    data.events.unshift({
+      id: Math.random().toString(),
+      title: '🕊️ Đề Nghị Đình Chiến & Cống Nộp',
+      description: `🏳️ Quốc gia ${bot.name} chịu tổn thất nặng nề, dâng cống nộp +${tribute} Vàng để ký Hiệp Ước Đình Chiến ${AUTO_TRUCE_DURATION}s!`,
+      type: 'DIPLOMACY',
+      targetNationId: bot.id,
+      timestamp: formatGameTime(gameTime),
+    });
+    if (data.events.length > 50) data.events.length = 50;
+  }
+
+  return true;
+}
 
 export interface UseBotAIParams {
   gameDataRef: React.MutableRefObject<any>;
@@ -102,13 +337,24 @@ export function useBotAI({
     const totalLand = totalLandCountRef.current || 1;
     const playerLandPct = totalLand > 0 ? ((nations[1]?.territoryCount || 0) / totalLand) : 0;
 
-    // Tra cứu O(1) đợt tấn công
+    // Tra cứu O(1) đợt tấn công theo ô và theo cặp quốc gia
     const incomingWaveTargetMap = new Map<number, number>();
+    const waveByPair = new Map<string, number>();
+    const capitalAttackByPair = new Map<string, number>();
     if (data.attackWaves && data.attackWaves.length > 0) {
       for (let wi = 0; wi < data.attackWaves.length; wi++) {
         const w = data.attackWaves[wi];
         const k = w.targetY * size + w.targetX;
         incomingWaveTargetMap.set(k, (incomingWaveTargetMap.get(k) || 0) + w.troops);
+
+        if (w.fromNation > 0 && w.toNation > 0 && w.fromNation !== w.toNation) {
+          const pairKey = `${w.fromNation}->${w.toNation}`;
+          waveByPair.set(pairKey, (waveByPair.get(pairKey) || 0) + w.troops);
+          const defNat = nations[w.toNation];
+          if (defNat && Math.hypot(w.targetX - defNat.capitalX, w.targetY - defNat.capitalY) <= 2.5) {
+            capitalAttackByPair.set(pairKey, (capitalAttackByPair.get(pairKey) || 0) + w.troops);
+          }
+        }
       }
     }
 
@@ -216,6 +462,9 @@ export function useBotAI({
       }[] = [];
       const neutralTargets: { source: Tile; target: Tile; isPlayer: boolean; priority: number }[] = [];
 
+      const adjacentEnemyIds = new Set<number>();
+      const capitalAdjacentEnemyIds = new Set<number>();
+
       for (let oi = 0; oi < ownedList.length; oi++) {
         const t = ownedList[oi];
         const x = t.x;
@@ -239,6 +488,10 @@ export function useBotAI({
                     neutralTargets.push({ source: t, target: neighborTile, isPlayer: false, priority: 10 });
                   }
                 } else if (neighborTile.owner !== bot.id) {
+                  if (neighborTile.owner > 0) {
+                    adjacentEnemyIds.add(neighborTile.owner);
+                    if (isCapital) capitalAdjacentEnemyIds.add(neighborTile.owner);
+                  }
                   const dip = bot.diplomacy[neighborTile.owner]?.status;
                   if (dip !== 'ALLIANCE' && dip !== 'TRUCE') {
                     if (neighborTile.owner === 1) {
@@ -286,6 +539,20 @@ export function useBotAI({
       borderThreats.sort((a, b) => b.strategicScore - a.strategicScore);
 
       // --- 4. NGOẠI GIAO TỰ CHỦ, LIÊN MINH CHỐNG BÁ QUYỀN & ĐÌNH CHIẾN ---
+      // 4b. Đình chiến khẩn cấp theo dõi liên tục mỗi giây (chỉ kích hoạt khi nguy kịch kéo dài)
+      processBotAutoTruce({
+        bot,
+        nations,
+        data,
+        difficulty,
+        gameTime,
+        playerLandPct,
+        waveByPair,
+        capitalAttackByPair,
+        adjacentEnemyIds,
+        capitalAdjacentEnemyIds,
+      });
+
       if ((bot.id + gameTime) % 4 === 0) {
         if (!bot.diplomacy) bot.diplomacy = {};
         if (!bot.allianceInvites) bot.allianceInvites = [];
@@ -300,7 +567,8 @@ export function useBotAI({
               if (other && !other.isEliminated && other.id !== bot.id && other.id !== superpowerId && other.id > 0) {
                 const dipWithOther = bot.diplomacy[other.id];
                 if (!dipWithOther || dipWithOther.status !== 'WAR') {
-                  const currentAllies = Object.values(bot.diplomacy).filter(d => d.status === 'ALLIANCE').length;
+                  reconcileNationAlliances(bot, nations);
+                  const currentAllies = countActiveAlliances(bot, nations);
                   if (currentAllies < 3 && Math.random() < coalitionChance) {
                     if (!other.allianceInvites) other.allianceInvites = [];
                     const alreadyInvited = other.allianceInvites.some(inv => inv.senderNationId === bot.id);
@@ -312,41 +580,6 @@ export function useBotAI({
               }
             });
           }
-        }
-
-        // 4b. Đình chiến khẩn cấp khi thất thế nghiêm trọng
-        const severeThreat = borderThreats.find(b => b.isCapital && b.threatScore > 50);
-        if ((troopRatio < 0.20 || severeThreat) && bot.gold >= 60) {
-          borderThreats.forEach(bt => {
-            if (bt.enemySource && bt.enemySource.owner > 0) {
-              const enemyId = bt.enemySource.owner;
-              const enemyDip = bot.diplomacy[enemyId];
-              if (!enemyDip || enemyDip.status === 'WAR') {
-                const tribute = Math.floor(bot.gold * 0.4);
-                bot.gold -= tribute;
-                const enemyNat = nations[enemyId];
-                if (enemyNat) enemyNat.gold = (enemyNat.gold || 0) + tribute;
-
-                bot.diplomacy[enemyId] = { status: 'TRUCE', relation: 30, truceTimer: 45 };
-                if (enemyNat) {
-                  if (!enemyNat.diplomacy) enemyNat.diplomacy = {};
-                  enemyNat.diplomacy[bot.id] = { status: 'TRUCE', relation: 30, truceTimer: 45 };
-                }
-
-                if (enemyId === 1) {
-                  data.events.unshift({
-                    id: Math.random().toString(),
-                    title: '🕊️ Đề Nghị Đình Chiến & Cống Nộp',
-                    description: `🏳️ Quốc gia ${bot.name} chịu tổn thất nặng nề, dâng cống nộp +${tribute} Vàng để ký Hiệp Ước Đình Chiến 45s!`,
-                    type: 'DIPLOMACY',
-                    targetNationId: bot.id,
-                    timestamp: formatGameTime(gameTime),
-                  });
-                  if (data.events.length > 50) data.events.length = 50;
-                }
-              }
-            }
-          });
         }
       }
 
@@ -422,23 +655,31 @@ export function useBotAI({
         gen.behavior = newBehavior;
       }
 
-      // --- 6. AI TẬP TRUNG XÂY DỰNG & NÂNG CẤP CÔNG TRÌNH THEO PHONG CÁCH & ĐỘ KHÓ ---
+      // --- 6. AI XÂY DỰNG CÂN ĐỐI (Kinh tế, Quân sự, Phòng thủ) ---
       const buildProb = difficulty === 'EXTREME' ? (isBoss ? 0.95 : 0.90) : difficulty === 'HARD' ? (isBoss ? 0.85 : 0.72) : difficulty === 'NORMAL' ? (isBoss ? 0.55 : 0.45) : (isBoss ? 0.32 : 0.22);
       const maxBuildLvl = difficulty === 'EXTREME' ? 5 : difficulty === 'HARD' ? 4 : difficulty === 'NORMAL' ? 3 : 2;
       if (bot.gold >= 80 && Math.random() < buildProb) {
-        const targetForDefense = borderThreats.find(b => b.isCapital || b.strategicScore >= 45 || b.tile.building === 'NONE');
-        if (targetForDefense) {
-          const tileToBuild = targetForDefense.tile;
+        let botCities = 0;
+        let botBarracks = 0;
+        ownedList.forEach(t => {
+          if (t.building === 'CITY') botCities += (t.buildingLevel || 1);
+          if (t.building === 'BARRACKS') botBarracks += (t.buildingLevel || 1);
+        });
+
+        const targetForBuilding = borderThreats.find(b => b.isCapital || b.strategicScore >= 40 || b.tile.building === 'NONE');
+        if (targetForBuilding) {
+          const tileToBuild = targetForBuilding.tile;
           if (tileToBuild.building === 'NONE') {
             let buildType: BuildingType = 'FORTRESS';
-            if (bot.personality === 'MERCHANT') {
-              buildType = Math.random() < 0.6 ? 'CITY' : (tileToBuild.hasHarborAccess ? 'PORT' : 'FORTRESS');
-            } else if (bot.personality === 'AGGRESSIVE') {
-              buildType = Math.random() < 0.6 ? 'BARRACKS' : (Math.random() < 0.5 ? 'MISSILE_SILO' : 'FORTRESS');
-            } else if (bot.personality === 'DEFENSIVE') {
-              buildType = Math.random() < 0.5 ? 'FORTRESS' : (Math.random() < 0.5 ? 'AIR_DEFENSE' : 'LASER');
+            const territorySize = ownedList.length;
+            if (botCities * 12 < territorySize && bot.gold >= BUILDING_INFO.CITY.baseCost) {
+              buildType = 'CITY';
+            } else if (botBarracks < 2 && bot.gold >= BUILDING_INFO.BARRACKS.baseCost) {
+              buildType = 'BARRACKS';
+            } else if (targetForBuilding.threatScore > 20 && bot.gold >= BUILDING_INFO.FORTRESS.baseCost) {
+              buildType = 'FORTRESS';
             } else {
-              buildType = Math.random() < 0.5 ? 'FORTRESS' : 'CITY';
+              buildType = bot.personality === 'MERCHANT' ? 'CITY' : bot.personality === 'AGGRESSIVE' ? 'BARRACKS' : 'FORTRESS';
             }
 
             const bCost = BUILDING_INFO[buildType as Exclude<BuildingType, 'NONE'>].baseCost;
@@ -450,7 +691,7 @@ export function useBotAI({
               fogBaseDirtyRef.current = true;
               dirtyTerritoryTilesRef.current.push({ x: tileToBuild.x, y: tileToBuild.y });
             }
-          } else if (tileToBuild.building === 'FORTRESS' || tileToBuild.building === 'BARRACKS' || tileToBuild.building === 'CITY') {
+          } else if (['FORTRESS', 'BARRACKS', 'CITY', 'AIR_DEFENSE'].includes(tileToBuild.building)) {
             const upgradeCost = Math.floor(BUILDING_INFO[tileToBuild.building].baseCost * 0.8);
             if (bot.gold >= upgradeCost && (tileToBuild.buildingLevel || 1) < maxBuildLvl) {
               bot.gold -= upgradeCost;
@@ -463,18 +704,35 @@ export function useBotAI({
         }
       }
 
-      // --- 7. PHẢN CÔNG VÀ ĐIỀU QUÂN CHÍNH YẾU (Có đợt tấn công Gọng Kìm) ---
+      // --- 7. TẤN CÔNG CÓ CHỦ ĐÍCH, TẬP TRUNG LỰC LƯỢNG & PHÒNG THỦ KHI BỊ TẤN CÔNG ---
       const minTroopsReq = difficulty === 'EXTREME' ? 6 : difficulty === 'HARD' ? 8 : difficulty === 'NORMAL' ? (bot.colonyCategory === 'TRIBE' ? 15 : 11) : (bot.colonyCategory === 'TRIBE' ? 20 : 15);
       const attackProb = difficulty === 'EXTREME' ? 0.95 : difficulty === 'HARD' ? 0.85 : difficulty === 'NORMAL' ? (bot.personality === 'DEFENSIVE' ? 0.45 : 0.65) : (isBoss ? 0.55 : (bot.personality === 'DEFENSIVE' ? 0.25 : 0.40));
 
-      if (bot.troops >= minTroopsReq && Math.random() < attackProb) {
+      let isUnderAttack = false;
+      ownedList.forEach(t => {
+        const incoming = incomingWaveTargetMap.get(t.y * size + t.x);
+        if (incoming && incoming > 0) {
+          isUnderAttack = true;
+        }
+      });
+
+      if (bot.troops >= minTroopsReq && (Math.random() < attackProb || isUnderAttack)) {
         const validTargets: { source: Tile; target: Tile; isPlayer: boolean; priority: number }[] = [];
 
         borderThreats.forEach(bt => {
           if (bt.enemySource) {
-            let priority = bt.strategicScore;
-            if (bt.isCapital) priority += 100;
-            if (bt.enemySource.owner === 1) priority += (difficulty === 'EXTREME' ? 75 : difficulty === 'HARD' ? 50 : difficulty === 'NORMAL' ? 25 : 10);
+            const isPlayerTarget = bt.enemySource.owner === 1;
+            const gameTime = gameDataRef.current?.gameTimeSeconds || 0;
+            if ((difficulty === 'EASY' || difficulty === 'NORMAL') && gameTime < 120 && isPlayerTarget) {
+              return;
+            }
+
+            // Ưu tiên chọn mục tiêu yếu nhất (phòng thủ thấp, dễ chiếm) kết hợp giá trị chiến lược
+            const enemyTileDefense = bt.enemySource.defenseBonus || 1.0;
+            const weaknessScore = Math.max(1, 10 - Math.floor(enemyTileDefense * 3));
+            let priority = bt.strategicScore + weaknessScore * 6;
+            if (bt.isCapital) priority += 120;
+            if (bt.enemySource.owner === 1) priority += (difficulty === 'EXTREME' ? 90 : difficulty === 'HARD' ? 60 : difficulty === 'NORMAL' ? 30 : 15);
 
             validTargets.push({
               source: bt.tile,
@@ -490,23 +748,18 @@ export function useBotAI({
           const selected = validTargets[0];
 
           if (selected) {
-            const defenseReserve = selected.priority >= 100 ? 0.40 : 0.20;
+            // Khi bị tấn công, tăng lượng quân phòng thủ dự trữ để bảo vệ thành
+            const defenseReserve = isUnderAttack ? 0.45 : (selected.priority >= 100 ? 0.35 : 0.15);
             const availableTroops = Math.max(5, Math.floor(bot.troops * (1 - defenseReserve)));
-            const pct = difficulty === 'EXTREME' ? (playerLandPct >= 0.10 ? 0.80 : 0.68) : difficulty === 'HARD' ? (playerLandPct >= 0.15 ? 0.65 : 0.52) : difficulty === 'NORMAL' ? 0.42 : (isBoss ? 0.38 : 0.30);
-            const troopsToSend = Math.max(5, Math.floor(availableTroops * pct));
+            
+            // Tập trung quân vào 1 hướng quyết định (mũi nhọn chủ lực) thay vì rải đều
+            const concentrationPct = difficulty === 'EXTREME' ? 0.88 : difficulty === 'HARD' ? 0.80 : difficulty === 'NORMAL' ? 0.70 : 0.55;
+            const troopsToSend = Math.max(5, Math.floor(availableTroops * concentrationPct));
 
             if (troopsToSend >= 5) {
               let shouldGeneralJoin = false;
-              if (bot.general && canDeployGeneral(bot.general) && bot.general.status === 'IDLE') {
-                const behavior = bot.general.behavior;
-                const joinW = getStyleAIWeights(bot.general);
-                if (behavior === 'ATTACK') {
-                  shouldGeneralJoin = troopsToSend >= joinW.joinAttackMinTroops || selected.priority >= joinW.joinAttackMinPriority;
-                } else if (behavior === 'DEFEND') {
-                  shouldGeneralJoin = selected.priority >= joinW.joinDefendMinPriority || (selected.source.x === bot.capitalX && selected.source.y === bot.capitalY);
-                } else if (behavior === 'PROTECT') {
-                  shouldGeneralJoin = troopsToSend >= joinW.joinProtectMinTroops && selected.priority >= 60;
-                }
+              if (bot.general && canDeployGeneral(bot.general) && (bot.general.status === 'IDLE' || isUnderAttack)) {
+                shouldGeneralJoin = true;
               }
 
               launchAttackWave(
@@ -518,24 +771,6 @@ export function useBotAI({
                 undefined,
                 shouldGeneralJoin
               );
-
-              // Tấn công gọng kìm (Pincer Attack): chỉ áp dụng từ mức Thường trở lên
-              const pincerChance = difficulty === 'EXTREME' ? 0.45 : difficulty === 'HARD' ? 0.35 : difficulty === 'NORMAL' ? 0.20 : 0;
-              if (pincerChance > 0 && bot.troops > troopsToSend + 15 && validTargets.length > 1 && Math.random() < pincerChance) {
-                const secondTarget = validTargets[1];
-                if (secondTarget && secondTarget.source !== selected.source) {
-                  const secondaryTroops = Math.max(5, Math.floor((bot.troops - troopsToSend) * 0.4));
-                  launchAttackWave(
-                    bot.id,
-                    secondTarget.target.owner,
-                    secondTarget.source,
-                    secondTarget.target,
-                    secondaryTroops,
-                    undefined,
-                    false
-                  );
-                }
-              }
             }
           }
         }

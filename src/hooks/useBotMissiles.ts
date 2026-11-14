@@ -4,6 +4,7 @@ import { RoomState } from '../multiplayer/types';
 import { 
   MISSILE_CONFIG, MISSILE_SETTINGS, TILE_PIXEL_SIZE, formatGameTime 
 } from '../utils/constants';
+import { canAffordMissileResources, payMissileResources } from '../utils/resources';
 
 export interface UseBotMissilesParams {
   gameDataRef: React.MutableRefObject<any>;
@@ -75,8 +76,9 @@ export function useBotMissiles({
         if (bestEnemyTile) {
           const missileType: MissileType = bot.gold >= 50000 ? (Math.random() < 0.4 ? 'MIRV' : 'HYDRO') : bot.gold >= 7000 ? 'HYDRO' : 'ATOM';
           const cfg = MISSILE_CONFIG[missileType];
-          if (bot.gold >= cfg.cost) {
+          if (bot.gold >= cfg.cost && canAffordMissileResources(bot, missileType)) {
             bot.gold -= cfg.cost;
+            payMissileResources(bot, missileType);
             botSilo.missileCooldown = MISSILE_SETTINGS.COOLDOWN_SECONDS;
 
             data.flyingMissiles = data.flyingMissiles || [];

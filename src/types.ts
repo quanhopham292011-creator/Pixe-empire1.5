@@ -3,7 +3,7 @@
  */
 
 export type TerrainType = 'LAND' | 'WATER' | 'MOUNTAIN' | 'FOREST';
-export type BuildingType = 'NONE' | 'CITY' | 'BARRACKS' | 'FORTRESS' | 'PORT' | 'MISSILE_SILO' | 'AIR_DEFENSE' | 'LASER';
+export type BuildingType = 'NONE' | 'CITY' | 'BARRACKS' | 'FORTRESS' | 'PORT' | 'MISSILE_SILO' | 'AIR_DEFENSE' | 'LASER' | 'OIL_RIG' | 'MINE';
 
 export type NationPersonality = 'AGGRESSIVE' | 'DEFENSIVE' | 'MERCHANT' | 'OPPORTUNIST';
 export type DiplomacyStatus = 'WAR' | 'TRUCE' | 'ALLIANCE';
@@ -40,6 +40,22 @@ export interface Tile {
   scorchedTimer?: number; // Đất cháy / nhiễm phóng xạ sau đại chiến (giây)
   missileCooldown?: number; // Đếm ngược hồi chiêu phóng tên lửa (giây)
   inactiveTimer?: number; // giây còn lại trước khi công trình vừa chiếm hoạt động
+  deposit?: DepositType;
+  reserve?: number;
+  reserveMax?: number;
+  discovered?: boolean;
+  condition?: number;
+  resOwner?: number;
+}
+
+export type DepositType = 'OIL' | 'MINERAL';
+
+export interface MarketState {
+  oilPrice: number;
+  mineralPrice: number;
+  oilHistory: number[];
+  mineralHistory: number[];
+  timer: number;
 }
 
 export type SettlementTier = 'TIER_1_FOREST' | 'TIER_2_TRIBE' | 'TIER_3_ETHNIC' | 'PLAYER' | 'BOSS';
@@ -109,6 +125,10 @@ export interface Nation {
   personality: NationPersonality;
   gold: number;
   goldIncome: number;
+  oil?: number;
+  minerals?: number;
+  oilIncome?: number;
+  mineralIncome?: number;
   troops: number;
   maxTroops: number;
   population: number; // Dân số quốc gia (mô phỏng dữ liệu nền)
@@ -143,6 +163,14 @@ export interface Nation {
   allianceInvites: { senderNationId: number; expiryTimer: number }[];
   lastRejectedInviteTimer: { [nationId: number]: number };
   traitorTimer: number; // 2 phút (120s)
+  tradeCooldown?: number; // giây chờ giữa 2 lần giao thương với người chơi
+  autoTruceState?: {
+    dangerTicks: Record<number, number>;
+    cooldownUntil: Record<number, number>;
+    truceCounts: Record<number, number>;
+    prevTerritory: number;
+    recentLoss: number;
+  };
 }
 
 export interface AttackWave {
@@ -201,6 +229,9 @@ export interface SeaTradeShip {
   progress: number; // 0 đến 1
   speed: number;
   cargoGold: number;
+  fromCargoGold?: number;
+  toCargoGold?: number;
+  lastPayoutAt?: number;
   isIntercontinental: boolean;
 }
 
@@ -226,6 +257,18 @@ export interface GameEvent {
   type: 'HARVEST' | 'CROP_FAILURE' | 'PLAGUE' | 'REBELLION' | 'DIPLOMACY';
   targetNationId: number;
   timestamp: string;
+  tradeOfferId?: string;
+}
+
+export interface TradeOffer {
+  id: string;
+  nationId: number;
+  nationName: string;
+  mode: 'AI_SELL' | 'AI_BUY';
+  resource: DepositType;
+  qty: number;
+  remainingTimer: number;
+  eventId: string;
 }
 
 export type GameMode = 'STANDARD' | 'CREATIVE';
@@ -273,6 +316,26 @@ export interface DarkTitan {
   ultY?: number;
   slowTimer?: number;
   rage?: boolean;
+  tier?: number;
+  dmgScale?: number;
+  cdScale?: number;
+  moveBonus?: number;
+  ultBonus?: number;
+  postUltPauseTimer?: number;
+}
+
+export interface PendingTitanSpawn {
+  id: string;
+  x: number;
+  y: number;
+  remainingSeconds: number;
+  totalSeconds: number;
+  tier: number;
+  hp: number;
+  dmgScale: number;
+  cdScale: number;
+  moveBonus: number;
+  ultBonus: number;
 }
 
 export interface CoalitionData {

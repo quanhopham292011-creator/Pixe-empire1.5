@@ -40,41 +40,39 @@ export function useMapCamera({
   nationCentersRef,
   handleMapTap,
 }: UseMapCameraParams) {
-  // Giới hạn thu phóng mở rộng: Cho phép thu nhỏ bao quát toàn bộ thế giới và phóng to chi tiết
+  // Giới hạn thu phóng: nhỏ nhất vừa khít bản đồ, lớn nhất khoảng 4 lần
   const clampZoom = useCallback((targetZoom: number) => {
     const vpW = viewportSizeRef.current.width || 360;
     const vpH = viewportSizeRef.current.height || 560;
     const mapPx = mapSize * TILE_PIXEL_SIZE;
-    // Fit zoom: mức zoom vừa vặn để thấy trọn vẹn toàn bộ bản đồ thế giới trong khung nhìn
     const fitZoom = Math.min(vpW / mapPx, vpH / mapPx);
-    // Tăng giới hạn thu nhỏ (Zoom Out) để người chơi có thể bao quát toàn bộ thế giới kèm lề
-    const minZ = Math.max(0.10, fitZoom * 0.88);
-    // Cho phép phóng to đủ gần (Zoom In) để quan sát chi tiết lãnh thổ, công trình, quân lính
-    const maxZ = 3.6;
+    const minZ = fitZoom; // Nhỏ nhất để thấy cả bản đồ
+    const maxZ = 4.0; // Lớn nhất khoảng 4 lần
     return Math.min(maxZ, Math.max(minZ, targetZoom));
   }, [mapSize, viewportSizeRef]);
 
-  // Giới hạn camera cho phép khám phá toàn bản đồ, không bị kẹt ở phạm vi quá nhỏ
+  // Giới hạn camera không cho kéo ra ngoài biên quá xa, mượt mà
   const clampCamera = useCallback((camX: number, camY: number, zoom: number) => {
     const vpW = viewportSizeRef.current.width || 360;
     const vpH = viewportSizeRef.current.height || 560;
     const mapPxX = mapSize * TILE_PIXEL_SIZE * zoom;
     const mapPxY = mapSize * TILE_PIXEL_SIZE * zoom;
 
+    const marginX = vpW * 0.6;
+    const marginY = vpH * 0.6;
+
     let clampedX: number;
     if (mapPxX <= vpW) {
       clampedX = (vpW - mapPxX) / 2;
     } else {
-      const margin = 200;
-      clampedX = Math.min(margin, Math.max(vpW - mapPxX - margin, camX));
+      clampedX = Math.min(marginX, Math.max(vpW - mapPxX - marginX, camX));
     }
 
     let clampedY: number;
     if (mapPxY <= vpH) {
       clampedY = (vpH - mapPxY) / 2;
     } else {
-      const margin = 200;
-      clampedY = Math.min(margin, Math.max(vpH - mapPxY - margin, camY));
+      clampedY = Math.min(marginY, Math.max(vpH - mapPxY - marginY, camY));
     }
 
     return { x: clampedX, y: clampedY };
@@ -145,11 +143,14 @@ export function useMapCamera({
     soundManager.playClick();
   }, [focusOnCoordinates, gameDataRef, nationCentersRef, cameraRef]);
 
-  // Pointer Handlers: Thu phóng và di chuyển mượt mà trên điện thoại, triệt tiêu chọn nhầm ô đất
+  // Pointer Handlers: Hỗ trợ chuột trái trên PC & cảm ứng trên điện thoại
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.target !== canvasRef.current) {
       return;
     }
+    // Chỉ xử lý chuột trái trên PC (button 0) hoặc chạm trên di động
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
     cameraAnimRef.current = null;
     const map = pointersMapRef.current;

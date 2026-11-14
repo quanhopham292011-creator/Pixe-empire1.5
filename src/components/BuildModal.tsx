@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { BuildingType, Tile, Nation } from '../types';
 import { BUILDING_INFO, formatPopulation } from '../utils/constants';
+import { RESOURCE_CONFIG } from '../data/gameData';
+import { areResourcesEnabled, getBuildingMineralCost, getExtractorBuildCost, extractorFor, isExtractor } from '../utils/resources';
 import { X } from 'lucide-react';
 import { BuildingSvgIcon } from './BuildingSvgIcon';
 
@@ -26,6 +28,8 @@ const SHORT_NAME: Record<BuildableType, string> = {
   MISSILE_SILO: 'Bệ Tên Lửa',
   AIR_DEFENSE: 'Phòng Không',
   LASER: 'Tháp Laser',
+  OIL_RIG: 'Giàn Dầu',
+  MINE: 'Mỏ Khoáng',
 };
 
 const ALL_TYPES: BuildableType[] = ['CITY', 'BARRACKS', 'FORTRESS', 'PORT', 'LASER', 'MISSILE_SILO', 'AIR_DEFENSE'];
@@ -43,8 +47,16 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   if (!isOpen || !selectedTile) return null;
 
   const gold = playerNation.gold || 0;
+  const minerals = playerNation.minerals || 0;
+  const resOn = areResourcesEnabled();
+  const fmtM = (v: number) => `${Math.ceil(v)}`;
 
   const calculateBatchCost = (type: BuildableType, goal: BatchOption) => {
+    if (isExtractor(type)) {
+      const c = getExtractorBuildCost(selectedTile);
+      return { totalCost: c.gold, totalMinerals: c.minerals, actualCount: 1 };
+    }
+
     const base = BUILDING_INFO[type].baseCost;
     const currentCount = existingBuildingCounts[type] || 0;
     let discount = 1.0;
@@ -52,16 +64,20 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     if (playerNation.techLevels?.economy >= 3 && playerNation.techChoices?.economy === 'B') discount *= 0.80;
 
     let totalCost = 0;
+    let totalMinerals = 0;
     let actualCount = 0;
     const limit = goal === 'MAX' ? 9999 : goal;
 
     for (let i = 0; i < limit; i++) {
       const singleCost = Math.floor(base * Math.pow(1.15, currentCount + i) * discount);
+      const singleMin = getBuildingMineralCost(type, currentCount + i);
       if (goal !== 'MAX') {
         totalCost += singleCost;
+        totalMinerals += singleMin;
         actualCount++;
-      } else if (totalCost + singleCost <= gold) {
+      } else if (totalCost + singleCost <= gold && totalMinerals + singleMin <= minerals) {
         totalCost += singleCost;
+        totalMinerals += singleMin;
         actualCount++;
       } else {
         break;
@@ -71,13 +87,17 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     if (goal === 'MAX' && actualCount === 0) {
       actualCount = 1;
       totalCost = Math.floor(base * Math.pow(1.15, currentCount) * discount);
+      totalMinerals = getBuildingMineralCost(type, currentCount);
     }
 
-    return { totalCost, actualCount };
+    return { totalCost, totalMinerals, actualCount };
   };
 
-  // Chỉ hiện công trình xây được: Hải Cảng chỉ hiện khi ô giáp biển
-  const buildingTypes = ALL_TYPES.filter((t) => t !== 'PORT' || selectedTile.hasHarborAccess);
+  // Chỉ hiện công trình xây được: Hải Cảng chỉ hiện khi ô giáp biển; Giàn Dầu/Mỏ Khoáng khi ô có mỏ đã phát hiện
+  const hasExtractorSpot = resOn && !!selectedTile.deposit && !!selectedTile.discovered && (selectedTile.reserve || 0) > 0;
+  const extractorType: BuildableType | null = hasExtractorSpot ? extractorFor(selectedTile.deposit!) : null;
+  const baseTypes = ALL_TYPES.filter((t) => t !== 'PORT' || selectedTile.hasHarborAccess);
+  const buildingTypes: BuildableType[] = extractorType ? [extractorType, ...baseTypes] : baseTypes;
   const n = buildingTypes.length;
   const RADIUS = 37;
 
@@ -121,7 +141,10 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             aria-label="Đóng"
           >
             <X className="w-6 h-6 text-slate-300" />
-            <span className="text-[12px] font-mono font-bold text-amber-300 mt-0.5">💰 {formatPopulation(gold)}</span>
+            <span className="text-[11px] font-mono font-bold text-amber-300 mt-0.5">💰 {formatPopulation(gold)}</span>
+            {resOn && (
+              <span className="text-[10px] font-mono font-bold text-violet-300">⛏️ {Math.floor(minerals)}</span>
+            )}
           </button>
 
           {buildingTypes.map((type, i) => {
@@ -129,12 +152,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             const left = 50 + RADIUS * Math.cos(angle);
             const top = 50 + RADIUS * Math.sin(angle);
 
-            const { totalCost, actualCount } = calculateBatchCost(type, selectedBatch);
-            const canAfford = gold >= totalCost;
+            const { totalCost, totalMinerals, actualCount } = calculateBatchCost(type, selectedBatch);
+            const atMaxExtractor = isExtractor(type) && selectedTile.building === type && (selectedTile.buildingLevel || 1) >= RESOURCE_CONFIG.MAX_EXTRACTOR_LEVEL;
+            const canAfford = gold >= totalCost && minerals >= totalMinerals && !atMaxExtractor;
             const isCurrent = selectedTile.building === type;
 
             let badge: string | null = null;
-            if (isCurrent) badge = `Lv${selectedTile.buildingLevel || 1}+${actualCount}`;
+            if (atMaxExtractor) badge = 'MAX';
+            else if (isCurrent) badge = `Lv${selectedTile.buildingLevel || 1}+${actualCount}`;
             else if (actualCount > 1) badge = `x${actualCount}`;
 
             return (
@@ -171,12 +196,21 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                 </span>
 
                 <span
-                  className={`text-[12px] font-mono font-bold leading-none whitespace-nowrap ${
-                    canAfford ? 'text-amber-300' : 'text-slate-400'
+                  className={`text-[11px] font-mono font-bold leading-none whitespace-nowrap ${
+                    gold >= totalCost ? 'text-amber-300' : 'text-red-400'
                   }`}
                 >
                   {formatPopulation(totalCost)} 💰
                 </span>
+                {totalMinerals > 0 && (
+                  <span
+                    className={`text-[10px] font-mono font-bold leading-none whitespace-nowrap ${
+                      minerals >= totalMinerals ? 'text-violet-300' : 'text-red-400'
+                    }`}
+                  >
+                    {fmtM(totalMinerals)} ⛏️
+                  </span>
+                )}
               </button>
             );
           })}

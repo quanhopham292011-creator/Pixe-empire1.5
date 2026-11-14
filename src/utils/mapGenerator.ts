@@ -7,6 +7,7 @@ import { REAL_NATION_NAMES, FOREST_COLONY_NAMES, GENERAL_ROSTER } from './consta
 import { createDefaultGeneral } from './generalCombat';
 import { earthLandRatio, lonLatToTile } from './earthMask';
 import { WORLD_COUNTRIES } from './worldCountries';
+import { generateDeposits, initNationResources } from './resources';
 
 function pseudoNoise(x: number, y: number, seed: number): number {
   const n = Math.sin(x * 12.9898 + y * 78.233 + seed * 43758.5453) * 43758.5453;
@@ -317,7 +318,7 @@ export function generateWorldMap(
       tier = 'PLAYER';
       initPop = difficulty === 'EASY' ? 16 : difficulty === 'NORMAL' ? 13 : 10;
       initTroops = difficulty === 'EASY' ? 34 : difficulty === 'NORMAL' ? 26 : 20;
-      initGold = difficulty === 'EASY' ? 120 : difficulty === 'NORMAL' ? 80 : 50;
+      initGold = difficulty === 'EASY' ? 180 : difficulty === 'NORMAL' ? 120 : 75; // Tăng ~1.5 lần
       initLandRadius = difficulty === 'EASY' ? 2.8 : difficulty === 'NORMAL' ? 2.5 : 2.2;
     } else if (isBoss) {
       tier = 'BOSS';
@@ -468,6 +469,9 @@ export function generateWorldMap(
       }
     }
   }
+
+  generateDeposits(tiles, nations);
+  initNationResources(nations);
 
   return { tiles, nations };
 }

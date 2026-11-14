@@ -40,6 +40,20 @@ export const BuildingSvgIcon: React.FC<{ type: BuildingType | 'DARK_TITAN'; clas
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
         </svg>
       );
+    case 'OIL_RIG':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="#a78bfa" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          <path d="M12 3L7 21M12 3l5 18M9 13h6M8 17h8M12 3v-1" />
+          <path d="M3 21h18" />
+        </svg>
+      );
+    case 'MINE':
+      return (
+        <svg viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={className}>
+          <path d="M12 3l7 6-7 12L5 9l7-6z" fill="#38bdf8" fillOpacity="0.2" />
+          <path d="M5 9h14M12 3v18" />
+        </svg>
+      );
     case 'LASER':
       return (
         <svg viewBox="0 0 24 24" fill="none" stroke="#f472b6" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" className={className}>

@@ -1,4 +1,5 @@
 import { ClientMessage, ServerMessage, RoomState, RoomSettings, BuildingType } from './types';
+import { PendingTitanSpawn } from '../types';
 
 type Listener<T> = (data: T) => void;
 
@@ -40,6 +41,8 @@ class MultiplayerClient {
       isEliminated: boolean;
     }>;
     darkTitans?: any[];
+    pendingTitanSpawn?: PendingTitanSpawn | null;
+    nextTitanSpawnAt?: number;
     gameTimeSeconds?: number;
   }> | null = null;
   public onPlayerDisconnected: Listener<{ playerId: string; nationId: number; message: string }> | null = null;
@@ -224,12 +227,16 @@ class MultiplayerClient {
       isEliminated: boolean;
     }>,
     darkTitans?: any[],
-    gameTimeSeconds?: number
+    gameTimeSeconds?: number,
+    pendingTitanSpawn?: PendingTitanSpawn | null,
+    nextTitanSpawnAt?: number
   ) {
     this.send({
       type: 'STATE_SYNC',
       nations,
       darkTitans,
+      pendingTitanSpawn,
+      nextTitanSpawnAt,
       gameTimeSeconds,
     });
   }

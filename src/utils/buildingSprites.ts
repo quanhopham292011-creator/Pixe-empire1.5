@@ -95,6 +95,17 @@ export function drawBuildingSprite(ctx: CanvasRenderingContext2D, type: string, 
     ctx.arc(0, 3.5, 2.2, Math.PI, 0);
     ctx.lineTo(2.2, 8); ctx.closePath();
     ctx.fillStyle = '#1e293b'; ctx.fill();
+  } else if (type === 'OIL_RIG') {
+    box(ctx, -8, 6, 16, 3, '#475569');
+    poly(ctx, [[0, -9], [-5, 6], [5, 6]], '#1e293b');
+    thickLine(ctx, -3, 0, 3, 0, '#a78bfa', 1.3);
+    thickLine(ctx, -4, 3, 4, 3, '#a78bfa', 1.3);
+    ctx.beginPath(); ctx.arc(0, -9, 1.6, 0, Math.PI * 2);
+    ctx.fillStyle = '#fbbf24'; ctx.fill();
+  } else if (type === 'MINE') {
+    poly(ctx, [[-8, 8], [-8, 1], [0, -7], [8, 1], [8, 8]], '#78716c');
+    poly(ctx, [[-3, 8], [-3, 2], [3, 2], [3, 8]], '#1c1917');
+    poly(ctx, [[0, -3], [2.5, -0.5], [0, 1.5], [-2.5, -0.5]], '#38bdf8');
   } else if (type === 'LASER') {
     poly(ctx, [[-7, 9], [-3.5, 3], [3.5, 3], [7, 9]], '#475569');
     thickLine(ctx, 0, -2, 0, -9, '#f9a8d4', 1.6);

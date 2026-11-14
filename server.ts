@@ -62,6 +62,8 @@ type ClientMessage =
       type: 'STATE_SYNC';
       nations: any[];
       darkTitans?: any[];
+      pendingTitanSpawn?: any;
+      nextTitanSpawnAt?: number;
       gameTimeSeconds?: number;
     }
   | { type: 'CHAT'; text: string };
@@ -93,6 +95,8 @@ type ServerMessage =
       type: 'STATE_SYNC';
       nations: any[];
       darkTitans?: any[];
+      pendingTitanSpawn?: any;
+      nextTitanSpawnAt?: number;
       gameTimeSeconds?: number;
     }
   | { type: 'PLAYER_DISCONNECTED'; playerId: string; nationId: number; message: string }
@@ -397,6 +401,8 @@ class RoomManager {
           type: 'STATE_SYNC',
           nations: msg.nations,
           darkTitans: msg.darkTitans,
+          pendingTitanSpawn: msg.pendingTitanSpawn,
+          nextTitanSpawnAt: msg.nextTitanSpawnAt,
           gameTimeSeconds: msg.gameTimeSeconds,
         }, ws);
         break;

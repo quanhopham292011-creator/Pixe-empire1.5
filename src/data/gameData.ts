@@ -200,6 +200,18 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
     baseCost: 6_000,
     icon: 'ShieldAlert',
   },
+  OIL_RIG: {
+    name: 'Giàn Khoan Dầu',
+    desc: 'Xây trên ô có mỏ dầu để khai thác Dầu.',
+    baseCost: 220,
+    icon: 'Droplets',
+  },
+  MINE: {
+    name: 'Mỏ Khoáng Sản',
+    desc: 'Xây trên ô có mỏ khoáng để khai thác Khoáng sản.',
+    baseCost: 200,
+    icon: 'Pickaxe',
+  },
   LASER: {
     name: 'Tháp Laser Pink',
     desc: 'Tự động quét & bắn tia laser hồng công nghệ cao xung quanh phạm vi mỗi 10s!',
@@ -215,6 +227,8 @@ export interface MissileConfigItem {
   radius: number; // Bán kính nổ (ô)
   mirvCount?: number; // Số đầu đạn con phân tán
   mirvSpreadRadius?: number; // Bán kính phân tán đầu đạn con
+  oilCost: number;
+  mineralCost: number;
   description: string;
   color: string;
 }
@@ -224,6 +238,8 @@ export const MISSILE_CONFIG: Record<MissileType, MissileConfigItem> = {
     id: 'ATOM',
     name: 'Atom (Nguyên Tử)',
     cost: 3_500, // 3.500 vàng
+    oilCost: 40,
+    mineralCost: 30,
     radius: 2.1,
     description: 'Bán kính nổ nhỏ, phá hủy toàn bộ công trình và quét sạch quân phòng thủ trong phạm vi.',
     color: '#eab308',
@@ -232,6 +248,8 @@ export const MISSILE_CONFIG: Record<MissileType, MissileConfigItem> = {
     id: 'HYDRO',
     name: 'Hydro (Nhiệt Hạch)',
     cost: 7_000, // 7.000 vàng
+    oilCost: 90,
+    mineralCost: 70,
     radius: 5.4,
     description: 'Bán kính nổ khổng lồ, xóa sổ hoàn toàn căn cứ và quét sạch lãnh thổ đối phương thành đất trống!',
     color: '#f97316',
@@ -240,6 +258,8 @@ export const MISSILE_CONFIG: Record<MissileType, MissileConfigItem> = {
     id: 'MIRV',
     name: 'MIRV (Đa Đầu Đạn)',
     cost: 50_000, // 50.000 vàng
+    oilCost: 250,
+    mineralCost: 180,
     radius: 2.7,
     mirvCount: 12,
     mirvSpreadRadius: 9.0,
@@ -258,20 +278,34 @@ export const MISSILE_SETTINGS = {
 
 export const DARK_TITAN_CONFIG = {
   SPAWN_TIME_SECONDS: 900,
+  SPAWN_WARNING_SECONDS: 10,
   DURATION_SECONDS: 300,
   WARNING_BEFORE_DESPAWN: 30,
   MOVE_INTERVAL_SECONDS: 3,
-  DAMAGE_TROOPS: 200,
+  DAMAGE_TROOPS: 185,
+  Q_DAMAGE_TROOPS: 138,
+  E_DAMAGE_TROOPS: 92,
+  W_WAVE_LOSS_RATIO: 0.135,
+  ULT_TROOP_LOSS_RATIO: 0.46,
+  ULT_MAX_TROOP_LOSS_RATIO: 0.75,
+  POST_ULT_PAUSE_SECONDS: 4,
   MAX_HP: 5000,
-  BOUNTY_GOLD: 5000,
+  BOUNTY_GOLD: 5600,
   BUFF_DURATION_SECONDS: 180,
-  Q_COOLDOWN: 6,
-  W_COOLDOWN: 11,
-  E_COOLDOWN: 14,
-  ULT_COOLDOWN: 24,
+  BUFF_MULTIPLIER: 1.35,
+  Q_COOLDOWN: 6.7,
+  W_COOLDOWN: 12.2,
+  E_COOLDOWN: 15.6,
+  ULT_COOLDOWN: 27,
   ULT_CHARGE_SECONDS: 3,
   RAGE_HP_RATIO: 0.5,
   ULT_RADIUS: 9,
+  RESPAWN_COOLDOWN_SECONDS: 180,
+  POWER_REF: 6000,
+  TIME_REF_SECONDS: 2400,
+  HP_GROW: { EASY: 2, NORMAL: 4, HARD: 6, EXTREME: 8 } as Record<string, number>,
+  DMG_GROW: { EASY: 0.5, NORMAL: 0.8, HARD: 1.1, EXTREME: 1.5 } as Record<string, number>,
+  TIER_NAMES: ['Sơ Khai', 'Hắc Ám', 'Hủy Diệt'],
 };
 
 export interface GeneralRosterItem {
@@ -343,3 +377,48 @@ export const GENERAL_ROSTER: GeneralRosterItem[] = [
     unlockLevel: 10,
   },
 ];
+
+export const RESOURCE_CONFIG = {
+  OIL_DENSITY: 0.0065,
+  MINERAL_DENSITY: 0.0075,
+  HIDDEN_CHANCE: 0.4,
+  DISCOVER_CHANCE_PER_SEC: 0.015,
+  RESERVE_SMALL: 1200,
+  RESERVE_MEDIUM: 3000,
+  RESERVE_LARGE: 7000,
+  OIL_RATE: 1.2,
+  MINERAL_RATE: 1.5,
+  LEVEL_BONUS: 0.5,
+  MAX_EXTRACTOR_LEVEL: 3,
+  ECONOMY_TECH_BONUS: 0.08,
+  STORAGE_CAP: 9999,
+  EXTRACTOR_MINERAL_COST: 15,
+  BUILDING_MINERAL_COST: { FORTRESS: 10, LASER: 15, MISSILE_SILO: 80, AIR_DEFENSE: 60 } as Record<string, number>,
+  CAPTURE_CONDITION: 35,
+  REPAIR_GOLD_PER_POINT: 2,
+  REPAIR_MINERAL_PER_POINT: 0.3,
+  START_STOCK: 60,
+  MARKET_OIL_BASE: 6,
+  MARKET_MINERAL_BASE: 5,
+  MARKET_SELL_RATIO: 0.55,
+  MARKET_MIN_MULT: 0.5,
+  MARKET_MAX_MULT: 2.5,
+  MARKET_PRICE_IMPACT: 0.0006,
+  MARKET_TICK_SECONDS: 10,
+  MARKET_MAX_TRADE: 500,
+};
+
+export const TECH_RESOURCE_COST: Record<string, { oil: number; minerals: number }> = {
+  eco_1: { oil: 0, minerals: 0 },
+  eco_2: { oil: 0, minerals: 40 },
+  eco_3a: { oil: 0, minerals: 120 },
+  eco_3b: { oil: 0, minerals: 120 },
+  mil_1: { oil: 0, minerals: 0 },
+  mil_2: { oil: 30, minerals: 40 },
+  mil_3a: { oil: 80, minerals: 120 },
+  mil_3b: { oil: 80, minerals: 120 },
+  def_1: { oil: 0, minerals: 0 },
+  def_2: { oil: 0, minerals: 40 },
+  def_3a: { oil: 0, minerals: 120 },
+  def_3b: { oil: 20, minerals: 120 },
+};

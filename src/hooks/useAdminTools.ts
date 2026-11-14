@@ -1,7 +1,8 @@
 import React from 'react';
-import { WeatherType, DarkTitan, Tile, MapDimension } from '../types';
+import { WeatherType, Tile, MapDimension } from '../types';
 import { soundManager } from '../utils/audio';
 import { formatPopulation, formatGameTime, DARK_TITAN_CONFIG, TILE_PIXEL_SIZE } from '../utils/constants';
+import { buildDarkTitan, triggerTitanArrivalEffects } from './useDarkTitanAI';
 
 interface UseAdminToolsParams {
   gameDataRef: React.MutableRefObject<any>;
@@ -18,6 +19,7 @@ interface UseAdminToolsParams {
   setGodModeLocked: React.Dispatch<React.SetStateAction<boolean>>;
   godModeLockedRef: React.MutableRefObject<boolean>;
   offscreenTerritoryDirtyRef: React.MutableRefObject<boolean>;
+  screenShakeRef?: React.MutableRefObject<{ intensity: number; duration: number }>;
 }
 
 export function useAdminTools({
@@ -35,6 +37,7 @@ export function useAdminTools({
   setGodModeLocked,
   godModeLockedRef,
   offscreenTerritoryDirtyRef,
+  screenShakeRef,
 }: UseAdminToolsParams) {
   const handleSetGold = (amount: number) => {
     const player = gameDataRef.current.nations[1];
@@ -109,11 +112,11 @@ export function useAdminTools({
 
   const handleSpawnDarkTitan = (count = 1) => {
     const data = gameDataRef.current;
-    const size = mapSize;
+    const size = data.tiles?.length || mapSize;
     const landTiles: { x: number; y: number }[] = [];
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
-        if (data.tiles[y][x].terrain !== 'WATER') {
+        if (data.tiles[y]?.[x]?.terrain !== 'WATER') {
           landTiles.push({ x, y });
         }
       }
@@ -121,27 +124,27 @@ export function useAdminTools({
     if (landTiles.length === 0) return;
 
     data.darkTitans = data.darkTitans || [];
+    data.particles = data.particles || [];
+    data.events = data.events || [];
+    // Hủy cổng chờ tự nhiên nếu đang đếm ngược để tránh trùng lặp
+    data.pendingTitanSpawn = null;
 
     for (let i = 0; i < count; i++) {
       const spawnTile = (i === 0 && selectedTileRef.current && selectedTileRef.current.terrain !== 'WATER')
         ? selectedTileRef.current
         : landTiles[Math.floor(Math.random() * landTiles.length)];
 
-      const newTitan: DarkTitan = {
-        id: Math.random().toString(),
-        isActive: true,
-        spawnTimestamp: data.gameTimeSeconds,
-        remainingTime: DARK_TITAN_CONFIG.DURATION_SECONDS,
+      const newTitan = buildDarkTitan({
         x: spawnTile.x,
         y: spawnTile.y,
+        gameTimeSeconds: data.gameTimeSeconds || 0,
         hp: DARK_TITAN_CONFIG.MAX_HP,
-        maxHp: DARK_TITAN_CONFIG.MAX_HP,
-        moveTimer: 0,
-        hasWarnedDespawn: false,
-      };
+      });
 
       data.darkTitans.push(newTitan);
       data.darkTitan = data.darkTitans[0];
+
+      triggerTitanArrivalEffects(data, spawnTile.x, spawnTile.y, screenShakeRef);
 
       data.particles.push({
         x: spawnTile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
@@ -153,14 +156,13 @@ export function useAdminTools({
       });
     }
 
-    soundManager.playThunder();
     data.events.unshift({
       id: Math.random().toString(),
       title: '⚠️ TÀ THẦN GIÁNG LÂM',
       description: `Đã triệu hồi ${count} Tà Thần Cổ Đại xuất hiện trên thế giới!`,
       type: 'PLAGUE',
       targetNationId: 0,
-      timestamp: formatGameTime(data.gameTimeSeconds),
+      timestamp: formatGameTime(data.gameTimeSeconds || 0),
     });
   };
 
@@ -168,6 +170,10 @@ export function useAdminTools({
     const data = gameDataRef.current;
     data.darkTitans = [];
     data.darkTitan = null;
+    data.pendingTitanSpawn = null;
+    if (Array.isArray(data.titanFx)) {
+      data.titanFx = data.titanFx.filter((fx: any) => fx.kind !== 'PORTAL');
+    }
     soundManager.playCapture();
     data.particles.push({
       x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,

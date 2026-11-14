@@ -6,6 +6,7 @@ import {
 import { soundManager } from '../utils/audio';
 import { formatGameTime } from '../utils/constants';
 import { migrateGeneralData, calculateGeneralStats } from '../utils/generalCombat';
+import { setResourcesEnabled, ensureNationResources, hasAnyDeposit, generateDeposits, createMarket } from '../utils/resources';
 
 export interface SavedGameInfo {
   timestamp: string;
@@ -147,11 +148,16 @@ export function useSaveGame({
           hasMetBot: data.hasMetBot || false,
           darkTitan: data.darkTitan || null,
           darkTitans: data.darkTitans || [],
+          pendingTitanSpawn: data.pendingTitanSpawn || null,
+          nextTitanSpawnAt: typeof data.nextTitanSpawnAt === 'number' ? data.nextTitanSpawnAt : undefined,
           flyingMissiles: data.flyingMissiles || [],
           tradeRoutes: data.tradeRoutes || [],
           tradeShips: data.tradeShips || [],
           activeSeasonEvent: data.activeSeasonEvent || null,
-          stats: data.stats || { battlesCount: 0, buildingsCount: 0 }
+          stats: data.stats || { battlesCount: 0, buildingsCount: 0 },
+          market: data.market || null,
+          pendingTradeOffer: data.pendingTradeOffer || null,
+          nextTradeOfferTimer: typeof data.nextTradeOfferTimer === 'number' ? data.nextTradeOfferTimer : 95
         }
       };
 
@@ -258,6 +264,16 @@ export function useSaveGame({
         });
       }
 
+      setResourcesEnabled(true);
+      if (Array.isArray(gameData.nations)) {
+        gameData.nations.forEach((n: Nation) => {
+          if (n && n.id !== 0) ensureNationResources(n);
+        });
+      }
+      if (!hasAnyDeposit(gameData.tiles)) {
+        generateDeposits(gameData.tiles, gameData.nations || []);
+      }
+
       gameDataRef.current = {
         tiles: gameData.tiles,
         nations: gameData.nations,
@@ -269,11 +285,16 @@ export function useSaveGame({
         hasMetBot: gameData.hasMetBot || false,
         darkTitan: gameData.darkTitan || null,
         darkTitans: gameData.darkTitans || [],
+        pendingTitanSpawn: gameData.pendingTitanSpawn || null,
+        nextTitanSpawnAt: typeof gameData.nextTitanSpawnAt === 'number' ? gameData.nextTitanSpawnAt : undefined,
         flyingMissiles: gameData.flyingMissiles || [],
         tradeRoutes: gameData.tradeRoutes || [],
         tradeShips: gameData.tradeShips || [],
         activeSeasonEvent: gameData.activeSeasonEvent || null,
-        stats: gameData.stats || { battlesCount: 0, buildingsCount: 0 }
+        stats: gameData.stats || { battlesCount: 0, buildingsCount: 0 },
+        market: gameData.market || createMarket(),
+        pendingTradeOffer: gameData.pendingTradeOffer || null,
+        nextTradeOfferTimer: typeof gameData.nextTradeOfferTimer === 'number' ? gameData.nextTradeOfferTimer : 90 + Math.floor(Math.random() * 31)
       };
 
       totalLandCountRef.current = gameData.tiles.flat().filter((t: Tile) => t.terrain !== 'WATER').length;

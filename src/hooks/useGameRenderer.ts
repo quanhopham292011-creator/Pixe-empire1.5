@@ -217,11 +217,19 @@ export function useGameRenderer({
           });
         }
 
-        // Tự động cập nhật tiến trình tàu buôn hải cảng mượt mà 60 FPS
+        // Tự động cập nhật tiến trình tàu buôn hải cảng mượt mà 60 FPS (chống cộng trùng lặp & cộng khi đang chiến tranh)
         if (gameDataRef.current.tradeShips) {
           const data = gameDataRef.current;
           data.tradeShips.forEach((ship: any) => {
-            const spd = ship.speed || 0.05;
+            if (!ship || ship.fromNation === ship.toNation) return;
+            const fromN = data.nations[ship.fromNation];
+            const toN = data.nations[ship.toNation];
+            if (!fromN || !toN || fromN.isEliminated || toN.isEliminated) return;
+            const dip1 = fromN.diplomacy?.[toN.id]?.status || 'WAR';
+            const dip2 = toN.diplomacy?.[fromN.id]?.status || 'WAR';
+            if (dip1 === 'WAR' || dip2 === 'WAR') return;
+
+            const spd = Math.min(0.25, Math.max(0.01, ship.speed || 0.05));
             ship.progress += spd * deltaSec * gameSpeed;
 
             if (ship.progress >= 1.0) {
@@ -233,19 +241,27 @@ export function useGameRenderer({
               ship.targetX = tempX;
               ship.targetY = tempY;
 
-              const fromN = data.nations[ship.fromNation];
-              const toN = data.nations[ship.toNation];
-              if (fromN && !fromN.isEliminated) fromN.gold += ship.cargoGold;
-              if (toN && !toN.isEliminated) toN.gold += ship.cargoGold;
+              if (ship.lastPayoutAt && timestamp - ship.lastPayoutAt < 1500) {
+                return;
+              }
+              ship.lastPayoutAt = timestamp;
 
-              data.particles.push({
-                x: tempX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                y: tempY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                color: ship.isIntercontinental ? '#38bdf8' : '#fbbf24',
-                size: 0, life: 40, maxLife: 40, vx: 0, vy: -0.6,
-                type: 'FLOAT_TEXT',
-                text: `⛵ +${ship.cargoGold} Vàng Giao Thương Hải Cảng`
-              });
+              const fromGain = Math.max(0, Math.floor(ship.fromCargoGold ?? ship.cargoGold ?? 0));
+              const toGain = Math.max(0, Math.floor(ship.toCargoGold ?? ship.cargoGold ?? 0));
+              if (fromGain > 0) fromN.gold += fromGain;
+              if (toGain > 0) toN.gold += toGain;
+
+              const displayGain = ship.fromNation === 1 ? fromGain : ship.toNation === 1 ? toGain : Math.round((fromGain + toGain) / 2);
+              if (displayGain > 0) {
+                data.particles.push({
+                  x: tempX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  y: tempY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  color: ship.isIntercontinental ? '#38bdf8' : '#fbbf24',
+                  size: 0, life: 40, maxLife: 40, vx: 0, vy: -0.6,
+                  type: 'FLOAT_TEXT',
+                  text: `⛵ +${displayGain} Vàng Giao Thương Hải Cảng`
+                });
+              }
             }
           });
         }
@@ -441,6 +457,26 @@ export function useGameRenderer({
           const px = x * TILE_PIXEL_SIZE;
           const py = y * TILE_PIXEL_SIZE;
 
+          // 4.1b. Vẽ Mỏ Dầu / Khoáng Sản đã phát hiện (khi chưa xây trạm khai thác)
+          if (t.building === 'NONE' && t.deposit && t.discovered && (t.reserve || 0) > 0 && zoom >= 0.6) {
+            const cx = px + TILE_PIXEL_SIZE / 2;
+            const cy = py + TILE_PIXEL_SIZE / 2;
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, TILE_PIXEL_SIZE * 0.28, 0, Math.PI * 2);
+            ctx.fillStyle = t.deposit === 'OIL' ? 'rgba(14, 165, 233, 0.9)' : 'rgba(168, 85, 247, 0.9)';
+            ctx.fill();
+            ctx.lineWidth = 1.2;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 8px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(t.deposit === 'OIL' ? 'D' : 'K', cx, cy + 0.5);
+            ctx.restore();
+          }
+
           // 4.2. Vẽ Công Trình (Icon tròn nhỏ, nền màu phe, viền sáng, icon trắng ở giữa)
           if (t.building !== 'NONE' && (zoom >= 0.6 || t.owner === 1)) {
             const cx = px + TILE_PIXEL_SIZE / 2;
@@ -472,6 +508,18 @@ export function useGameRenderer({
               ctx.font = 'bold 8px sans-serif';
               ctx.textAlign = 'center';
               ctx.fillText(`L${lvl}`, px + TILE_PIXEL_SIZE - 6, py + 9);
+              ctx.restore();
+            }
+
+            // Thanh độ bền giàn khoan / mỏ khoáng khi bị hư hại (< 100%)
+            if ((t.building === 'OIL_RIG' || t.building === 'MINE') && (t.condition ?? 100) < 100) {
+              const condRatio = Math.max(0, Math.min(1, (t.condition ?? 100) / 100));
+              const barW = TILE_PIXEL_SIZE - 4;
+              ctx.save();
+              ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+              ctx.fillRect(px + 2, py + TILE_PIXEL_SIZE - 4, barW, 3);
+              ctx.fillStyle = condRatio > 0.6 ? '#22c55e' : condRatio > 0.35 ? '#f59e0b' : '#ef4444';
+              ctx.fillRect(px + 2, py + TILE_PIXEL_SIZE - 4, barW * condRatio, 3);
               ctx.restore();
             }
           }
@@ -806,6 +854,71 @@ export function useGameRenderer({
         });
       }
 
+      // 6.4. Render Cổng Không Gian Tà Thần (Cảnh báo trước 10 giây)
+      const pendingSpawn = gameDataRef.current.pendingTitanSpawn;
+      if (pendingSpawn && pendingSpawn.remainingSeconds > 0) {
+        const px = pendingSpawn.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+        const py = pendingSpawn.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+        const tPulse = 0.5 + 0.5 * Math.sin(timestamp * 0.008);
+        const rot = timestamp * 0.004;
+        const totalSec = Math.max(1, pendingSpawn.totalSeconds || DARK_TITAN_CONFIG.SPAWN_WARNING_SECONDS || 10);
+        const progress = Math.max(0, Math.min(1, 1 - pendingSpawn.remainingSeconds / totalSec));
+        const baseR = 22 + progress * 10 + tPulse * 4;
+
+        ctx.save();
+        // Vùng cảnh báo đỏ/tím nhấp nháy
+        const portalGrad = ctx.createRadialGradient(px, py, 3, px, py, baseR + 14);
+        portalGrad.addColorStop(0, 'rgba(15, 7, 32, 0.95)');
+        portalGrad.addColorStop(0.45, 'rgba(147, 51, 234, 0.72)');
+        portalGrad.addColorStop(0.75, 'rgba(220, 38, 38, 0.45)');
+        portalGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = portalGrad;
+        ctx.beginPath();
+        ctx.arc(px, py, baseR + 14, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Vòng xoáy không gian ngoài (tím + đỏ)
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = 2.6;
+        ctx.setLineDash([8, 5]);
+        ctx.beginPath();
+        ctx.arc(px, py, baseR, rot, rot + Math.PI * 2);
+        ctx.stroke();
+
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2.2;
+        ctx.setLineDash([5, 6]);
+        ctx.beginPath();
+        ctx.arc(px, py, baseR * 0.72, -rot * 1.4, -rot * 1.4 + Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Lõi cổng tối
+        ctx.fillStyle = '#1e0b36';
+        ctx.beginPath();
+        ctx.arc(px, py, 9 + tPulse * 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#f43f5e';
+        ctx.lineWidth = 1.8;
+        ctx.stroke();
+
+        // Nhãn cảnh báo & bộ đếm ngược
+        const secLeft = Math.max(0, Math.ceil(pendingSpawn.remainingSeconds));
+        const portalLabel = `🌀 CỔNG TÀ THẦN: ${secLeft}s`;
+        const font = 'bold 10px sans-serif';
+        const lw = getCachedWidth(ctx, portalLabel, font) + 12;
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+        ctx.strokeStyle = '#a855f7';
+        ctx.lineWidth = 1.4;
+        ctx.fillRect(px - lw / 2, py - baseR - 22, lw, 16);
+        ctx.strokeRect(px - lw / 2, py - baseR - 22, lw, 16);
+        ctx.fillStyle = '#f5d0fe';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(portalLabel, px, py - baseR - 14);
+        ctx.restore();
+      }
+
       // 6.5. Render Tà Thần Cổ Đại (Hỗ trợ nhiều Tà Thần khi Spam trong Creative Mode)
       const titansToRender = (gameDataRef.current.darkTitans && gameDataRef.current.darkTitans.length > 0)
         ? gameDataRef.current.darkTitans.filter((t: any) => t.isActive)
@@ -947,26 +1060,58 @@ export function useGameRenderer({
 
         ctx.restore();
 
-        // 1. Nếu titan.ultCharge > 0: vẽ vòng tròn đỏ nhấp nháy, bán kính 6 ô, tâm ở (ultX, ultY), kèm số giây
+        // 1. Nếu titan.ultCharge > 0: vẽ cảnh báo trực quan rõ ràng trên bản đồ đúng bán kính chiêu lớn
         if (titan.ultCharge && titan.ultCharge > 0) {
           const ux = (titan.ultX ?? titan.x) * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
           const uy = (titan.ultY ?? titan.y) * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const uRadius = DARK_TITAN_CONFIG.ULT_RADIUS * TILE_PIXEL_SIZE;
+          const uRadius = (DARK_TITAN_CONFIG.ULT_RADIUS + (titan.ultBonus ?? 0)) * TILE_PIXEL_SIZE;
+          const ultPulse = 0.5 + 0.5 * Math.sin(timestamp * 0.015);
+          const chargeRatio = Math.max(0, Math.min(1, titan.ultCharge / (DARK_TITAN_CONFIG.ULT_CHARGE_SECONDS || 3)));
+
           ctx.save();
+          // Tia ngắm nối từ Tà Thần tới tâm thiên thạch
+          ctx.strokeStyle = 'rgba(249, 115, 22, 0.55)';
+          ctx.lineWidth = 1.6;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(tx, ty);
+          ctx.lineTo(ux, uy);
+          ctx.stroke();
+
+          // Vùng nguy hiểm nhấp nháy
+          ctx.fillStyle = `rgba(239, 68, 68, ${0.14 + ultPulse * 0.14})`;
+          ctx.beginPath();
+          ctx.arc(ux, uy, uRadius, 0, Math.PI * 2);
+          ctx.fill();
+
           ctx.strokeStyle = '#ef4444';
-          ctx.lineWidth = 2.5;
-          ctx.setLineDash([6, 4]);
+          ctx.lineWidth = 2.8;
+          ctx.setLineDash([7, 4]);
           ctx.beginPath();
           ctx.arc(ux, uy, uRadius, 0, Math.PI * 2);
           ctx.stroke();
-          ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
-          ctx.fill();
+
+          // Vòng thu hẹp theo thời gian đếm ngược
+          ctx.setLineDash([]);
+          ctx.strokeStyle = '#fb923c';
+          ctx.lineWidth = 2.0;
+          ctx.beginPath();
+          ctx.arc(ux, uy, Math.max(8, uRadius * chargeRatio), 0, Math.PI * 2);
+          ctx.stroke();
+
+          // Tâm điểm nổ
+          ctx.strokeStyle = '#fef08a';
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(ux - 10, uy); ctx.lineTo(ux + 10, uy);
+          ctx.moveTo(ux, uy - 10); ctx.lineTo(ux, uy + 10);
+          ctx.stroke();
 
           ctx.fillStyle = '#ffffff';
           ctx.font = 'bold 12px sans-serif';
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillText(`☄️ ${titan.ultCharge}s`, ux, uy);
+          ctx.fillText(`☄️ THIÊN THẠCH: ${Math.ceil(titan.ultCharge)}s`, ux, uy - 14);
           ctx.restore();
         }
 
@@ -978,6 +1123,23 @@ export function useGameRenderer({
           ctx.beginPath();
           ctx.arc(tx, ty, 34 + Math.sin(timestamp * 0.012) * 6, 0, Math.PI * 2);
           ctx.stroke();
+          ctx.restore();
+        }
+
+        // 3. Nếu titan.postUltPauseTimer > 0: hiển thị vòng nghỉ sơ hở để người chơi / bot phản công
+        if (titan.postUltPauseTimer && titan.postUltPauseTimer > 0) {
+          ctx.save();
+          ctx.strokeStyle = '#fbbf24';
+          ctx.lineWidth = 2.2;
+          ctx.setLineDash([4, 3]);
+          ctx.beginPath();
+          ctx.arc(tx, ty, 28, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = '#fde68a';
+          ctx.font = 'bold 9px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(`💫 SƠ HỞ (${Math.ceil(titan.postUltPauseTimer)}s)`, tx, ty - 35);
           ctx.restore();
         }
       });
@@ -1003,6 +1165,17 @@ export function useGameRenderer({
             ctx.beginPath(); ctx.arc(fcx, fcy, fr * (0.4 + 0.6 * t), 0, Math.PI * 2); ctx.fill();
             ctx.globalAlpha = 1 - t;
             ctx.beginPath(); ctx.arc(fcx, fcy, fr * (0.4 + 0.6 * t), 0, Math.PI * 2); ctx.stroke();
+          } else if (fx.kind === 'PORTAL') {
+            ctx.globalAlpha = (1 - t) * 0.4;
+            ctx.fillStyle = '#9333ea';
+            ctx.beginPath(); ctx.arc(fcx, fcy, fr * (0.25 + 0.75 * t), 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1 - t;
+            ctx.strokeStyle = '#dc2626';
+            ctx.lineWidth = 3.2;
+            ctx.beginPath(); ctx.arc(fcx, fcy, fr * (0.2 + 0.85 * t), 0, Math.PI * 2); ctx.stroke();
+            ctx.strokeStyle = '#c084fc';
+            ctx.lineWidth = 2.0;
+            ctx.beginPath(); ctx.arc(fcx, fcy, fr * (0.1 + 0.55 * t), 0, Math.PI * 2); ctx.stroke();
           } else if (fx.kind === 'CLAW') {
             ctx.lineWidth = 3.5;
             for (let k = -1; k <= 1; k++) {
@@ -1087,8 +1260,9 @@ export function useGameRenderer({
           ctx.textBaseline = 'middle';
           ctx.fillText('⛵', curX, curY);
 
-          // Nhãn hiển thị lượng Vàng Hàng Hóa (vd: 💰120 Vàng liên lục địa)
-          const cargoLabel = `💰${ship.cargoGold}`;
+          // Nhãn hiển thị lượng Vàng Hàng Hóa
+          const labelAmt = ship.fromNation === 1 ? (ship.fromCargoGold ?? ship.cargoGold) : ship.toNation === 1 ? (ship.toCargoGold ?? ship.cargoGold) : ship.cargoGold;
+          const cargoLabel = `💰${labelAmt}`;
           const fontStr = 'bold 8px sans-serif';
           const tagW = getCachedWidth(ctx, cargoLabel, fontStr) + 6;
 

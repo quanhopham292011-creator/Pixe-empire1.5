@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { Tile, Nation, DarkTitan, FlyingMissile } from '../types';
+import { Tile, Nation, DarkTitan, FlyingMissile, PendingTitanSpawn } from '../types';
 import { getNationColor } from '../utils/buildingSprites';
 
 interface MinimapProps {
@@ -10,6 +10,7 @@ interface MinimapProps {
   onNavigate: (mapX: number, mapY: number) => void;
   darkTitan?: DarkTitan | null;
   darkTitans?: DarkTitan[];
+  pendingTitanSpawn?: PendingTitanSpawn | null;
   flyingMissiles?: FlyingMissile[];
   fogOfWarEnabled?: boolean;
   playerNationId?: number;
@@ -38,6 +39,7 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
   onNavigate,
   darkTitan,
   darkTitans,
+  pendingTitanSpawn,
   flyingMissiles = [],
   fogOfWarEnabled = true,
   playerNationId = 1,
@@ -174,6 +176,21 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
       }
     });
 
+    // Cổng cảnh báo Tà Thần sắp xuất hiện
+    if (pendingTitanSpawn && pendingTitanSpawn.remainingSeconds > 0) {
+      const px = pendingTitanSpawn.x * tileSize + tileSize / 2;
+      const py = pendingTitanSpawn.y * tileSize + tileSize / 2;
+      ctx.fillStyle = '#a855f7';
+      ctx.beginPath();
+      ctx.arc(px, py, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(px, py, 5.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
     // Điểm đánh dấu Tà Thần Cổ Đại (Pulsing Dark Crimson Beacon cho tất cả Tà Thần)
     const activeTitans = darkTitans && darkTitans.length > 0
       ? darkTitans.filter(t => t.isActive)
@@ -236,7 +253,7 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
     ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
     ctx.fillRect(boxX, boxY, boxW, boxH);
 
-  }, [camera, darkTitan, darkTitans, flyingMissiles, nations, mapSize]);
+  }, [camera, darkTitan, darkTitans, pendingTitanSpawn, flyingMissiles, nations, mapSize]);
 
   const handleInteract = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;

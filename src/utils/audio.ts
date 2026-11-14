@@ -348,6 +348,49 @@ class SoundSystem {
       });
     } catch {}
   }
+
+  playTitanRoar() {
+    if (!this.enabled) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+
+      // Tầng trầm chính (tiếng gầm sâu của Tà Thần)
+      const oscLow = this.ctx.createOscillator();
+      const gainLow = this.ctx.createGain();
+      oscLow.type = 'sawtooth';
+      oscLow.frequency.setValueAtTime(115, now);
+      oscLow.frequency.exponentialRampToValueAtTime(52, now + 0.35);
+      oscLow.frequency.exponentialRampToValueAtTime(34, now + 1.1);
+
+      gainLow.gain.setValueAtTime(0.01, now);
+      gainLow.gain.linearRampToValueAtTime(0.22, now + 0.12);
+      gainLow.gain.exponentialRampToValueAtTime(0.001, now + 1.15);
+
+      oscLow.connect(gainLow);
+      gainLow.connect(this.ctx.destination);
+      oscLow.start(now);
+      oscLow.stop(now + 1.15);
+
+      // Tầng rung cộng hưởng (hơi thở năng lượng hắc ám)
+      const oscSub = this.ctx.createOscillator();
+      const gainSub = this.ctx.createGain();
+      oscSub.type = 'triangle';
+      oscSub.frequency.setValueAtTime(72, now + 0.05);
+      oscSub.frequency.exponentialRampToValueAtTime(26, now + 1.05);
+
+      gainSub.gain.setValueAtTime(0.01, now + 0.05);
+      gainSub.gain.linearRampToValueAtTime(0.18, now + 0.18);
+      gainSub.gain.exponentialRampToValueAtTime(0.001, now + 1.05);
+
+      oscSub.connect(gainSub);
+      gainSub.connect(this.ctx.destination);
+      oscSub.start(now + 0.05);
+      oscSub.stop(now + 1.05);
+    } catch {}
+  }
 }
 
 export const soundManager = new SoundSystem();

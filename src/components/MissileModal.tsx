@@ -2,6 +2,7 @@ import React from 'react';
 import { Rocket, Flame, Sparkles, AlertTriangle, X, ShieldAlert, CheckCircle2, Clock, Plus } from 'lucide-react';
 import { Nation, Tile, MissileType } from '../types';
 import { MISSILE_CONFIG, MISSILE_SETTINGS, formatPopulation } from '../utils/constants';
+import { areResourcesEnabled, canAffordMissileResources, getMissileResourceCost, formatResource } from '../utils/resources';
 
 interface MissileModalProps {
   isOpen: boolean;
@@ -48,7 +49,12 @@ export const MissileModal: React.FC<MissileModalProps> = ({
                 BỆ PHÓNG TÊN LỬA CHIẾN LƯỢC
               </h3>
               <p className="text-[11px] text-amber-400 font-mono font-bold">
-                💰 Vàng của bạn: {formatPopulation(playerNation.gold)}
+                💰 Vàng: {formatPopulation(playerNation.gold)}
+                {areResourcesEnabled() && (
+                  <span className="ml-2 text-sky-300">
+                    • 🛢️ {formatResource(playerNation.oil)} • <span className="text-violet-300">⛏️ {formatResource(playerNation.minerals)}</span>
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -115,7 +121,10 @@ export const MissileModal: React.FC<MissileModalProps> = ({
 
           {/* DANH SÁCH 3 LOẠI TÊN LỬA */}
           {missiles.map((m) => {
-            const canAfford = playerNation.gold >= m.cost;
+            const resCost = getMissileResourceCost(m.id);
+            const hasEnoughRes = canAffordMissileResources(playerNation, m.id);
+            const hasEnoughGold = playerNation.gold >= m.cost;
+            const canAfford = hasEnoughGold && hasEnoughRes;
             const hasReadySilo = readySilos.length > 0;
             const canLaunch = canAfford && hasReadySilo;
 
@@ -143,6 +152,9 @@ export const MissileModal: React.FC<MissileModalProps> = ({
                       <h4 className="font-black text-white text-sm">{m.name}</h4>
                       <span className="text-[10px] font-mono font-bold text-amber-400">
                         Giá: {formatPopulation(m.cost)} Vàng
+                        {areResourcesEnabled() && (resCost.oil > 0 || resCost.minerals > 0) && (
+                          <span className="text-sky-300"> • 🛢️ {resCost.oil} • <span className="text-violet-300">⛏️ {resCost.minerals}</span></span>
+                        )}
                       </span>
                     </div>
                   </div>
@@ -191,8 +203,10 @@ export const MissileModal: React.FC<MissileModalProps> = ({
                   <Rocket className="w-4 h-4" />
                   {!hasReadySilo
                     ? 'Bệ Phóng Đang Hồi Chiêu'
-                    : !canAfford
+                    : !hasEnoughGold
                     ? `Thiếu ${formatPopulation(m.cost - playerNation.gold)} Vàng`
+                    : !hasEnoughRes
+                    ? 'Thiếu Dầu hoặc Khoáng sản'
                     : `Chọn Mục Tiêu & Khai Hỏa ${m.name}`}
                 </button>
               </div>

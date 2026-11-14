@@ -1,4 +1,4 @@
-import { GameDifficulty, MapDimension, BuildingType } from '../types';
+import { GameDifficulty, MapDimension, BuildingType, PendingTitanSpawn } from '../types';
 export type { BuildingType };
 
 export interface RoomPlayer {
@@ -68,6 +68,8 @@ export type ClientMessage =
         isEliminated: boolean;
       }>;
       darkTitans?: any[];
+      pendingTitanSpawn?: PendingTitanSpawn | null;
+      nextTitanSpawnAt?: number;
       gameTimeSeconds?: number;
     }
   | { type: 'CHAT'; text: string };
@@ -108,6 +110,8 @@ export type ServerMessage =
         isEliminated: boolean;
       }>;
       darkTitans?: any[];
+      pendingTitanSpawn?: PendingTitanSpawn | null;
+      nextTitanSpawnAt?: number;
       gameTimeSeconds?: number;
     }
   | { type: 'PLAYER_DISCONNECTED'; playerId: string; nationId: number; message: string }

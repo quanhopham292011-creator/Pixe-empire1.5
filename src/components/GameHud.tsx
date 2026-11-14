@@ -3,6 +3,7 @@ import { Tile, Nation, PlayerProfile, GeneralStyle, DiplomacyStatus } from '../t
 import { formatPopulation, BUILDING_INFO, GENERAL_ROSTER } from '../utils/constants';
 import { canDeployGeneral, getLoyaltyState, appointReserveGeneral, calculateGeneralStats } from '../utils/generalCombat';
 import { GENERAL_STYLE_INFO } from '../utils/generalEvolution';
+import { areResourcesEnabled, formatResource, getRepairCost, repairExtractor, isExtractor, depositName } from '../utils/resources';
 import { GeneralModel } from './GeneralModel';
 import { 
   Coins, Users, Building2, Swords, Play, Pause, Settings, X, Shield, Handshake, Crown, Rocket, Cpu, Trophy, Wand2
@@ -52,6 +53,7 @@ interface GameHudProps {
   onSendTroopAid?: (id: number) => void;
   gameMode?: string;
   setIsCreativeOpen?: (open: boolean) => void;
+  setIsMarketOpen?: (open: boolean) => void;
 }
 
 export const GameHud: React.FC<GameHudProps> = ({
@@ -90,6 +92,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   onSendTroopAid,
   gameMode,
   setIsCreativeOpen,
+  setIsMarketOpen,
 }) => {
   const [showSkillDesc, setShowSkillDesc] = useState(false);
   const [showReserves, setShowReserves] = useState(false);
@@ -219,10 +222,37 @@ export const GameHud: React.FC<GameHudProps> = ({
             <Crown className="w-3.5 h-3.5 text-purple-400" />
             <span className="font-bold text-purple-200 font-mono">Lv.{playerProfile.level}</span>
           </div>
+
+          {/* Dầu & Khoáng sản (Bấm để mở Chợ Tài Nguyên) */}
+          {areResourcesEnabled() && playerNation && (
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                setIsMarketOpen?.(true);
+              }}
+              className="flex items-center gap-2 bg-slate-800/90 hover:bg-slate-700/90 border border-sky-500/40 px-2 py-0.5 rounded-lg shrink-0 active:scale-95 transition-all"
+              title="Mở Chợ Tài Nguyên (Dầu & Khoáng sản)"
+            >
+              <span className="font-bold text-sky-300 font-mono">🛢️ {formatResource(playerNation.oil)}</span>
+              <span className="font-bold text-violet-300 font-mono">⛏️ {formatResource(playerNation.minerals)}</span>
+            </button>
+          )}
         </div>
 
-        {/* Nút tốc độ, tạm dừng, cài đặt */}
+        {/* Nút ngoại giao, tốc độ, tạm dừng, cài đặt */}
         <div className="flex items-center gap-1.5 shrink-0 ml-2">
+          <button
+            onClick={() => {
+              soundManager.playClick();
+              setIsDiplomacyOpen(true);
+            }}
+            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-300 font-bold rounded-lg text-[10px] border border-emerald-500/40 min-h-[32px] min-w-[32px] flex items-center justify-center gap-1 active:scale-95 transition-all"
+            title="Mở Ngoại Giao & Giao thương"
+          >
+            <Handshake className="w-3.5 h-3.5 text-emerald-400" />
+            <span className="hidden sm:inline">Ngoại Giao</span>
+          </button>
+
           <button
             onClick={() => {
               soundManager.playClick();
@@ -307,18 +337,46 @@ export const GameHud: React.FC<GameHudProps> = ({
             <div className="text-slate-300 min-w-0 flex-1 truncate">
               📍 ({selectedTile.x}, {selectedTile.y}) • <strong className="text-white">{selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi'}</strong>
               {selectedTile.building !== 'NONE' && <span className="text-amber-400 ml-1">[{BUILDING_INFO[selectedTile.building].name}]</span>}
+              {areResourcesEnabled() && selectedTile.deposit && selectedTile.discovered && (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] font-mono text-sky-300">
+                  {selectedTile.deposit === 'OIL' ? '🛢️' : '⛏️'} {depositName(selectedTile.deposit)} ({formatResource(selectedTile.reserve)})
+                  {isExtractor(selectedTile.building) && ` • Độ bền ${Math.round(selectedTile.condition ?? 100)}%`}
+                </span>
+              )}
             </div>
 
             {/* Các nút hành động chính theo trạng thái */}
             <div className="flex items-center gap-1 shrink-0 flex-wrap">
               {selectedTile.owner === 1 ? (
-                <button
-                  onClick={() => setIsBuildOpen(true)}
-                  className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1 shadow"
-                >
-                  <Building2 className="w-3.5 h-3.5" />
-                  <span>Xây Dựng</span>
-                </button>
+                <>
+                  {areResourcesEnabled() && isExtractor(selectedTile.building) && (selectedTile.condition ?? 100) < 100 && (() => {
+                    const rc = getRepairCost(selectedTile);
+                    return (
+                      <button
+                        onClick={() => {
+                          if (playerNation) {
+                            const res = repairExtractor(selectedTile, playerNation);
+                            if (res.ok) {
+                              soundManager.playClick();
+                              setForceUpdate(v => v + 1);
+                            }
+                          }
+                        }}
+                        className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs flex items-center gap-1 shadow"
+                        title={`Sửa chữa (${rc.gold} Vàng, ${rc.minerals} Khoáng)`}
+                      >
+                        <span>🔧 Sửa ({rc.gold}💰{rc.minerals > 0 ? ` ${rc.minerals}⛏️` : ''})</span>
+                      </button>
+                    );
+                  })()}
+                  <button
+                    onClick={() => setIsBuildOpen(true)}
+                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1 shadow"
+                  >
+                    <Building2 className="w-3.5 h-3.5" />
+                    <span>Xây Dựng</span>
+                  </button>
+                </>
               ) : selectedTile.owner === 0 ? (
                 <button
                   onClick={handleAttackTile}

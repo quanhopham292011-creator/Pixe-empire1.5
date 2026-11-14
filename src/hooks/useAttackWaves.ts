@@ -54,9 +54,9 @@ export function useAttackWaves({
           if (!titan.isActive) return;
           const distToTitan = Math.hypot(wavePxX - titan.x, wavePxY - titan.y);
 
-          if (distToTitan <= 1.2) {
+          if (distToTitan <= 1.2 && wave.troops > 0) {
             const attackerNation = data.nations?.[wave.fromNation];
-            const titanBuff = (attackerNation?.titanBuffTimer && attackerNation.titanBuffTimer > 0) ? 1.30 : 1.0;
+            const titanBuff = (attackerNation?.titanBuffTimer && attackerNation.titanBuffTimer > 0) ? DARK_TITAN_CONFIG.BUFF_MULTIPLIER : 1.0;
             const damageToTitan = Math.floor(wave.troops * 2.2 * titanBuff);
 
             titan.hp = Math.max(0, (titan.hp ?? DARK_TITAN_CONFIG.MAX_HP) - damageToTitan);
@@ -90,12 +90,17 @@ export function useAttackWaves({
                   awardGeneralExp(attackerNation.general, attackerNation, 150, 'Đánh gục Tà Thần Cổ Đại');
                 }
                 attackerNation.gold += DARK_TITAN_CONFIG.BOUNTY_GOLD;
-                attackerNation.titanBuffTimer = DARK_TITAN_CONFIG.BUFF_DURATION_SECONDS;
+                // Làm mới thời gian Buff (không cộng dồn vô hạn thời gian hay chỉ số)
+                attackerNation.titanBuffTimer = Math.max(
+                  attackerNation.titanBuffTimer || 0,
+                  DARK_TITAN_CONFIG.BUFF_DURATION_SECONDS
+                );
+                const buffPct = Math.round((DARK_TITAN_CONFIG.BUFF_MULTIPLIER - 1) * 100);
 
                 data.events.unshift({
                   id: Math.random().toString(),
                   title: '⚔️ TRẢM TÀ THẦN THÀNH CÔNG',
-                  description: `👑 Quân đội ${attackerNation.name} đã ĐÁNH GỤC TÀ THẦN CỔ ĐẠI! Nhận +${formatPopulation(DARK_TITAN_CONFIG.BOUNTY_GOLD)} Vàng & Buff Sức Mạnh +30% toàn diện trong 3 phút!`,
+                  description: `👑 Quân đội ${attackerNation.name} đã ĐÁNH GỤC TÀ THẦN CỔ ĐẠI! Nhận +${formatPopulation(DARK_TITAN_CONFIG.BOUNTY_GOLD)} Vàng & Buff Sức Mạnh +${buffPct}% toàn diện trong 3 phút!`,
                   type: 'HARVEST',
                   targetNationId: attackerNation.id,
                   timestamp: formatGameTime(data.gameTimeSeconds),

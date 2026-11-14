@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TechBranch, TechNode, Nation, ResearchingTech } from '../types';
 import { TECH_TREE } from '../utils/constants';
+import { areResourcesEnabled, getTechResourceCost, formatResource } from '../utils/resources';
 import { Coins, Swords, Shield, X, Clock, CheckCircle2, Lock, ChevronRight } from 'lucide-react';
 
 interface TechModalProps {
@@ -47,6 +48,13 @@ export const TechModal: React.FC<TechModalProps> = ({
   const territoryCount = playerNation.territoryCount || 0;
   const getActualCost = (baseCost: number) => Math.round(baseCost * (1 + territoryCount / 150));
   const gold = Math.floor(playerNation.gold || 0);
+  const oilStock = Math.floor(playerNation.oil || 0);
+  const mineralStock = Math.floor(playerNation.minerals || 0);
+  const resOn = areResourcesEnabled();
+  const hasResFor = (techId: string) => {
+    const rc = getTechResourceCost(techId);
+    return oilStock >= rc.oil && mineralStock >= rc.minerals;
+  };
 
   const branchTechs = TECH_TREE.filter(t => t.branch === activeBranch);
   const currentLevel = getBranchLevel(activeBranch);
@@ -61,9 +69,16 @@ export const TechModal: React.FC<TechModalProps> = ({
   const renderCostLine = (tech: TechNode) => {
     const cost = getActualCost(tech.cost);
     const enough = gold >= cost;
+    const rc = getTechResourceCost(tech.id);
     return (
-      <div className="flex items-center gap-3 text-[11px] font-mono mt-1.5">
+      <div className="flex items-center flex-wrap gap-3 text-[11px] font-mono mt-1.5">
         <span className={enough ? 'text-amber-300' : 'text-red-400'}>💰 {cost}</span>
+        {rc.oil > 0 && (
+          <span className={oilStock >= rc.oil ? 'text-sky-300' : 'text-red-400'}>🛢️ {rc.oil}</span>
+        )}
+        {rc.minerals > 0 && (
+          <span className={mineralStock >= rc.minerals ? 'text-violet-300' : 'text-red-400'}>⛏️ {rc.minerals}</span>
+        )}
         <span className="text-slate-400">⏱️ {tech.researchTime}s</span>
       </div>
     );
@@ -79,7 +94,14 @@ export const TechModal: React.FC<TechModalProps> = ({
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/50">
           <div className="min-w-0">
             <h3 className="font-bold text-white text-base">Công Nghệ</h3>
-            <p className="text-xs text-amber-300 font-mono">💰 {gold.toLocaleString()} Vàng</p>
+            <p className="text-xs text-amber-300 font-mono">
+              💰 {gold.toLocaleString()} Vàng
+              {resOn && (
+                <span className="ml-2 text-sky-300">
+                  • 🛢️ {formatResource(oilStock)} • <span className="text-violet-300">⛏️ {formatResource(mineralStock)}</span>
+                </span>
+              )}
+            </p>
           </div>
           <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-lg active:bg-slate-800">
             <X className="w-5 h-5" />
@@ -130,7 +152,8 @@ export const TechModal: React.FC<TechModalProps> = ({
             const isResearchingThis = researching?.techId === tech.id;
             const actualCost = getActualCost(tech.cost);
             const isLocked = currentLevel < tech.level - 1;
-            const canResearch = currentLevel === tech.level - 1 && !researching && gold >= actualCost;
+            const resOk = hasResFor(tech.id);
+            const canResearch = currentLevel === tech.level - 1 && !researching && gold >= actualCost && resOk;
 
             return (
               <div
@@ -172,7 +195,7 @@ export const TechModal: React.FC<TechModalProps> = ({
                           : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
                       }`}
                     >
-                      {researching ? 'Đang bận nghiên cứu' : gold < actualCost ? 'Chưa đủ vàng' : 'Học'}
+                      {researching ? 'Đang bận nghiên cứu' : gold < actualCost ? 'Chưa đủ vàng' : !resOk ? 'Thiếu dầu / khoáng' : 'Học'}
                     </button>
                   )
                 )}
@@ -195,7 +218,8 @@ export const TechModal: React.FC<TechModalProps> = ({
                 const isLockedChoice = currentLevel === 3 && !!selectedChoice && selectedChoice !== tech.choice;
                 const isResearchingThis = researching?.techId === tech.id;
                 const isLevelLocked = currentLevel < 2;
-                const canResearch = currentLevel === 2 && !researching && gold >= actualCost;
+                const resOk = hasResFor(tech.id);
+                const canResearch = currentLevel === 2 && !researching && gold >= actualCost && resOk;
 
                 return (
                   <div
@@ -238,7 +262,7 @@ export const TechModal: React.FC<TechModalProps> = ({
                             : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700/50'
                         }`}
                       >
-                        {researching ? 'Đang bận nghiên cứu' : gold < actualCost ? 'Chưa đủ vàng' : 'Chọn & Học'}
+                        {researching ? 'Đang bận nghiên cứu' : gold < actualCost ? 'Chưa đủ vàng' : !resOk ? 'Thiếu dầu / khoáng' : 'Chọn & Học'}
                       </button>
                     ) : null}
                   </div>
