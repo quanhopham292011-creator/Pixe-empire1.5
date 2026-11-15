@@ -57,7 +57,11 @@ interface ActiveMeme extends MemeEventDetail {
   createdAt: number;
 }
 
-export const MemeLayer: React.FC = () => {
+interface MemeLayerProps {
+  className?: string;
+}
+
+export const MemeLayer: React.FC<MemeLayerProps> = ({ className }) => {
   const [memes, setMemes] = useState<ActiveMeme[]>([]);
 
   useEffect(() => {
@@ -89,17 +93,17 @@ export const MemeLayer: React.FC = () => {
   if (memes.length === 0) return null;
 
   return (
-    <div className="fixed inset-x-0 top-16 z-50 pointer-events-none flex flex-col items-center gap-2.5 px-4 animate-in fade-in duration-200">
+    <div className={className || "fixed inset-x-0 top-24 z-40 pointer-events-none flex flex-col items-center gap-2 px-4 animate-in fade-in duration-200"}>
       {memes.map((m) => (
         <div
           key={m.uid}
-          className="pointer-events-none flex items-center gap-3 bg-slate-900/95 border-2 rounded-2xl p-2.5 px-4 shadow-2xl backdrop-blur-md transition-all duration-300 transform scale-100 animate-in slide-in-from-top-3"
+          className="pointer-events-none flex items-center gap-2.5 bg-slate-950/95 border-2 rounded-2xl p-2 px-3 shadow-2xl backdrop-blur-md transition-all duration-300 transform scale-100 animate-in slide-in-from-top-3"
           style={{ borderColor: m.def.color }}
         >
-          <PixelSprite name={m.def.sprite} size={48} />
+          <PixelSprite name={m.def.sprite} size={42} />
           <div className="flex flex-col text-left">
             <span
-              className="text-[10px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded w-fit mb-0.5"
+              className="text-sm font-black uppercase tracking-wide px-1.5 py-0.5 rounded w-fit mb-0.5"
               style={{ backgroundColor: `${m.def.color}33`, color: m.def.color }}
             >
               {m.def.tag}

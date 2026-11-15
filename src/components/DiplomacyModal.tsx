@@ -84,11 +84,11 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-3"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-3"
       style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
     >
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom duration-200">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/50">
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom duration-200">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700 bg-slate-950/95">
           <div className="flex items-center gap-2 min-w-0">
             {tradeBot ? (
               <button
@@ -96,20 +96,24 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                   setTradeBotId(null);
                   setTradeFeedback(null);
                 }}
-                className="p-1.5 -ml-1 text-slate-300 hover:text-white bg-slate-800 rounded-lg active:scale-95"
+                className="min-w-[44px] min-h-[44px] p-2 -ml-1 text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl flex items-center justify-center active:scale-95"
                 title="Quay lại"
               >
                 <ChevronLeft className="w-5 h-5" />
               </button>
             ) : null}
-            <h3 className="font-bold text-white text-base flex items-center gap-2 truncate">
+            <h3 className="font-bold text-white text-base flex items-center gap-2 min-w-0">
               <span>{tradeBot ? '📦' : '🏛️'}</span>
-              <span className="truncate">
+              <span className="break-words">
                 {tradeBot ? `Giao thương: ${tradeBot.name}` : 'Hội Nghị Ngoại Giao'}
               </span>
             </h3>
           </div>
-          <button onClick={handleCloseModal} className="p-2 text-slate-400 hover:text-white rounded-lg active:bg-slate-800 shrink-0">
+          <button
+            onClick={handleCloseModal}
+            className="min-w-[44px] min-h-[44px] p-2 text-slate-100 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center shrink-0"
+            aria-label="Đóng"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -118,21 +122,21 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
         {tradeBot && !tradeBot.isEliminated && resEnabled ? (
           <div className="p-4 space-y-3 max-h-[70vh] overflow-y-auto">
             {/* Kho của nước AI & Thời gian chờ */}
-            <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-1.5">
-              <div className="flex items-center justify-between text-xs font-bold">
-                <span className="text-slate-300">Kho của {tradeBot.name}:</span>
+            <div className="p-3 rounded-xl bg-slate-950/95 border border-slate-700 space-y-1.5">
+              <div className="flex items-center justify-between text-sm font-bold gap-2 flex-wrap">
+                <span className="text-slate-100">Kho của {tradeBot.name}:</span>
                 {(tradeBot.tradeCooldown || 0) > 0 && (
-                  <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono text-[11px]">
+                  <span className="px-2 py-0.5 rounded bg-amber-500/25 border border-amber-400 text-amber-200 font-mono text-sm">
                     ⏳ Chờ {Math.ceil(tradeBot.tradeCooldown!)}s
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-4 text-sm font-mono font-bold">
-                <span className="text-sky-300">🛢️ {Math.round(tradeBot.oil || 0)}</span>
-                <span className="text-violet-300">⛏️ {Math.round(tradeBot.minerals || 0)}</span>
-                <span className="text-amber-300">💰 {Math.round(tradeBot.gold || 0)}</span>
+              <div className="flex flex-wrap items-center gap-4 text-sm font-mono font-bold">
+                <span className="text-sky-200">🛢️ {Math.round(tradeBot.oil || 0)}</span>
+                <span className="text-violet-200">⛏️ {Math.round(tradeBot.minerals || 0)}</span>
+                <span className="text-amber-200">💰 {Math.round(tradeBot.gold || 0)}</span>
               </div>
-              <div className="text-[11px] font-mono text-slate-400 pt-1 border-t border-slate-800/80">
+              <div className="text-sm font-mono text-slate-200 pt-1.5 border-t border-slate-700">
                 Bạn có: 💰 {Math.floor(playerNation.gold || 0)} • 🛢️ {Math.round(playerNation.oil || 0)} • ⛏️ {Math.round(playerNation.minerals || 0)}
               </div>
             </div>
@@ -145,8 +149,8 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                   onClick={() => setTradeQty(q)}
                   className={`min-h-[44px] rounded-xl font-mono font-black text-sm border transition-all active:scale-95 ${
                     tradeQty === q
-                      ? 'bg-sky-500 border-sky-300 text-slate-950 shadow'
-                      : 'bg-slate-800 border-slate-700 text-slate-200'
+                      ? 'bg-sky-400 border-sky-200 text-slate-950 shadow'
+                      : 'bg-slate-800 border-slate-600 text-white'
                   }`}
                 >
                   x{q}
@@ -156,10 +160,10 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
 
             {tradeFeedback && (
               <div
-                className={`px-3 py-2 rounded-xl text-xs font-bold border ${
+                className={`px-3 py-2 rounded-xl text-sm font-bold border ${
                   tradeFeedback.ok
-                    ? 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
-                    : 'bg-rose-950/60 border-rose-500/40 text-rose-300'
+                    ? 'bg-emerald-950/80 border-emerald-400 text-emerald-200'
+                    : 'bg-rose-950/80 border-rose-400 text-rose-200'
                 }`}
               >
                 {tradeFeedback.text}
@@ -177,15 +181,15 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                 <div
                   key={res}
                   className={`p-3 rounded-xl border space-y-2.5 ${
-                    isOil ? 'bg-sky-950/20 border-sky-500/35' : 'bg-violet-950/20 border-violet-500/35'
+                    isOil ? 'bg-sky-950/40 border-sky-400/60' : 'bg-violet-950/40 border-violet-400/60'
                   }`}
                 >
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-black text-white text-sm">
+                  <div className="flex flex-wrap items-center justify-between text-sm gap-2">
+                    <span className="font-black text-white text-base">
                       {isOil ? '🛢️ Dầu' : '⛏️ Khoáng'}
                     </span>
-                    <span className="font-mono text-[11px] text-slate-300">
-                      Bán: <strong className="text-amber-300">{prices.aiSellPrice.toFixed(1)}</strong> • Mua: <strong className="text-emerald-300">{prices.aiBuyPrice.toFixed(1)}</strong> 💰
+                    <span className="font-mono text-sm text-slate-100">
+                      Bán: <strong className="text-amber-200">{prices.aiSellPrice.toFixed(1)}</strong> • Mua: <strong className="text-emerald-200">{prices.aiBuyPrice.toFixed(1)}</strong> 💰
                     </span>
                   </div>
 
@@ -193,14 +197,14 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                     <button
                       disabled={!buyCheck.ok}
                       onClick={() => handleExecuteTrade(res, 'BUY')}
-                      className={`min-h-[54px] px-2.5 py-2 rounded-xl font-bold text-xs border transition-all flex flex-col items-center justify-center ${
+                      className={`min-h-[54px] px-2.5 py-2 rounded-xl font-bold text-sm border transition-all flex flex-col items-center justify-center ${
                         buyCheck.ok
                           ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-white active:scale-95 shadow'
-                          : 'bg-slate-800/70 border-slate-700/70 text-slate-400 opacity-50 cursor-not-allowed'
+                          : 'bg-slate-800 border-slate-600 text-slate-300 opacity-65 cursor-not-allowed'
                       }`}
                     >
                       <span className="font-black">Mua của họ</span>
-                      <span className="text-[11px] font-mono mt-0.5">
+                      <span className="text-sm font-mono mt-0.5">
                         {buyCheck.ok ? `-${buyCheck.goldAmount} 💰` : buyCheck.reason}
                       </span>
                     </button>
@@ -208,14 +212,14 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                     <button
                       disabled={!sellCheck.ok}
                       onClick={() => handleExecuteTrade(res, 'SELL')}
-                      className={`min-h-[54px] px-2.5 py-2 rounded-xl font-bold text-xs border transition-all flex flex-col items-center justify-center ${
+                      className={`min-h-[54px] px-2.5 py-2 rounded-xl font-bold text-sm border transition-all flex flex-col items-center justify-center ${
                         sellCheck.ok
-                          ? 'bg-amber-500 hover:bg-amber-400 border-amber-300 text-slate-950 active:scale-95 shadow'
-                          : 'bg-slate-800/70 border-slate-700/70 text-slate-400 opacity-50 cursor-not-allowed'
+                          ? 'bg-amber-400 hover:bg-amber-300 border-amber-200 text-slate-950 active:scale-95 shadow'
+                          : 'bg-slate-800 border-slate-600 text-slate-300 opacity-65 cursor-not-allowed'
                       }`}
                     >
                       <span className="font-black">Bán cho họ</span>
-                      <span className="text-[11px] font-mono mt-0.5">
+                      <span className="text-sm font-mono mt-0.5">
                         {sellCheck.ok ? `+${sellCheck.goldAmount} 💰` : sellCheck.reason}
                       </span>
                     </button>
@@ -238,14 +242,14 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                 <div
                   key={nation.id}
                   className={`p-3.5 rounded-xl border transition-all ${
-                    isSelf ? 'bg-blue-950/40 border-blue-500/50' : 'bg-slate-800/60 border-slate-700/60'
+                    isSelf ? 'bg-blue-950/60 border-blue-400' : 'bg-slate-800/90 border-slate-600'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-white">{nation.name}</span>
+                  <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                    <span className="font-bold text-white text-base">{nation.name}</span>
                     <div className="flex items-center gap-1.5">
                       {!isSelf && (
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${pers.color}`}>
+                        <span className={`text-sm px-2 py-0.5 rounded border ${pers.color}`}>
                           {pers.text}
                         </span>
                       )}
@@ -253,7 +257,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                   </div>
 
                   {!isSelf && !nation.isEliminated && (
-                    <div className="flex items-center justify-end gap-1.5 pt-1 flex-wrap">
+                    <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
                       {resEnabled && nation.colonyCategory !== 'FOREST' && (
                         <button
                           disabled={isWar}
@@ -262,13 +266,13 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                             setTradeFeedback(null);
                           }}
                           title={isWar ? 'Đang chiến tranh' : 'Giao thương Dầu & Khoáng sản'}
-                          className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 min-h-[38px] border transition-all ${
+                          className={`min-h-[44px] px-3 py-2 rounded-xl text-sm font-bold flex items-center gap-1.5 border transition-all ${
                             isWar
-                              ? 'bg-slate-900/70 border-slate-700/60 text-slate-500 opacity-50 cursor-not-allowed'
-                              : 'bg-sky-700 hover:bg-sky-600 active:scale-95 border-sky-400/60 text-white shadow'
+                              ? 'bg-slate-900 border-slate-600 text-slate-300 opacity-65 cursor-not-allowed'
+                              : 'bg-sky-700 hover:bg-sky-600 active:scale-95 border-sky-400 text-white shadow'
                           }`}
                         >
-                          {isWar ? <Lock className="w-3.5 h-3.5" /> : <ArrowLeftRight className="w-3.5 h-3.5" />}
+                          {isWar ? <Lock className="w-4 h-4" /> : <ArrowLeftRight className="w-4 h-4" />}
                           <span>Giao thương</span>
                         </button>
                       )}
@@ -277,32 +281,32 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                         <>
                           <button
                             onClick={() => onProposeTruce(nation.id)}
-                            className="px-2.5 py-2 bg-blue-950/80 hover:bg-blue-900 active:scale-95 text-blue-200 border border-blue-500/50 rounded-lg text-xs font-semibold flex items-center gap-1 shadow-sm min-h-[38px]"
+                            className="min-h-[44px] px-3 py-2 bg-blue-950 hover:bg-blue-900 active:scale-95 text-blue-100 border border-blue-400 rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-sm"
                           >
-                            <Shield className="w-3.5 h-3.5 text-blue-400" /> Đình Chiến
+                            <Shield className="w-4 h-4 text-blue-300" /> Đình Chiến
                           </button>
                           <button
                             onClick={() => onProposeAlliance(nation.id)}
-                            className="px-2.5 py-2 bg-emerald-700 hover:bg-emerald-600 active:scale-95 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-md min-h-[38px]"
+                            className="min-h-[44px] px-3 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 shadow-md"
                             title="Gửi lời mời liên minh"
                           >
-                            <Handshake className="w-3.5 h-3.5" /> Kết Minh
+                            <Handshake className="w-4 h-4" /> Kết Minh
                           </button>
                         </>
                       ) : dip.status === 'ALLIANCE' ? (
                         <button
                           onClick={() => onDeclareWar(nation.id)}
-                          className="px-2.5 py-2 bg-red-800/80 hover:bg-red-700 active:scale-95 text-white rounded-lg text-xs font-semibold flex items-center gap-1 min-h-[38px]"
+                          className="min-h-[44px] px-3 py-2 bg-red-800 hover:bg-red-700 active:scale-95 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5"
                           title="Huỷ liên minh và tuyên chiến"
                         >
-                          <Swords className="w-3.5 h-3.5" /> Phản Bội
+                          <Swords className="w-4 h-4" /> Phản Bội
                         </button>
                       ) : (
                         <button
                           onClick={() => onDeclareWar(nation.id)}
-                          className="px-2.5 py-2 bg-red-800/80 hover:bg-red-700 active:scale-95 text-white rounded-lg text-xs font-semibold flex items-center gap-1 min-h-[38px]"
+                          className="min-h-[44px] px-3 py-2 bg-red-800 hover:bg-red-700 active:scale-95 text-white rounded-xl text-sm font-semibold flex items-center gap-1.5"
                         >
-                          <Swords className="w-3.5 h-3.5" /> Tuyên Chiến
+                          <Swords className="w-4 h-4" /> Tuyên Chiến
                         </button>
                       )}
                     </div>

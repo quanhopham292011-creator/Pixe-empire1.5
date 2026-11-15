@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Tile, Nation, PlayerProfile, GeneralStyle, DiplomacyStatus, AirUnitType } from '../types';
-import { formatPopulation, BUILDING_INFO, GENERAL_ROSTER, AIR_SYSTEM_CONFIG, AIR_UNIT_SPECS } from '../utils/constants';
+import { Tile, Nation, PlayerProfile, GeneralStyle, DiplomacyStatus, AirUnitType, MissileType, TradeOffer } from '../types';
+import { formatPopulation, BUILDING_INFO, GENERAL_ROSTER, AIR_SYSTEM_CONFIG, AIR_UNIT_SPECS, MISSILE_CONFIG } from '../utils/constants';
 import { canDeployGeneral, getLoyaltyState, appointReserveGeneral, calculateGeneralStats } from '../utils/generalCombat';
 import { GENERAL_STYLE_INFO } from '../utils/generalEvolution';
 import { areResourcesEnabled, formatResource, getRepairCost, repairExtractor, isExtractor, depositName } from '../utils/resources';
@@ -25,9 +25,11 @@ import {
   getNationAirSummary,
   hasAnyAirUnlocked,
 } from '../utils/aircraftSystem';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { GeneralModel } from './GeneralModel';
+import { MemeLayer } from './MemeLayer';
 import { 
-  Coins, Users, Building2, Swords, Play, Pause, Settings, X, Shield, Handshake, Crown, Rocket, Cpu, Trophy, Wand2, Plane, Info
+  Coins, Users, Building2, Swords, Play, Pause, Settings, X, Shield, Handshake, Crown, Rocket, Cpu, Trophy, Wand2, Plane, Info, AlertTriangle, Check, WifiOff
 } from 'lucide-react';
 
 interface GameHudProps {
@@ -78,9 +80,25 @@ interface GameHudProps {
   playerNationId?: number;
   airAimingMode?: 'FIGHTER' | 'SQUADRON' | 'BOMBER_START' | 'BOMBER_END' | null;
   onToggleAirAiming?: (type: AirUnitType) => void;
+  onCancelAirAiming?: () => void;
+  missileAimingMode?: MissileType | null;
+  onCancelMissileAiming?: () => void;
   onProduceAirUnit?: (type: AirUnitType) => void;
   onLaunchAirAtTile?: (tile: Tile, type: 'FIGHTER' | 'SQUADRON') => void;
   onUpgradeAdvancedExtractor?: (tile: Tile) => void;
+  currentQuest?: number;
+  questDismissed?: boolean;
+  onDismissQuest?: () => void;
+  activeSeasonEvent?: { name: string; remainingTime: number } | null;
+  incomingMissileWarning?: { missileName: string; targetX: number; targetY: number; secondsLeft: number } | null;
+  missileFeedbackToast?: string | null;
+  loadErrorToast?: string | null;
+  pendingTradeOffer?: TradeOffer | null;
+  offerGoldAmount?: number;
+  onRespondTradeOffer?: (accept: boolean) => void;
+  onOpenEventLog?: () => void;
+  showMinimap?: boolean;
+  minimapNode?: React.ReactNode;
 }
 
 export const GameHud: React.FC<GameHudProps> = ({
@@ -110,7 +128,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   setPlayerGeneralDeployMode,
   activateGeneralSkill,
   canTech,
-  hasMetBot,
+  hasMetBot: _hasMetBot,
   soundManager,
   onProposeTruce,
   onProposeAlliance,
@@ -122,15 +140,35 @@ export const GameHud: React.FC<GameHudProps> = ({
   setIsMarketOpen,
   playerNationId = 1,
   airAimingMode,
-  onToggleAirAiming,
-  onProduceAirUnit,
+  onToggleAirAiming: _onToggleAirAiming,
+  onCancelAirAiming,
+  missileAimingMode,
+  onCancelMissileAiming,
+  onProduceAirUnit: _onProduceAirUnit,
   onLaunchAirAtTile,
   onUpgradeAdvancedExtractor,
+  currentQuest,
+  questDismissed,
+  onDismissQuest,
+  activeSeasonEvent,
+  incomingMissileWarning,
+  missileFeedbackToast,
+  loadErrorToast,
+  pendingTradeOffer,
+  offerGoldAmount,
+  onRespondTradeOffer,
+  onOpenEventLog,
+  showMinimap,
+  minimapNode,
 }) => {
+  void _hasMetBot;
+  void _onToggleAirAiming;
+  void _onProduceAirUnit;
   const [showReserves, setShowReserves] = useState(false);
   const [showGenInfo, setShowGenInfo] = useState(false);
   const [, setForceUpdate] = useState(0);
   const [latestEventText, setLatestEventText] = useState<string | null>(null);
+  const isOnline = useOnlineStatus();
 
   // Auto-hide event ticker after 3 seconds when new event arrives
   useEffect(() => {
@@ -169,15 +207,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   const canUseSkill = pGen && !isInjured && !isSkillOnCooldown;
   const airType1Unlocked = canUseAirType1(playerNation);
   const airType23Unlocked = canUseAirType23(playerNation);
-  const anyAirUnlocked = hasAnyAirUnlocked(playerNation);
   const airSummary = getNationAirSummary(gameDataRef.current?.airUnits, playerNationId);
-  const airSorties = playerNation?.airSorties ?? AIR_SYSTEM_CONFIG.MAX_SORTIES;
-  const airSortieCountdown =
-    airSorties < AIR_SYSTEM_CONFIG.MAX_SORTIES
-      ? Math.max(1, AIR_SYSTEM_CONFIG.SORTIE_RECHARGE_SECONDS - Math.floor(playerNation?.airSortieRegenTimer || 0))
-      : 0;
-  const grandArsenalProgress = playerNation?.grandArsenalTimer || 0;
-  const resOn = areResourcesEnabled();
   const maxAdvancedExtractors = getMaxAdvancedExtractors(playerNation);
   const currentAdvancedExtractors = playerNation && gameDataRef.current?.tiles
     ? countAdvancedExtractors(gameDataRef.current.tiles, playerNation.id)
@@ -240,123 +270,265 @@ export const GameHud: React.FC<GameHudProps> = ({
     }
   };
 
-  return (
-    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between z-20 overflow-hidden">
-      
-      {/* 1. THANH TRÊN DUY NHẤT: Thu gọn xu, dân số, % chiếm đất, level & tốc độ / tạm dừng / cài đặt */}
-      <header className="pointer-events-auto bg-slate-900/95 border-b border-slate-800/80 px-3 py-1.5 flex items-center justify-between text-xs backdrop-blur-md shadow-lg shrink-0">
-        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar">
-          {/* Xu */}
-          <div className="flex items-center gap-1 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-lg shrink-0">
-            <Coins className="w-3.5 h-3.5 text-amber-400" />
-            <span className="font-black text-amber-300 font-mono">{hudStats.gold}</span>
-            <span className="text-[10px] text-emerald-400 font-mono">+{hudStats.goldIncome}</span>
-          </div>
+  // Chọn duy nhất 1 thanh trên cùng (không bao giờ chồng lấn, chữ tự xuống dòng, không cắt)
+  const renderSingleTopBar = () => {
+    if (loadErrorToast) {
+      return (
+        <div className="pointer-events-none mx-2 mt-1.5 max-w-xl sm:mx-auto bg-rose-700 text-white font-bold px-3.5 py-2 rounded-2xl shadow-2xl text-sm flex items-start gap-2 border border-rose-300">
+          <AlertTriangle className="w-5 h-5 shrink-0 text-white mt-0.5" />
+          <span className="whitespace-normal break-words leading-snug">{loadErrorToast}</span>
+        </div>
+      );
+    }
 
-          {/* Dân số */}
-          <div className="flex items-center gap-1 bg-blue-500/15 border border-blue-500/30 px-2 py-0.5 rounded-lg shrink-0">
-            <Users className="w-3.5 h-3.5 text-blue-400" />
-            <span className="font-bold text-blue-200 font-mono">{formatPopulation(hudStats.population ?? (gameDataRef.current?.nations?.[1]?.population || 0))}</span>
-          </div>
+    if (incomingMissileWarning) {
+      return (
+        <div className="pointer-events-none mx-2 mt-1.5 max-w-xl sm:mx-auto bg-red-900/95 border-2 border-red-400 px-3 py-2 rounded-2xl flex items-center justify-between gap-2 text-sm text-white shadow-2xl animate-pulse">
+          <span className="font-bold text-white whitespace-normal break-words leading-snug">
+            🚨 Radar: {incomingMissileWarning.missileName} tới ({incomingMissileWarning.targetX}, {incomingMissileWarning.targetY})
+          </span>
+          <span className="font-mono text-amber-200 font-black text-sm shrink-0 bg-slate-950/90 px-2.5 py-1 rounded-lg border border-red-400">
+            💥 {incomingMissileWarning.secondsLeft}s
+          </span>
+        </div>
+      );
+    }
 
-          {/* % Đất */}
-          <div className="flex items-center gap-1 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-lg shrink-0">
-            <span className="text-[11px]">🗺️</span>
-            <span className="font-bold text-emerald-200 font-mono">{hudStats.landPercent}%</span>
-          </div>
+    if (missileFeedbackToast) {
+      return (
+        <div className="pointer-events-none mx-2 mt-1.5 max-w-xl sm:mx-auto bg-slate-950/95 border-2 border-rose-400 text-rose-100 font-bold px-3.5 py-2 rounded-2xl shadow-2xl text-sm flex items-start gap-2 backdrop-blur-md">
+          <Rocket className="w-5 h-5 text-rose-300 shrink-0 mt-0.5" />
+          <span className="whitespace-normal break-words leading-snug">{missileFeedbackToast}</span>
+        </div>
+      );
+    }
 
-          {/* Level */}
-          <div className="flex items-center gap-1 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-lg shrink-0">
-            <Crown className="w-3.5 h-3.5 text-purple-400" />
-            <span className="font-bold text-purple-200 font-mono">Lv.{playerProfile.level}</span>
+    if (pendingTradeOffer && onRespondTradeOffer) {
+      return (
+        <div className="pointer-events-auto mx-2 mt-1.5 max-w-xl sm:mx-auto p-3 bg-slate-950/95 border-2 border-sky-400 rounded-2xl shadow-2xl backdrop-blur-md space-y-2">
+          <div className="flex items-center justify-between gap-2 text-sm">
+            <span className="font-black text-sky-200 whitespace-normal break-words">
+              📦 {pendingTradeOffer.nationName}:{' '}
+              {pendingTradeOffer.mode === 'AI_SELL' ? 'bán' : 'mua'}{' '}
+              <strong className="text-white">
+                {pendingTradeOffer.qty} {pendingTradeOffer.resource === 'OIL' ? '🛢️ Dầu' : '⛏️ Khoáng'}
+              </strong>
+              {typeof offerGoldAmount === 'number' && (
+                <span className="text-amber-300 font-mono">
+                  {' '}({pendingTradeOffer.mode === 'AI_SELL' ? `-${offerGoldAmount}` : `+${offerGoldAmount}`} 💰)
+                </span>
+              )}
+            </span>
+            <span className="font-mono font-bold text-amber-200 shrink-0">
+              {Math.ceil(pendingTradeOffer.remainingTimer)}s
+            </span>
           </div>
-
-          {/* Dầu & Khoáng sản (Bấm để mở Chợ Tài Nguyên) */}
-          {areResourcesEnabled() && playerNation && (
+          <div className="grid grid-cols-2 gap-2">
             <button
-              onClick={() => {
-                soundManager.playClick();
-                setIsMarketOpen?.(true);
-              }}
-              className="flex items-center gap-2 bg-slate-800/90 hover:bg-slate-700/90 border border-sky-500/40 px-2 py-0.5 rounded-lg shrink-0 active:scale-95 transition-all"
-              title="Mở Chợ Tài Nguyên (Dầu & Khoáng sản)"
+              onClick={() => onRespondTradeOffer(true)}
+              className="min-h-[44px] py-2 px-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-1.5"
             >
-              <span className="font-bold text-sky-300 font-mono">🛢️ {formatResource(playerNation.oil)}</span>
-              <span className="font-bold text-violet-300 font-mono">⛏️ {formatResource(playerNation.minerals)}</span>
+              <Check className="w-4 h-4" /> Chấp nhận
+            </button>
+            <button
+              onClick={() => onRespondTradeOffer(false)}
+              className="min-h-[44px] py-2 px-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white border border-slate-500 font-bold rounded-xl text-sm flex items-center justify-center gap-1.5"
+            >
+              <X className="w-4 h-4" /> Từ chối
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeSeasonEvent) {
+      return (
+        <div className="pointer-events-none mx-2 mt-1.5 max-w-xl sm:mx-auto flex items-center justify-between gap-2 px-3.5 py-2 bg-indigo-950/95 border border-indigo-400 rounded-2xl shadow-lg backdrop-blur-md text-sm text-white">
+          <span className="font-extrabold text-amber-200 whitespace-normal break-words leading-snug">
+            {activeSeasonEvent.name}
+          </span>
+          <span className="font-mono text-cyan-200 font-bold shrink-0">
+            ⏳ {activeSeasonEvent.remainingTime}s
+          </span>
+        </div>
+      );
+    }
+
+    if (latestEventText) {
+      return (
+        <button
+          type="button"
+          onClick={() => onOpenEventLog?.()}
+          className="pointer-events-auto mx-2 mt-1.5 max-w-xl sm:mx-auto w-[calc(100%-1rem)] min-h-[44px] bg-slate-950/95 border border-amber-400 text-amber-100 text-sm font-semibold px-3.5 py-2 rounded-2xl shadow-lg backdrop-blur-md text-left whitespace-normal break-words leading-snug active:scale-98"
+        >
+          {latestEventText}
+        </button>
+      );
+    }
+
+    if (!questDismissed && currentQuest && currentQuest <= 5) {
+      const questText =
+        currentQuest === 1 ? 'Chiếm 12 ô đất xung quanh Việt Nam' :
+        currentQuest === 2 ? 'Xây dựng 1 Doanh Trại (Barracks)' :
+        currentQuest === 3 ? 'Chinh phục 25 ô đất thế giới' :
+        currentQuest === 4 ? 'Mở bảng Công Nghệ & nâng cấp' :
+        'Tiếp tục mở rộng đế quốc!';
+
+      return (
+        <div className="pointer-events-auto mx-2 mt-1.5 max-w-xl sm:mx-auto flex items-center justify-between gap-2 pl-3 pr-1 py-1 bg-slate-950/95 border border-blue-400 rounded-2xl shadow-lg backdrop-blur-md">
+          <div className="flex items-start gap-2 text-sm text-white min-w-0 flex-1 leading-snug py-1">
+            <span className="shrink-0">🎯</span>
+            <span className="whitespace-normal break-words">
+              <strong className="text-amber-300">{currentQuest}/5:</strong> {questText}
+            </span>
+          </div>
+          {onDismissQuest && (
+            <button
+              onClick={onDismissQuest}
+              className="min-w-[44px] min-h-[44px] p-2 text-slate-100 hover:text-white hover:bg-slate-800 rounded-xl shrink-0 flex items-center justify-center"
+              aria-label="Đóng nhiệm vụ"
+            >
+              <X className="w-5 h-5" />
             </button>
           )}
         </div>
+      );
+    }
 
-        {/* Nút ngoại giao, tốc độ, tạm dừng, cài đặt */}
-        <div className="flex items-center gap-1.5 shrink-0 ml-2">
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              setIsDiplomacyOpen(true);
-            }}
-            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-300 font-bold rounded-lg text-[10px] border border-emerald-500/40 min-h-[32px] min-w-[32px] flex items-center justify-center gap-1 active:scale-95 transition-all"
-            title="Mở Ngoại Giao & Giao thương"
-          >
-            <Handshake className="w-3.5 h-3.5 text-emerald-400" />
-            <span className="hidden sm:inline">Ngoại Giao</span>
-          </button>
-
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              setGameSpeed(s => (s === 1 ? 2 : s === 2 ? 4 : 1));
-            }}
-            className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-amber-400 font-black rounded-lg text-[10px] border border-slate-700 min-h-[32px] min-w-[36px] flex items-center justify-center"
-            title="Đổi tốc độ game"
-          >
-            {gameSpeed}x
-          </button>
-
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              setIsPaused(p => !p);
-            }}
-            className={`p-1.5 rounded-lg border min-h-[32px] min-w-[32px] flex items-center justify-center ${
-              isPaused ? 'bg-amber-600 border-amber-400 text-white' : 'bg-slate-800 border-slate-700 text-slate-300'
-            }`}
-            title="Tạm dừng / Tiếp tục"
-          >
-            {isPaused ? <Play className="w-3.5 h-3.5 fill-current" /> : <Pause className="w-3.5 h-3.5 fill-current" />}
-          </button>
-
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              setIsSettingsOpen(true);
-            }}
-            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 min-h-[32px] min-w-[32px] flex items-center justify-center"
-            title="Cài đặt trận đấu"
-          >
-            <Settings className="w-3.5 h-3.5" />
-          </button>
+    if (!isOnline) {
+      return (
+        <div className="pointer-events-none mx-2 mt-1.5 max-w-xl sm:mx-auto flex items-center justify-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-950/95 border border-amber-400 text-amber-200 text-sm font-bold shadow-lg">
+          <WifiOff className="w-4 h-4 text-amber-300 shrink-0" />
+          <span>Đang chơi offline</span>
         </div>
-      </header>
+      );
+    }
 
-      {/* 3. THÔNG BÁO SỰ KIỆN (EventTicker): 1 dòng nhỏ, tự mờ dần */}
-      {latestEventText && (
-        <div className="mx-3 mt-1.5 pointer-events-none self-center bg-slate-900/90 border border-amber-500/40 text-amber-200 text-[11px] px-3 py-1 rounded-full shadow-lg backdrop-blur-sm animate-in fade-in duration-200 max-w-sm truncate">
-          {latestEventText}
-        </div>
-      )}
+    return null;
+  };
 
-      {/* Khu vực giữa màn hình dành cho Bản đồ */}
-      <div className="flex-1 pointer-events-none relative" />
+  return (
+    <div className="absolute inset-0 pointer-events-none flex flex-col justify-between z-20 overflow-hidden">
+      
+      {/* 1. THANH TRÊN CÙNG + 1 THANH NHIỆM VỤ / THÔNG BÁO DUY NHẤT */}
+      <div className="shrink-0 flex flex-col">
+        <header className="pointer-events-auto bg-slate-950/95 border-b border-slate-700 px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-1.5 text-sm backdrop-blur-md shadow-lg">
+          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+            {/* Xu */}
+            <div className="flex items-center gap-1 bg-amber-500/20 border border-amber-400/60 px-2 py-1 rounded-lg shrink-0">
+              <Coins className="w-4 h-4 text-amber-300" />
+              <span className="font-black text-amber-200 font-mono text-sm">{hudStats.gold}</span>
+              <span className="text-sm text-emerald-300 font-mono font-bold">+{hudStats.goldIncome}</span>
+            </div>
+
+            {/* Dân số */}
+            <div className="flex items-center gap-1 bg-blue-500/20 border border-blue-400/60 px-2 py-1 rounded-lg shrink-0">
+              <Users className="w-4 h-4 text-blue-300" />
+              <span className="font-bold text-blue-100 font-mono text-sm">{formatPopulation(hudStats.population ?? (gameDataRef.current?.nations?.[1]?.population || 0))}</span>
+            </div>
+
+            {/* % Đất */}
+            <div className="flex items-center gap-1 bg-emerald-500/20 border border-emerald-400/60 px-2 py-1 rounded-lg shrink-0">
+              <span className="text-sm">🗺️</span>
+              <span className="font-bold text-emerald-100 font-mono text-sm">{hudStats.landPercent}%</span>
+            </div>
+
+            {/* Level */}
+            <div className="flex items-center gap-1 bg-purple-500/20 border border-purple-400/60 px-2 py-1 rounded-lg shrink-0">
+              <Crown className="w-4 h-4 text-purple-300" />
+              <span className="font-bold text-purple-100 font-mono text-sm">Lv.{playerProfile.level}</span>
+            </div>
+
+            {/* Dầu & Khoáng sản (Bấm để mở Chợ Tài Nguyên) */}
+            {areResourcesEnabled() && playerNation && (
+              <button
+                onClick={() => {
+                  soundManager.playClick();
+                  setIsMarketOpen?.(true);
+                }}
+                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-sky-400/70 px-2.5 py-1 rounded-lg shrink-0 min-h-[44px] active:scale-95 transition-all text-sm"
+                title="Mở Chợ Tài Nguyên (Dầu & Khoáng sản)"
+              >
+                <span className="font-bold text-sky-200 font-mono">🛢️ {formatResource(playerNation.oil)}</span>
+                <span className="font-bold text-violet-200 font-mono">⛏️ {formatResource(playerNation.minerals)}</span>
+              </button>
+            )}
+          </div>
+
+          {/* Nút ngoại giao, tốc độ, tạm dừng, cài đặt */}
+          <div className="flex items-center gap-1.5 shrink-0 ml-auto">
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                setIsDiplomacyOpen(true);
+              }}
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-emerald-200 font-bold rounded-xl text-sm border border-emerald-400/60 min-h-[44px] min-w-[44px] flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+              title="Mở Ngoại Giao & Giao thương"
+            >
+              <Handshake className="w-4 h-4 text-emerald-300" />
+              <span className="hidden sm:inline">Ngoại Giao</span>
+            </button>
+
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                setGameSpeed(s => (s === 1 ? 2 : s === 2 ? 4 : 1));
+              }}
+              className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-200 font-black rounded-xl text-sm border border-slate-500 min-h-[44px] min-w-[44px] flex items-center justify-center"
+              title="Đổi tốc độ game"
+            >
+              {gameSpeed}x
+            </button>
+
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                setIsPaused(p => !p);
+              }}
+              className={`p-2 rounded-xl border min-h-[44px] min-w-[44px] flex items-center justify-center ${
+                isPaused ? 'bg-amber-500 border-amber-300 text-slate-950' : 'bg-slate-800 border-slate-500 text-white'
+              }`}
+              title="Tạm dừng / Tiếp tục"
+            >
+              {isPaused ? <Play className="w-4 h-4 fill-current" /> : <Pause className="w-4 h-4 fill-current" />}
+            </button>
+
+            <button
+              onClick={() => {
+                soundManager.playClick();
+                setIsSettingsOpen(true);
+              }}
+              className="p-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl border border-slate-500 min-h-[44px] min-w-[44px] flex items-center justify-center"
+              title="Cài đặt trận đấu"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
+        </header>
+
+        {/* CHỈ 1 THANH NHIỆM VỤ / THÔNG BÁO DUY NHẤT BÊN DƯỚI HEADER */}
+        {renderSingleTopBar()}
+      </div>
+
+      {/* Khu vực giữa màn hình dành cho Bản đồ (Minimap & Meme gọn ở góc trên, không che giữa) */}
+      <div className="flex-1 pointer-events-none relative">
+        <MemeLayer className="absolute top-2 left-2 max-w-[calc(100%-6.5rem)] z-20 pointer-events-none flex flex-col items-start gap-2 animate-in fade-in duration-200" />
+        {showMinimap && minimapNode && (
+          <div className="absolute top-2 right-2 z-20 pointer-events-auto animate-in fade-in duration-150">
+            {minimapNode}
+          </div>
+        )}
+      </div>
 
       {/* 4. BẢNG THÔNG TIN Ô ĐẤT: Hiện chi tiết theo trạng thái Ngoại giao */}
       {selectedTile && (
         <div 
-          className="pointer-events-auto left-2 right-2 mx-auto mb-2 max-w-md w-auto box-border bg-slate-900/95 border border-slate-700 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-150 max-h-[22vh] overflow-y-auto"
+          className="pointer-events-auto left-2 right-2 mx-2 sm:mx-auto mb-1.5 max-w-lg w-auto box-border bg-slate-950/95 border border-slate-600 rounded-2xl p-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-150 max-h-[28vh] overflow-y-auto"
         >
-          <div className="flex items-center justify-between pb-1 border-b border-slate-800 text-xs gap-1">
-            <div className="flex items-center gap-1.5 font-bold text-white min-w-0 flex-1 truncate">
-              {selectedTile.owner === 1 ? <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
-              <span className="truncate">
+          <div className="flex items-center justify-between pb-1.5 border-b border-slate-700 text-sm gap-2">
+            <div className="flex items-center flex-wrap gap-1.5 font-bold text-white min-w-0 flex-1">
+              {selectedTile.owner === 1 ? <Crown className="w-4 h-4 text-amber-300 shrink-0" /> : <Shield className="w-4 h-4 text-blue-300 shrink-0" />}
+              <span className="whitespace-normal break-words">
                 {selectedTile.owner === 1 
                   ? `${playerName} (Lãnh thổ của bạn)` 
                   : selectedTile.owner > 1 
@@ -364,10 +536,10 @@ export const GameHud: React.FC<GameHudProps> = ({
                   : 'Đất hoang trung lập'}
               </span>
               {selectedTile.owner > 1 && (
-                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold border shrink-0 ${
-                  dipStatus === 'ALLIANCE' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
-                  dipStatus === 'TRUCE' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
-                  'bg-red-500/20 text-red-300 border-red-500/40'
+                <span className={`px-2 py-0.5 rounded-lg text-sm font-bold border shrink-0 ${
+                  dipStatus === 'ALLIANCE' ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400' :
+                  dipStatus === 'TRUCE' ? 'bg-amber-500/25 text-amber-200 border-amber-400' :
+                  'bg-red-500/25 text-red-200 border-red-400'
                 }`}>
                   {dipStatus === 'ALLIANCE' ? '🤝 Đồng minh' : dipStatus === 'TRUCE' ? '🕊️ Đình chiến' : '⚔️ Chiến tranh'}
                 </span>
@@ -375,43 +547,46 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
             <button 
               onClick={() => setSelectedTile(null)}
-              className="p-1 text-slate-400 hover:text-white rounded-lg shrink-0 ml-1"
+              className="min-w-[44px] min-h-[44px] p-2 text-slate-100 hover:text-white hover:bg-slate-800 rounded-xl shrink-0 flex items-center justify-center"
+              aria-label="Đóng"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mt-1.5 text-[11px]">
-            <div className="text-slate-300 min-w-0 flex-1 truncate">
-              📍 ({selectedTile.x}, {selectedTile.y}) • <strong className="text-white">{selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi'}</strong>
+          <div className="flex flex-col gap-2 mt-2 text-sm">
+            <div className="text-slate-100 flex flex-wrap items-center gap-1.5 leading-snug">
+              <span>
+                📍 ({selectedTile.x}, {selectedTile.y}) • <strong className="text-white">{selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi'}</strong>
+              </span>
               {selectedTile.building !== 'NONE' && (
-                <span className="text-amber-400 ml-1">
+                <span className="text-amber-300 font-bold">
                   [{BUILDING_INFO[selectedTile.building].name}]
                 </span>
               )}
               {isSuperBuilding(selectedTile.building) && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 border border-amber-500/40 text-[10px] font-bold text-amber-300">
+                <span className="px-2 py-0.5 rounded bg-slate-800 border border-amber-400/60 text-sm font-bold text-amber-200">
                   {getSuperBuildingStateLabel(selectedTile)}
                 </span>
               )}
               {areResourcesEnabled() && selectedTile.deposit && selectedTile.discovered && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-[10px] font-mono text-sky-300">
+                <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-600 text-sm font-mono text-sky-200">
                   {selectedTile.deposit === 'OIL' ? '🛢️' : '⛏️'} {depositName(selectedTile.deposit)} ({formatResource(selectedTile.reserve)})
                   {isExtractor(selectedTile.building) && ` • Độ bền ${Math.round(selectedTile.condition ?? 100)}%`}
                 </span>
               )}
               {isExtractor(selectedTile.building) && selectedTile.isAdvancedExtractor && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/50 text-[10px] font-bold text-amber-300">
+                <span className="px-2 py-0.5 rounded bg-amber-500/25 border border-amber-400 text-sm font-bold text-amber-200">
                   ⭐ Cao Cấp (x1.5)
                 </span>
               )}
               {selectedTile.burnZoneTimer && selectedTile.burnZoneTimer > 0 ? (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-orange-500/20 border border-orange-400/50 text-[10px] font-bold text-orange-300">
+                <span className="px-2 py-0.5 rounded bg-orange-500/25 border border-orange-400 text-sm font-bold text-orange-200">
                   🔥 Vùng Cháy ({Math.ceil(selectedTile.burnZoneTimer)}s)
                 </span>
               ) : null}
               {selectedTile.radiationTimer && selectedTile.radiationTimer > 0 ? (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded bg-lime-500/20 border border-lime-400/50 text-[10px] font-bold text-lime-300">
+                <span className="px-2 py-0.5 rounded bg-lime-500/25 border border-lime-400 text-sm font-bold text-lime-200">
                   ☢️ Phóng Xạ ({Math.ceil(selectedTile.radiationTimer)}s)
                 </span>
               ) : null}
@@ -421,7 +596,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 const pct = Math.min(100, Math.max(0, ((total - left) / total) * 100));
                 const isRep = getSuperBuildingState(selectedTile) === 'REPAIRING';
                 return (
-                  <div className="mt-1 h-1.5 w-full max-w-[220px] bg-slate-800 rounded-full overflow-hidden">
+                  <div className="mt-1 h-2 w-full max-w-[240px] bg-slate-800 rounded-full overflow-hidden">
                     <div
                       className={`h-full transition-all ${isRep ? 'bg-emerald-400' : 'bg-cyan-400'}`}
                       style={{ width: `${pct}%` }}
@@ -432,7 +607,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
 
             {/* Các nút hành động chính theo trạng thái */}
-            <div className="flex items-center gap-1 shrink-0 flex-wrap">
+            <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
               {selectedTile.owner === 1 ? (
                 <>
                   {isSuperBuilding(selectedTile.building) && getSuperBuildingState(selectedTile) === 'DAMAGED' && (() => {
@@ -450,10 +625,10 @@ export const GameHud: React.FC<GameHudProps> = ({
                             }
                           }
                         }}
-                        className={`px-2.5 py-1 font-bold rounded-xl text-xs flex items-center gap-1 shadow ${
+                        className={`min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm flex items-center gap-1 shadow ${
                           canAffordRepair
                             ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                            : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                            : 'bg-slate-800 text-slate-300 border border-slate-600 cursor-not-allowed opacity-70'
                         }`}
                         title={`Sửa Siêu Công Trình (${sr.goldCost.toLocaleString()} Vàng, ${sr.durationSec}s)`}
                       >
@@ -474,7 +649,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                             }
                           }
                         }}
-                        className="px-2.5 py-1 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs flex items-center gap-1 shadow"
+                        className="min-h-[44px] px-3 py-2 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-sm flex items-center gap-1 shadow"
                         title={`Sửa chữa (${rc.gold} Vàng, ${rc.minerals} Khoáng)`}
                       >
                         <span>🔧 Sửa ({rc.gold}💰{rc.minerals > 0 ? ` ${rc.minerals}⛏️` : ''})</span>
@@ -491,10 +666,10 @@ export const GameHud: React.FC<GameHudProps> = ({
                           onUpgradeAdvancedExtractor?.(selectedTile);
                           setForceUpdate(v => v + 1);
                         }}
-                        className={`px-2.5 py-1 font-bold rounded-xl text-xs flex items-center gap-1 shadow ${
+                        className={`min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm flex items-center gap-1 shadow ${
                           canAffordAdv
                             ? 'bg-gradient-to-r from-violet-600 to-amber-500 hover:brightness-110 text-white'
-                            : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                            : 'bg-slate-800 text-slate-300 border border-slate-600 cursor-not-allowed opacity-70'
                         }`}
                         title={`Nâng cấp Cao Cấp x1.5 sản lượng (tốn ${ADVANCED_EXTRACTOR_MINERAL_COST} Khoáng sản)`}
                       >
@@ -508,19 +683,19 @@ export const GameHud: React.FC<GameHudProps> = ({
                   })()}
                   <button
                     onClick={() => setIsBuildOpen(true)}
-                    className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1 shadow"
+                    className="min-h-[44px] px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-sm flex items-center gap-1.5 shadow"
                   >
-                    <Building2 className="w-3.5 h-3.5" />
+                    <Building2 className="w-4 h-4" />
                     <span>Xây Dựng</span>
                   </button>
                 </>
               ) : selectedTile.owner === 0 ? (
                 <button
                   onClick={handleAttackTile}
-                  className="px-3 py-1 font-bold rounded-xl text-xs text-white shadow bg-emerald-600 hover:bg-emerald-500"
+                  className="min-h-[44px] px-3.5 py-2 font-bold rounded-xl text-sm text-white shadow bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1.5"
                 >
-                  <Swords className="w-3.5 h-3.5 inline mr-1" />
-                  Mở Rộng ({actualAttackTroops}q)
+                  <Swords className="w-4 h-4" />
+                  <span>Mở Rộng ({actualAttackTroops}q)</span>
                 </button>
               ) : (
                 /* selectedTile.owner > 1 */
@@ -529,41 +704,41 @@ export const GameHud: React.FC<GameHudProps> = ({
                     <>
                       <button
                         onClick={handleAttackTile}
-                        className="px-2.5 py-1 font-bold rounded-xl text-xs text-white shadow bg-red-600 hover:bg-red-500 flex items-center gap-1"
+                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-white shadow bg-red-600 hover:bg-red-500 flex items-center gap-1.5"
                       >
-                        <Swords className="w-3.5 h-3.5" />
+                        <Swords className="w-4 h-4" />
                         <span>Tấn Công ({actualAttackTroops}q)</span>
                       </button>
                       {airType1Unlocked && airSummary.fighterReady > 0 && onLaunchAirAtTile && (
                         <button
                           onClick={() => onLaunchAirAtTile(selectedTile, 'FIGHTER')}
-                          className="px-2.5 py-1 font-bold rounded-xl text-xs text-sky-200 bg-sky-700/80 hover:bg-sky-600 border border-sky-400/50 flex items-center gap-1 shadow"
+                          className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-white bg-sky-700 hover:bg-sky-600 border border-sky-400 flex items-center gap-1.5 shadow"
                           title="Xuất kích Máy Bay Chiến Đấu (L1) tới mục tiêu này (0 Dầu, 1 lượt xuất kích)"
                         >
-                          <Plane className="w-3.5 h-3.5" />
+                          <Plane className="w-4 h-4" />
                           <span>Không Kích L1</span>
                         </button>
                       )}
                       {airType23Unlocked && airSummary.squadronReady > 0 && onLaunchAirAtTile && (
                         <button
                           onClick={() => onLaunchAirAtTile(selectedTile, 'SQUADRON')}
-                          className="px-2.5 py-1 font-bold rounded-xl text-xs text-amber-200 bg-amber-700/80 hover:bg-amber-600 border border-amber-400/50 flex items-center gap-1 shadow"
+                          className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-white bg-amber-700 hover:bg-amber-600 border border-amber-400 flex items-center gap-1.5 shadow"
                           title="Xuất kích Tiểu Đội 3 chiếc (L2) tới mục tiêu này (0 Dầu, 1 lượt xuất kích)"
                         >
-                          <Plane className="w-3.5 h-3.5" />
+                          <Plane className="w-4 h-4" />
                           <span>Tiểu Đội L2</span>
                         </button>
                       )}
                       <button
                         onClick={() => onProposeAlliance?.(selectedTile.owner)}
-                        className="px-2 py-1 font-bold rounded-xl text-xs text-emerald-300 bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-500/50 flex items-center gap-1"
+                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-emerald-100 bg-emerald-900 hover:bg-emerald-800 border border-emerald-400 flex items-center gap-1.5"
                       >
-                        <Handshake className="w-3.5 h-3.5 text-emerald-400" />
+                        <Handshake className="w-4 h-4 text-emerald-300" />
                         <span>Kết Minh</span>
                       </button>
                       <button
                         onClick={() => onProposeTruce?.(selectedTile.owner)}
-                        className="px-2 py-1 font-bold rounded-xl text-xs text-amber-300 bg-amber-950/90 hover:bg-amber-900 border border-amber-500/50 flex items-center gap-1"
+                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-amber-100 bg-amber-900 hover:bg-amber-800 border border-amber-400 flex items-center gap-1.5"
                       >
                         <span>🕊️ Đình Chiến</span>
                       </button>
@@ -574,16 +749,16 @@ export const GameHud: React.FC<GameHudProps> = ({
                     <>
                       <button
                         onClick={() => onProposeAlliance?.(selectedTile.owner)}
-                        className="px-2.5 py-1 font-bold rounded-xl text-xs text-emerald-300 bg-emerald-950/90 hover:bg-emerald-900 border border-emerald-500/50 flex items-center gap-1"
+                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-emerald-100 bg-emerald-900 hover:bg-emerald-800 border border-emerald-400 flex items-center gap-1.5"
                       >
-                        <Handshake className="w-3.5 h-3.5 text-emerald-400" />
+                        <Handshake className="w-4 h-4 text-emerald-300" />
                         <span>Kết Minh</span>
                       </button>
                       <button
                         onClick={() => onDeclareWar?.(selectedTile.owner)}
-                        className="px-2.5 py-1 font-bold rounded-xl text-xs text-red-300 bg-red-950/90 hover:bg-red-900 border border-red-500/50 flex items-center gap-1"
+                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-red-100 bg-red-900 hover:bg-red-800 border border-red-400 flex items-center gap-1.5"
                       >
-                        <Swords className="w-3.5 h-3.5" />
+                        <Swords className="w-4 h-4" />
                         <span>Tuyên Chiến</span>
                       </button>
                     </>
@@ -593,21 +768,21 @@ export const GameHud: React.FC<GameHudProps> = ({
                     <>
                       <button
                         onClick={() => onSendGoldAid?.(selectedTile.owner)}
-                        className="px-2 py-1 font-bold rounded-xl text-xs text-amber-300 bg-amber-950/90 hover:bg-amber-900 border border-amber-500/50 flex items-center gap-1"
+                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-amber-100 bg-amber-900 hover:bg-amber-800 border border-amber-400 flex items-center gap-1.5"
                       >
-                        <Coins className="w-3.5 h-3.5 text-amber-400" />
+                        <Coins className="w-4 h-4 text-amber-300" />
                         <span>Tặng 30% Vàng</span>
                       </button>
                       <button
                         onClick={() => onSendTroopAid?.(selectedTile.owner)}
-                        className="px-2 py-1 font-bold rounded-xl text-xs text-blue-300 bg-blue-950/90 hover:bg-blue-900 border border-blue-500/50 flex items-center gap-1"
+                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-blue-100 bg-blue-900 hover:bg-blue-800 border border-blue-400 flex items-center gap-1.5"
                       >
-                        <Users className="w-3.5 h-3.5 text-blue-400" />
+                        <Users className="w-4 h-4 text-blue-300" />
                         <span>Tặng 30% Quân</span>
                       </button>
                       <button
                         onClick={() => onDeclareWar?.(selectedTile.owner)}
-                        className="px-2 py-1 font-bold rounded-xl text-xs text-rose-300 bg-rose-950/90 hover:bg-rose-900 border border-rose-500/50 flex items-center gap-1"
+                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-rose-100 bg-rose-900 hover:bg-rose-800 border border-rose-400 flex items-center gap-1.5"
                       >
                         <span>🗡️ Huỷ Minh</span>
                       </button>
@@ -620,232 +795,279 @@ export const GameHud: React.FC<GameHudProps> = ({
         </div>
       )}
 
-      {/* THANH DƯỚI CÙNG (5 NÚT ICON + BẢNG XUẤT QUÂN & TƯỚNG) */}
-      <footer 
-        className="pointer-events-auto bg-slate-900/95 border-t border-slate-800 px-2 pt-1.5 sm:px-2.5 z-20 shrink-0 space-y-1.5 backdrop-blur-md"
-        style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
-      >
-        {/* BẢNG XUẤT QUÂN GỌN 1 HÀNG */}
-        <div className="bg-slate-950/80 px-2.5 py-1.5 rounded-xl border border-slate-800 flex items-center gap-2">
-          <input
-            type="range"
-            min="1"
-            max="100"
-            value={attackPercent}
-            onChange={(e) => setAttackPercent(Number(e.target.value))}
-            className="flex-1 h-3 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
-          />
-          <div className="flex items-center gap-1 shrink-0">
-            {[25, 50, 75, 100].map(pct => (
-              <button
-                key={pct}
-                onClick={() => setAttackPercent(pct)}
-                className={`px-1.5 py-1 rounded text-[10px] font-bold border ${
-                  attackPercent === pct ? 'bg-amber-500 border-amber-300 text-slate-950 font-extrabold' : 'bg-slate-800 border-slate-700 text-slate-400'
-                }`}
-              >
-                {pct}%
-              </button>
-            ))}
+      {/* HỘP HƯỚNG DẪN XUẤT KÍCH / NGẮM BẮN: SÁT PHÍA TRÊN THANH DƯỚI CÙNG, GỌN GÀNG, KHÔNG CHE GIỮA BẢN ĐỒ */}
+      {airAimingMode && (
+        <div className="pointer-events-auto mx-2 mb-1.5 max-w-xl sm:mx-auto bg-slate-950/95 border-2 border-sky-400 text-white px-3 py-2 rounded-2xl shadow-2xl flex items-center justify-between gap-2.5 backdrop-blur-md">
+          <div className="text-left min-w-0 flex-1">
+            <div className="text-sm font-black text-sky-200 leading-snug">
+              {airAimingMode === 'BOMBER_START'
+                ? '💣 Ném Bom (1/2): Chạm ĐIỂM ĐẦU'
+                : airAimingMode === 'BOMBER_END'
+                  ? `💣 Ném Bom (2/2): Chạm ĐIỂM CUỐI (≤${AIR_SYSTEM_CONFIG.BOMBER_MAX_CORRIDOR_TILES} ô)`
+                  : `✈️ Xuất kích ${airAimingMode === 'FIGHTER' ? 'Tiêm Kích L1' : 'Tiểu Đội L2'}: Chạm mục tiêu`}
+            </div>
           </div>
-          <span className="text-amber-400 font-mono font-bold text-xs shrink-0 w-12 text-right">
-            {actualAttackTroops}q
-          </span>
+          {onCancelAirAiming && (
+            <button
+              onClick={onCancelAirAiming}
+              className="min-h-[44px] min-w-[44px] px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm rounded-xl border border-slate-500 active:scale-95 shrink-0"
+            >
+              Hủy
+            </button>
+          )}
         </div>
+      )}
 
+      {!airAimingMode && missileAimingMode && (
+        <div className="pointer-events-auto mx-2 mb-1.5 max-w-xl sm:mx-auto bg-slate-950/95 border-2 border-rose-400 text-white px-3 py-2 rounded-2xl shadow-2xl flex items-center justify-between gap-2.5 backdrop-blur-md">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <Rocket className="w-5 h-5 text-rose-300 shrink-0" />
+            <div className="text-sm font-black text-amber-200 leading-snug">
+              Ngắm {MISSILE_CONFIG[missileAimingMode].name}: Chạm đất địch để phóng
+            </div>
+          </div>
+          {onCancelMissileAiming && (
+            <button
+              onClick={onCancelMissileAiming}
+              className="min-h-[44px] min-w-[44px] px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm rounded-xl border border-slate-500 active:scale-95 shrink-0"
+            >
+              Hủy
+            </button>
+          )}
+        </div>
+      )}
 
+      {/* THANH DƯỚI CÙNG (5 NÚT ICON + BẢNG XUẤT QUÂN & TƯỚNG) */}
+      <footer
+        className="pointer-events-auto bg-slate-950/95 border-t border-slate-700 px-2 pt-1 z-20 shrink-0 flex flex-col gap-1 backdrop-blur-md max-h-[55dvh]"
+        style={{ paddingBottom: 'calc(0.25rem + env(safe-area-inset-bottom, 0px))' }}
+      >
+        <div className="flex flex-col gap-1 flex-1 min-h-0 overflow-y-auto no-scrollbar">
+          {/* BẢNG XUẤT QUÂN GỌN 1 HÀNG */}
+          <div className="bg-slate-900 px-2.5 py-1.5 rounded-xl border border-slate-700 flex items-center gap-2">
+            <input
+              type="range"
+              min="1"
+              max="100"
+              value={attackPercent}
+              onChange={(e) => setAttackPercent(Number(e.target.value))}
+              className="flex-1 min-w-[60px] h-4 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+            />
+            <div className="flex items-center gap-1 shrink-0">
+              {[25, 50, 75, 100].map(pct => (
+                <button
+                  key={pct}
+                  onClick={() => setAttackPercent(pct)}
+                  className={`min-h-[40px] min-w-[44px] px-1.5 py-1 rounded-lg text-sm font-bold border ${
+                    attackPercent === pct ? 'bg-amber-400 border-amber-200 text-slate-950 font-black' : 'bg-slate-800 border-slate-600 text-slate-100'
+                  }`}
+                >
+                  {pct}%
+                </button>
+              ))}
+            </div>
+            <span className="text-amber-200 font-mono font-bold text-sm shrink-0 min-w-[3.2rem] text-right">
+              {actualAttackTroops}q
+            </span>
+          </div>
 
-        {/* TƯỚNG VÀ KỸ NĂNG */}
-        {(pGen || reserveGenerals.length > 0) && (
-          <div className="relative flex flex-col bg-slate-950/85 rounded-xl border border-slate-800 text-xs shadow-lg backdrop-blur-md">
-            {pGen && rosterItem && (
-              <>
-                {showGenInfo && (
-                  <div className="absolute bottom-full left-0 right-0 mb-1.5 z-30 max-h-[45vh] overflow-y-auto bg-slate-950/95 border border-slate-700 rounded-xl p-2.5 text-[11px] text-slate-300 space-y-1.5 shadow-2xl backdrop-blur-md">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-amber-300">Thông tin Đại Tướng</span>
-                      <button onClick={() => setShowGenInfo(false)} className="p-1 text-slate-400">
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <div>Kỹ năng: <b className="text-amber-200">{rosterItem.emoji} {rosterItem.skillName}</b></div>
-                    {styleInfo && <div>{styleInfo.icon} {styleInfo.name}: <span className="text-slate-400">{styleInfo.desc}</span></div>}
-                    <div>Giáp {Math.round((pGen.armor || 0.20) * 100)}% • Sát thương {pGen.attack || 90} • HP {pGen.hp ?? 1000}/{pGen.maxHp || 1000}</div>
-                    <div className={(pGen.loyalty ?? 100) < 10 ? 'text-red-400 font-bold' : loyaltyState === 'TRUNG_THANH' ? 'text-emerald-400' : loyaltyState === 'BAT_MAN' ? 'text-amber-400' : 'text-red-400'}>
-                      {(pGen.loyalty ?? 100) < 10 ? '⚠️ Sắp rời bỏ' : loyaltyState === 'TRUNG_THANH' ? '🤝 Trung thành' : loyaltyState === 'BAT_MAN' ? '⚠️ Bất mãn' : '🚨 Nguy cơ phản bội'} ({pGen.loyalty ?? 100})
-                    </div>
-                    <div>
-                      {isMarching ? '⚔️ Đang xuất trận' : isInjured ? '🚨 Trọng thương (Hồi 3%/s)' : isRecovering ? `⏳ Hồi phục (${hpPercent}% • Cần 60%)` : '🛡️ Đang ở thủ đô'}
-                    </div>
-                    <div className="text-slate-400">⚔️ = tướng xuất kèm khi tấn công • 🛡️ = giữ ở thủ đô</div>
-                    {!canDeploy && (
-                      <div className="text-red-300">
-                        {(pGen.loyalty ?? 100) < 30 ? 'Tướng có nguy cơ phản bội, từ chối xuất quân' : 'Cần ít nhất 60% HP để xuất trận'}
+          {/* TƯỚNG VÀ KỸ NĂNG */}
+          {(pGen || reserveGenerals.length > 0) && (
+            <div className="relative flex flex-col bg-slate-900 rounded-xl border border-slate-700 text-sm shadow-lg backdrop-blur-md">
+              {pGen && rosterItem && (
+                <>
+                  {showGenInfo && (
+                    <div className="relative mb-1.5 max-h-[30vh] overflow-y-auto bg-slate-950/95 border border-slate-600 rounded-xl p-3 text-sm text-slate-100 space-y-1.5 shadow-2xl backdrop-blur-md">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-amber-300">Thông tin Đại Tướng</span>
+                        <button
+                          onClick={() => setShowGenInfo(false)}
+                          className="min-w-[44px] min-h-[44px] p-2 text-slate-100 hover:text-white rounded-xl flex items-center justify-center"
+                          aria-label="Đóng"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
                       </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex items-center gap-2 px-2 py-1">
-                  <div className="shrink-0"><GeneralModel skillId={pGen.skillId} size={28} /></div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-300">
-                      <span className="truncate">{pGen.name}</span>
-                      <span className="px-1 bg-amber-500/20 border border-amber-500/40 rounded text-[9px] font-mono shrink-0">Lv.{pGen.level || 1}</span>
-                      {(isMarching || isInjured || isRecovering) && (
-                        <span className="text-[10px] shrink-0">{isMarching ? '⚔️' : isInjured ? '🚨' : '⏳'}</span>
+                      <div>Kỹ năng: <b className="text-amber-200">{rosterItem.emoji} {rosterItem.skillName}</b></div>
+                      {styleInfo && <div>{styleInfo.icon} {styleInfo.name}: <span className="text-slate-200">{styleInfo.desc}</span></div>}
+                      <div>Giáp {Math.round((pGen.armor || 0.20) * 100)}% • Sát thương {pGen.attack || 90} • HP {pGen.hp ?? 1000}/{pGen.maxHp || 1000}</div>
+                      <div className={(pGen.loyalty ?? 100) < 10 ? 'text-red-300 font-bold' : loyaltyState === 'TRUNG_THANH' ? 'text-emerald-300' : loyaltyState === 'BAT_MAN' ? 'text-amber-300' : 'text-red-300'}>
+                        {(pGen.loyalty ?? 100) < 10 ? '⚠️ Sắp rời bỏ' : loyaltyState === 'TRUNG_THANH' ? '🤝 Trung thành' : loyaltyState === 'BAT_MAN' ? '⚠️ Bất mãn' : '🚨 Nguy cơ phản bội'} ({pGen.loyalty ?? 100})
+                      </div>
+                      <div>
+                        {isMarching ? '⚔️ Đang xuất trận' : isInjured ? '🚨 Trọng thương (Hồi 3%/s)' : isRecovering ? `⏳ Hồi phục (${hpPercent}% • Cần 60%)` : '🛡️ Đang ở thủ đô'}
+                      </div>
+                      <div className="text-slate-200">⚔️ = tướng xuất kèm khi tấn công • 🛡️ = giữ ở thủ đô</div>
+                      {!canDeploy && (
+                        <div className="text-red-200 font-semibold">
+                          {(pGen.loyalty ?? 100) < 30 ? 'Tướng có nguy cơ phản bội, từ chối xuất quân' : 'Cần ít nhất 60% HP để xuất trận'}
+                        </div>
                       )}
-                      {(pGen.loyalty ?? 100) < 30 && <span className="text-[10px] shrink-0 animate-pulse">⚠️</span>}
                     </div>
-                    <div className="w-full bg-slate-800 rounded-full h-1.5 mt-1 overflow-hidden">
-                      <div
-                        className={`h-full transition-all duration-300 ${hpPercent >= 60 ? 'bg-emerald-500' : hpPercent > 20 ? 'bg-amber-500' : 'bg-red-500 animate-pulse'}`}
-                        style={{ width: `${Math.min(100, Math.max(0, hpPercent))}%` }}
-                      />
+                  )}
+
+                  <div className="flex items-center gap-2 px-2 py-1">
+                    <div className="shrink-0"><GeneralModel skillId={pGen.skillId} size={30} /></div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 text-sm font-bold text-amber-200">
+                        <span className="truncate">{pGen.name}</span>
+                        <span className="px-1.5 bg-amber-500/25 border border-amber-400/60 rounded text-sm font-mono shrink-0">Lv.{pGen.level || 1}</span>
+                        {(isMarching || isInjured || isRecovering) && (
+                          <span className="text-sm shrink-0">{isMarching ? '⚔️' : isInjured ? '🚨' : '⏳'}</span>
+                        )}
+                        {(pGen.loyalty ?? 100) < 30 && <span className="text-sm shrink-0 animate-pulse">⚠️</span>}
+                      </div>
+                      <div className="w-full bg-slate-800 rounded-full h-2 mt-1 overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-300 ${hpPercent >= 60 ? 'bg-emerald-500' : hpPercent > 20 ? 'bg-amber-400' : 'bg-red-500 animate-pulse'}`}
+                          style={{ width: `${Math.min(100, Math.max(0, hpPercent))}%` }}
+                        />
+                      </div>
                     </div>
+
+                    <button
+                      onClick={() => {
+                        if (canDeploy) setPlayerGeneralDeployMode(prev => !prev);
+                        else soundManager.playClick();
+                      }}
+                      disabled={!canDeploy}
+                      className={`min-w-[44px] min-h-[44px] shrink-0 rounded-xl border text-base flex items-center justify-center ${
+                        !canDeploy ? 'bg-slate-900 border-slate-700 text-slate-400' : playerGeneralDeployMode ? 'bg-amber-500/30 border-amber-400 text-white' : 'bg-slate-800 border-slate-600 text-white'
+                      }`}
+                    >
+                      {!canDeploy ? ((pGen.loyalty ?? 100) < 30 ? '🚫' : '🔒') : playerGeneralDeployMode ? '⚔️' : '🛡️'}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        if (canUseSkill) activateGeneralSkill(1);
+                        else soundManager.playClick();
+                      }}
+                      disabled={!canUseSkill}
+                      className={`min-w-[60px] min-h-[44px] px-2 shrink-0 rounded-xl border flex flex-col items-center justify-center ${
+                        isInjured ? 'bg-slate-900 text-slate-400 border-slate-700' :
+                        isSkillActive ? 'bg-amber-600 text-white border-amber-300 animate-pulse' :
+                        isSkillOnCooldown ? 'bg-slate-800 text-slate-200 border-slate-600' :
+                        'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 border-amber-300 shadow'
+                      }`}
+                    >
+                      <span className="text-sm leading-none">{rosterItem.emoji}</span>
+                      <span className="text-sm font-mono font-bold leading-tight">
+                        {isSkillActive ? `${pGen.skillActiveTimer}s` : isSkillOnCooldown ? `${pGen.skillCooldown}s` : 'Dùng'}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => setShowGenInfo(v => !v)}
+                      className="min-w-[44px] min-h-[44px] shrink-0 rounded-xl bg-slate-800 border border-slate-600 text-sky-200 flex items-center justify-center"
+                      aria-label="Thông tin Đại Tướng"
+                    >
+                      <Info className="w-5 h-5" />
+                    </button>
                   </div>
+                </>
+              )}
 
+              {/* Mục thu gọn: Danh sách Dự bị */}
+              {reserveGenerals.length > 0 && (
+                <div className="border-t border-slate-700 bg-slate-900 px-2.5 py-1 rounded-b-xl">
                   <button
-                    onClick={() => {
-                      if (canDeploy) setPlayerGeneralDeployMode(prev => !prev);
-                      else soundManager.playClick();
-                    }}
-                    disabled={!canDeploy}
-                    className={`w-10 h-10 shrink-0 rounded-lg border text-base flex items-center justify-center ${
-                      !canDeploy ? 'bg-slate-900 border-slate-800 text-slate-600' : playerGeneralDeployMode ? 'bg-amber-500/20 border-amber-500/60' : 'bg-slate-800 border-slate-700'
-                    }`}
+                    type="button"
+                    onClick={() => setShowReserves(prev => !prev)}
+                    className="flex items-center justify-between w-full min-h-[44px] text-sm font-bold text-slate-100 hover:text-amber-200 transition-colors py-1"
                   >
-                    {!canDeploy ? ((pGen.loyalty ?? 100) < 30 ? '🚫' : '🔒') : playerGeneralDeployMode ? '⚔️' : '🛡️'}
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      if (canUseSkill) activateGeneralSkill(1);
-                      else soundManager.playClick();
-                    }}
-                    disabled={!canUseSkill}
-                    className={`w-12 h-10 shrink-0 rounded-lg border flex flex-col items-center justify-center gap-0.5 ${
-                      isInjured ? 'bg-slate-900 text-slate-600 border-slate-800' :
-                      isSkillActive ? 'bg-amber-600 text-white border-amber-400 animate-pulse' :
-                      isSkillOnCooldown ? 'bg-slate-800 text-slate-400 border-slate-700' :
-                      'bg-gradient-to-r from-amber-600 to-amber-500 text-slate-950 border-amber-400 shadow'
-                    }`}
-                  >
-                    <span className="text-base leading-none">{rosterItem.emoji}</span>
-                    <span className="text-[9px] font-mono font-bold leading-none">
-                      {isSkillActive ? `${pGen.skillActiveTimer}s` : isSkillOnCooldown ? `${pGen.skillCooldown}s` : 'Dùng'}
+                    <span className="flex items-center gap-1">
+                      <span>📋 Dự bị ({reserveGenerals.length})</span>
+                    </span>
+                    <span className="text-sm text-slate-200 font-mono">
+                      {showReserves ? '▲ Thu gọn' : '▼ Mở rộng'}
                     </span>
                   </button>
 
-                  <button
-                    onClick={() => setShowGenInfo(v => !v)}
-                    className="w-8 h-8 shrink-0 rounded-full bg-slate-800 border border-slate-700 text-sky-300 flex items-center justify-center"
-                  >
-                    <Info className="w-4 h-4" />
-                  </button>
-                </div>
-              </>
-            )}
-
-            {/* Mục thu gọn: Danh sách Dự bị */}
-            {reserveGenerals.length > 0 && (
-              <div className="border-t border-slate-800/80 bg-slate-900/70 px-2.5 py-1 rounded-b-xl">
-                <button
-                  type="button"
-                  onClick={() => setShowReserves(prev => !prev)}
-                  className="flex items-center justify-between w-full text-[10px] font-bold text-slate-300 hover:text-amber-300 transition-colors py-0.5"
-                >
-                  <span className="flex items-center gap-1">
-                    <span>📋 Dự bị ({reserveGenerals.length})</span>
-                  </span>
-                  <span className="text-[9px] text-slate-400 font-mono">
-                    {showReserves ? '▲ Thu gọn' : '▼ Mở rộng'}
-                  </span>
-                </button>
-
-                {showReserves && (
-                  <div className="max-h-[140px] overflow-y-auto no-scrollbar space-y-1.5 mt-1 pt-1 border-t border-slate-800/60">
-                    {reserveGenerals.map(rg => {
-                      const rgLoyaltyState = getLoyaltyState(rg);
-                      const rgHpPercent = Math.round(((rg.hp ?? 1000) / (rg.maxHp || 1000)) * 100);
-                      const isMarching = rg.status === 'MARCHING' || pGen?.status === 'MARCHING';
-                      return (
-                        <div 
-                          key={rg.id}
-                          className="flex items-center justify-between bg-slate-950/90 p-1.5 rounded-lg border border-slate-800 text-[10px] gap-2"
-                        >
-                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                            <div className="shrink-0 scale-75 -my-1">
-                              <GeneralModel skillId={rg.skillId} size={20} />
-                            </div>
-                            <div className="min-w-0 flex-1 truncate">
-                              <div className="flex items-center gap-1 font-bold text-amber-200 text-[10px] truncate">
-                                <span className="truncate">{rg.name}</span>
-                                <span className="px-1 py-0.2 bg-amber-500/20 text-amber-300 rounded text-[8px] font-mono shrink-0">
-                                  Lv.{rg.level || 1}
-                                </span>
-                                <span className="text-[9px] text-slate-400 font-mono shrink-0">
-                                  {rgHpPercent}% HP
-                                </span>
-                              </div>
-                              <div className="text-[8px] truncate mt-0.5">
-                                <span className={
-                                  (rg.loyalty ?? 100) < 10 ? 'text-red-400 font-bold' :
-                                  rgLoyaltyState === 'TRUNG_THANH' ? 'text-emerald-400' :
-                                  rgLoyaltyState === 'BAT_MAN' ? 'text-amber-400' : 'text-red-400'
-                                }>
-                                  {(rg.loyalty ?? 100) < 10 
-                                    ? '⚠️ Sắp rời bỏ' 
-                                    : (rgLoyaltyState === 'TRUNG_THANH' ? '🤝 Trung thành' : rgLoyaltyState === 'BAT_MAN' ? '⚠️ Bất mãn' : '🚨 Nguy cơ')}{' '}
-                                  ({rg.loyalty ?? 100})
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (playerNation) {
-                                const ok = appointReserveGeneral(playerNation, rg.id);
-                                if (ok) {
-                                  if (playerNation.general) {
-                                    calculateGeneralStats(playerNation.general, playerNation, playerProfile);
-                                  }
-                                  soundManager.playClick();
-                                  setForceUpdate(v => v + 1);
-                                }
-                              }
-                            }}
-                            disabled={isMarching}
-                            title={isMarching ? 'Không thể bổ nhiệm khi đang hành quân' : 'Bổ nhiệm làm Đại Tướng chỉ huy chính thức'}
-                            className={`min-h-[36px] px-3 py-1 rounded-lg text-[10px] font-bold border transition-colors shrink-0 flex items-center justify-center ${
-                              isMarching 
-                                ? 'bg-slate-900 border-slate-800 text-slate-600 cursor-not-allowed'
-                                : 'bg-amber-600/30 hover:bg-amber-500/40 text-amber-300 border-amber-500/50 active:scale-95'
-                            }`}
+                  {showReserves && (
+                    <div className="max-h-[160px] overflow-y-auto no-scrollbar space-y-1.5 mt-1 pt-1.5 border-t border-slate-700">
+                      {reserveGenerals.map(rg => {
+                        const rgLoyaltyState = getLoyaltyState(rg);
+                        const rgHpPercent = Math.round(((rg.hp ?? 1000) / (rg.maxHp || 1000)) * 100);
+                        const rgIsMarching = rg.status === 'MARCHING' || pGen?.status === 'MARCHING';
+                        return (
+                          <div 
+                            key={rg.id}
+                            className="flex items-center justify-between bg-slate-950/95 p-2 rounded-xl border border-slate-700 text-sm gap-2"
                           >
-                            ⭐ Bổ nhiệm
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <div className="shrink-0">
+                                <GeneralModel skillId={rg.skillId} size={24} />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center flex-wrap gap-1 font-bold text-amber-200 text-sm">
+                                  <span className="break-words">{rg.name}</span>
+                                  <span className="px-1.5 bg-amber-500/25 text-amber-200 rounded text-sm font-mono shrink-0">
+                                    Lv.{rg.level || 1}
+                                  </span>
+                                  <span className="text-sm text-slate-200 font-mono shrink-0">
+                                    {rgHpPercent}%
+                                  </span>
+                                </div>
+                                <div className="text-sm mt-0.5">
+                                  <span className={
+                                    (rg.loyalty ?? 100) < 10 ? 'text-red-300 font-bold' :
+                                    rgLoyaltyState === 'TRUNG_THANH' ? 'text-emerald-300' :
+                                    rgLoyaltyState === 'BAT_MAN' ? 'text-amber-300' : 'text-red-300'
+                                  }>
+                                    {(rg.loyalty ?? 100) < 10 
+                                      ? '⚠️ Sắp rời bỏ' 
+                                      : (rgLoyaltyState === 'TRUNG_THANH' ? '🤝 Trung thành' : rgLoyaltyState === 'BAT_MAN' ? '⚠️ Bất mãn' : '🚨 Nguy cơ')}{' '}
+                                    ({rg.loyalty ?? 100})
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
 
-        {/* 7. THANH DƯỚI CÙNG: 5 hoặc 6 nút icon có nhãn nhỏ */}
-        <div className={`grid ${gameMode === 'CREATIVE' ? 'grid-cols-6' : 'grid-cols-5'} gap-1.5 pt-0.5`}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (playerNation) {
+                                  const ok = appointReserveGeneral(playerNation, rg.id);
+                                  if (ok) {
+                                    if (playerNation.general) {
+                                      calculateGeneralStats(playerNation.general, playerNation, playerProfile);
+                                    }
+                                    soundManager.playClick();
+                                    setForceUpdate(v => v + 1);
+                                  }
+                                }
+                              }}
+                              disabled={rgIsMarching}
+                              title={rgIsMarching ? 'Không thể bổ nhiệm khi đang hành quân' : 'Bổ nhiệm làm Đại Tướng chỉ huy chính thức'}
+                              className={`min-h-[44px] px-3 py-2 rounded-xl text-sm font-bold border transition-colors shrink-0 flex items-center justify-center ${
+                                rgIsMarching 
+                                  ? 'bg-slate-900 border-slate-700 text-slate-400 cursor-not-allowed' 
+                                  : 'bg-amber-500/30 hover:bg-amber-500/50 text-amber-100 border-amber-400 active:scale-95'
+                              }`}
+                            >
+                              ⭐ Bổ nhiệm
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 7. THANH DƯỚI CÙNG: 5 hoặc 6 nút icon có nhãn rõ >= 14px, nút >= 44px */}
+        <div className={`grid ${gameMode === 'CREATIVE' ? 'grid-cols-6' : 'grid-cols-5'} gap-1 shrink-0`}>
           {/* Nút 1: Tấn Công */}
           <button
             onClick={() => setIsMissileOpen(true)}
-            className="flex flex-col items-center justify-center py-1.5 px-1 bg-red-950/60 hover:bg-red-900/80 active:scale-95 border border-red-500/50 rounded-xl text-red-200 transition-all min-h-[44px]"
+            className="flex flex-col items-center justify-center py-1 px-0.5 bg-red-950/90 hover:bg-red-900 active:scale-95 border border-red-400/80 rounded-xl text-white transition-all min-h-[48px]"
           >
-            <Rocket className="w-4 h-4 text-red-400 mb-0.5" />
-            <span className="text-[10px] font-bold leading-tight">Tấn Công</span>
+            <Rocket className="w-4 h-4 text-red-300 mb-0.5 shrink-0" />
+            <span className="text-sm font-bold leading-tight text-center">Tấn Công</span>
           </button>
 
           {/* Nút 2: Xây Dựng */}
@@ -860,22 +1082,22 @@ export const GameHud: React.FC<GameHudProps> = ({
               }
               setIsBuildOpen(true);
             }}
-            className="flex flex-col items-center justify-center py-1.5 px-1 bg-amber-950/60 hover:bg-amber-900/80 active:scale-95 border border-amber-500/50 rounded-xl text-amber-200 transition-all min-h-[44px]"
+            className="flex flex-col items-center justify-center py-1 px-0.5 bg-amber-950/90 hover:bg-amber-900 active:scale-95 border border-amber-400/80 rounded-xl text-white transition-all min-h-[48px]"
           >
-            <Building2 className="w-4 h-4 text-amber-400 mb-0.5" />
-            <span className="text-[10px] font-bold leading-tight">Xây Dựng</span>
+            <Building2 className="w-4 h-4 text-amber-300 mb-0.5 shrink-0" />
+            <span className="text-sm font-bold leading-tight text-center">Xây Dựng</span>
           </button>
 
           {/* Nút 3: Công Nghệ */}
           <button
             disabled={!canTech}
             onClick={() => setIsTechOpen(true)}
-            className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all min-h-[44px] border ${
-              canTech ? 'bg-blue-950/60 hover:bg-blue-900/80 border-blue-500/50 text-blue-200 active:scale-95' : 'bg-slate-900/40 border-slate-800 text-slate-600 cursor-not-allowed'
+            className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all min-h-[48px] border ${
+              canTech ? 'bg-blue-950/90 hover:bg-blue-900 border-blue-400/80 text-white active:scale-95' : 'bg-slate-900 border-slate-700 text-slate-400 cursor-not-allowed'
             }`}
           >
-            <Cpu className="w-4 h-4 text-blue-400 mb-0.5" />
-            <span className="text-[10px] font-bold leading-tight">Công Nghệ</span>
+            <Cpu className="w-4 h-4 text-blue-300 mb-0.5 shrink-0" />
+            <span className="text-sm font-bold leading-tight text-center">Công Nghệ</span>
           </button>
 
           {/* Nút 4: Xếp Hạng */}
@@ -884,10 +1106,10 @@ export const GameHud: React.FC<GameHudProps> = ({
               soundManager.playClick();
               setIsLeaderboardOpen(true);
             }}
-            className="flex flex-col items-center justify-center py-1.5 px-1 bg-amber-950/60 hover:bg-amber-900/80 active:scale-95 border border-amber-500/50 rounded-xl text-amber-200 transition-all min-h-[44px]"
+            className="flex flex-col items-center justify-center py-1 px-0.5 bg-amber-950/90 hover:bg-amber-900 active:scale-95 border border-amber-400/80 rounded-xl text-white transition-all min-h-[48px]"
           >
-            <Trophy className="w-4 h-4 text-amber-400 mb-0.5" />
-            <span className="text-[10px] font-bold leading-tight">Xếp Hạng</span>
+            <Trophy className="w-4 h-4 text-amber-300 mb-0.5 shrink-0" />
+            <span className="text-sm font-bold leading-tight text-center">Xếp Hạng</span>
           </button>
 
           {/* Nút Sáng Tạo (Chỉ hiển thị khi gameMode === 'CREATIVE') */}
@@ -897,23 +1119,23 @@ export const GameHud: React.FC<GameHudProps> = ({
                 soundManager.playClick();
                 setIsCreativeOpen(true);
               }}
-              className="flex flex-col items-center justify-center py-1.5 px-1 bg-purple-950/80 hover:bg-purple-900/90 active:scale-95 border border-purple-500/70 rounded-xl text-purple-200 transition-all min-h-[44px] shadow-md animate-pulse"
+              className="flex flex-col items-center justify-center py-1 px-0.5 bg-purple-950/90 hover:bg-purple-900 active:scale-95 border border-purple-400 rounded-xl text-white transition-all min-h-[48px] shadow-md"
               title="Mở Bảng Sáng Tạo"
             >
-              <Wand2 className="w-4 h-4 text-purple-400 mb-0.5" />
-              <span className="text-[10px] font-bold leading-tight">Sáng Tạo</span>
+              <Wand2 className="w-4 h-4 text-purple-300 mb-0.5 shrink-0" />
+              <span className="text-sm font-bold leading-tight text-center">Sáng Tạo</span>
             </button>
           )}
 
           {/* Nút 5: Tự Động */}
           <button
             onClick={() => setAutoExpand(!autoExpand)}
-            className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all min-h-[44px] border ${
-              autoExpand ? 'bg-emerald-700 border-emerald-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'
+            className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all min-h-[48px] border ${
+              autoExpand ? 'bg-emerald-700 border-emerald-400 text-white' : 'bg-slate-800 border-slate-500 text-slate-100'
             }`}
           >
-            <span className="text-base mb-0.5">🤖</span>
-            <span className="text-[10px] font-bold leading-tight">{autoExpand ? 'Tự Động' : 'Tắt'}</span>
+            <span className="text-base mb-0.5 leading-none">🤖</span>
+            <span className="text-sm font-bold leading-tight text-center">{autoExpand ? 'Tự Động' : 'Tắt'}</span>
           </button>
         </div>
       </footer>

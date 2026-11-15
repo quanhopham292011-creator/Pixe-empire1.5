@@ -71,32 +71,32 @@ interface TechRowProps {
 const TechRow: React.FC<TechRowProps> = (p) => {
   const bg =
     p.state === 'done'
-      ? 'bg-emerald-950/25 border-emerald-500/40'
+      ? 'bg-emerald-950/50 border-emerald-400/60'
       : p.state === 'learning'
-      ? 'bg-blue-950/35 border-blue-400/60'
+      ? 'bg-blue-950/60 border-blue-400'
       : p.state === 'locked'
-      ? 'bg-slate-900/40 border-slate-800/60'
-      : 'bg-slate-800/60 border-slate-700/70';
+      ? 'bg-slate-900/70 border-slate-700'
+      : 'bg-slate-800/90 border-slate-600';
 
   return (
-    <div className={`rounded-xl border p-2 ${bg} ${p.dim || p.state === 'locked' ? 'opacity-60' : ''}`}>
+    <div className={`rounded-xl border p-2.5 ${bg} ${p.dim || p.state === 'locked' ? 'opacity-70' : ''}`}>
       <div className="flex items-center gap-2">
-        <span className="shrink-0 min-w-[26px] h-[26px] px-1 rounded-full bg-slate-900 border border-slate-600 text-[11px] font-bold text-slate-200 flex items-center justify-center">
+        <span className="shrink-0 min-w-[30px] h-[30px] px-1.5 rounded-full bg-slate-950 border border-slate-500 text-sm font-bold text-white flex items-center justify-center">
           {p.badge}
         </span>
 
         <div className="min-w-0 flex-1">
-          <div className="font-bold text-white text-[13px] truncate">{p.name}</div>
+          <div className="font-bold text-white text-sm leading-snug break-words">{p.name}</div>
           {p.showCost && (
-            <div className="flex items-center flex-wrap gap-x-2 text-[10px] font-mono mt-0.5">
-              <span className={p.goldOk ? 'text-amber-300' : 'text-red-400 font-bold'}>💰{short(p.gold || 0)}</span>
+            <div className="flex items-center flex-wrap gap-x-2 text-sm font-mono mt-0.5">
+              <span className={p.goldOk ? 'text-amber-200' : 'text-red-300 font-bold'}>💰{short(p.gold || 0)}</span>
               {(p.oil || 0) > 0 && (
-                <span className={p.oilOk ? 'text-sky-300' : 'text-red-400 font-bold'}>🛢️{short(p.oil || 0)}</span>
+                <span className={p.oilOk ? 'text-sky-200' : 'text-red-300 font-bold'}>🛢️{short(p.oil || 0)}</span>
               )}
               {(p.minerals || 0) > 0 && (
-                <span className={p.mineralOk ? 'text-violet-300' : 'text-red-400 font-bold'}>⛏️{short(p.minerals || 0)}</span>
+                <span className={p.mineralOk ? 'text-violet-200' : 'text-red-300 font-bold'}>⛏️{short(p.minerals || 0)}</span>
               )}
-              {p.time && <span className="text-slate-400">⏱️{p.time}</span>}
+              {p.time && <span className="text-slate-100">⏱️{p.time}</span>}
             </div>
           )}
         </div>
@@ -105,29 +105,29 @@ const TechRow: React.FC<TechRowProps> = (p) => {
           type="button"
           onClick={p.onToggleInfo}
           aria-label="Xem thông tin"
-          className={`w-6 h-6 rounded-full border text-[12px] font-black flex items-center justify-center shrink-0 active:scale-90 transition-all ${
+          className={`min-w-[44px] min-h-[44px] rounded-xl border text-sm font-black flex items-center justify-center shrink-0 active:scale-90 transition-all ${
             p.infoOpen
-              ? 'bg-amber-400 text-slate-900 border-amber-300'
-              : 'bg-slate-800 text-amber-300 border-slate-600'
+              ? 'bg-amber-400 text-slate-950 border-amber-200'
+              : 'bg-slate-900 text-amber-200 border-slate-500'
           }`}
         >
           !
         </button>
 
-        <div className="shrink-0 w-[76px] flex items-center justify-center">
-          {p.state === 'done' && <CheckCircle2 className="w-6 h-6 text-emerald-400" />}
-          {p.state === 'locked' && <Lock className="w-5 h-5 text-slate-500" />}
+        <div className="shrink-0 min-w-[84px] flex items-center justify-center">
+          {p.state === 'done' && <CheckCircle2 className="w-6 h-6 text-emerald-300" />}
+          {p.state === 'locked' && <Lock className="w-5 h-5 text-slate-300" />}
           {p.state === 'learning' && (
-            <span className="text-[11px] font-mono font-bold text-blue-200 animate-pulse">⏳ {p.learningSec}s</span>
+            <span className="text-sm font-mono font-bold text-blue-100 animate-pulse">⏳ {p.learningSec}s</span>
           )}
           {p.state === 'ready' && (
             <button
               disabled={!p.btnEnabled}
               onClick={p.onClick}
-              className={`w-full min-h-[38px] rounded-lg font-black text-[11px] px-1 transition-all active:scale-95 ${
+              className={`w-full min-h-[44px] rounded-xl font-black text-sm px-2.5 transition-all active:scale-95 ${
                 p.btnEnabled
                   ? 'bg-blue-600 hover:bg-blue-500 text-white shadow'
-                  : 'bg-slate-800 text-slate-500 border border-slate-700/60 cursor-not-allowed'
+                  : 'bg-slate-800 text-slate-300 border border-slate-600 cursor-not-allowed opacity-75'
               }`}
             >
               {p.btnLabel}
@@ -137,9 +137,9 @@ const TechRow: React.FC<TechRowProps> = (p) => {
       </div>
 
       {p.infoOpen && (
-        <div className="mt-2 p-2 rounded-lg bg-slate-950/80 border border-slate-700 text-[11px] text-slate-300 leading-relaxed">
+        <div className="mt-2 p-2.5 rounded-lg bg-slate-950 border border-slate-600 text-sm text-slate-100 leading-relaxed">
           {p.description}
-          {p.note && <div className="mt-1 text-amber-300 font-bold">{p.note}</div>}
+          {p.note && <div className="mt-1 text-amber-200 font-bold">{p.note}</div>}
         </div>
       )}
     </div>
@@ -268,55 +268,59 @@ export const TechModal: React.FC<TechModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-3"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-3"
       style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
     >
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
         {/* Tiêu đề + tài nguyên */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-800 bg-slate-950/50">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-700 bg-slate-950/95">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h3 className="font-bold text-white text-base">Công Nghệ</h3>
               {academySpeedMult > 1 && (
-                <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 border border-cyan-400/40 text-[10px] font-bold text-cyan-300">
+                <span className="px-2 py-0.5 rounded bg-cyan-500/25 border border-cyan-400 text-sm font-bold text-cyan-200">
                   ⚡ x{academySpeedMult}
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-amber-300 font-mono truncate">
+            <p className="text-sm text-amber-200 font-mono break-words">
               💰 {gold.toLocaleString()}
               {(resOn || isSupremeTab) && (
-                <span className="ml-2 text-sky-300">
-                  🛢️ {formatResource(oilStock)} <span className="text-violet-300">⛏️ {formatResource(mineralStock)}</span>
+                <span className="ml-2 text-sky-200">
+                  🛢️ {formatResource(oilStock)} <span className="text-violet-200">⛏️ {formatResource(mineralStock)}</span>
                 </span>
               )}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-white rounded-lg active:bg-slate-800">
+          <button
+            onClick={onClose}
+            className="min-w-[44px] min-h-[44px] p-2 text-slate-100 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center shrink-0"
+            aria-label="Đóng"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Đang nghiên cứu */}
         {researching && (
-          <div className="px-4 py-2 bg-blue-950/40 border-b border-blue-900/40">
-            <div className="flex items-center justify-between text-xs mb-1">
-              <div className="flex items-center gap-2 text-blue-300 min-w-0">
-                <Clock className="w-4 h-4 text-blue-400 shrink-0" />
-                <span className="truncate">{researchingTech?.name || '...'}</span>
+          <div className="px-4 py-2 bg-blue-950/60 border-b border-blue-700">
+            <div className="flex items-center justify-between text-sm mb-1 gap-2">
+              <div className="flex items-center gap-2 text-blue-100 min-w-0">
+                <Clock className="w-4 h-4 text-blue-300 shrink-0" />
+                <span className="break-words">{researchingTech?.name || '...'}</span>
               </div>
-              <span className="font-mono font-bold text-blue-200 shrink-0">
+              <span className="font-mono font-bold text-white shrink-0">
                 {Math.ceil(researching.remainingTime / Math.max(1, academySpeedMult))}s
               </span>
             </div>
-            <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-blue-500 transition-all" style={{ width: `${progressPercent}%` }} />
+            <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+              <div className="h-full bg-blue-400 transition-all" style={{ width: `${progressPercent}%` }} />
             </div>
           </div>
         )}
 
         {/* 4 tab nhánh */}
-        <div className="grid grid-cols-4 gap-1.5 p-2 bg-slate-950/40 border-b border-slate-800">
+        <div className="grid grid-cols-4 gap-1.5 p-2 bg-slate-950 border-b border-slate-700">
           {BRANCHES.map(({ id, label, Icon, color }) => {
             const isSup = id === 'SUPREME';
             const isActive = id === activeTab;
@@ -327,17 +331,17 @@ export const TechModal: React.FC<TechModalProps> = ({
               <button
                 key={id}
                 onClick={() => { setActiveTab(id); setOpenInfo(null); }}
-                className={`flex flex-col items-center py-1.5 px-1 rounded-xl border transition-all min-h-[48px] active:scale-95 ${
+                className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl border transition-all min-h-[54px] active:scale-95 ${
                   isActive
-                    ? isSup ? 'bg-cyan-950/60 border-cyan-500/60' : 'bg-slate-800 border-slate-600'
-                    : 'bg-slate-900/60 border-slate-800'
+                    ? isSup ? 'bg-cyan-950 border-cyan-400' : 'bg-slate-800 border-slate-400'
+                    : 'bg-slate-900 border-slate-700'
                 }`}
               >
                 <Icon className={`w-4 h-4 ${color}`} />
-                <span className={`text-[11px] font-bold truncate max-w-full ${isActive ? 'text-white' : 'text-slate-400'}`}>
+                <span className={`text-sm font-bold leading-tight text-center ${isActive ? 'text-white' : 'text-slate-200'}`}>
                   {label}
                 </span>
-                <span className="text-[10px] font-mono text-slate-500">{subText}</span>
+                <span className="text-sm font-mono text-slate-200">{subText}</span>
               </button>
             );
           })}
@@ -347,10 +351,10 @@ export const TechModal: React.FC<TechModalProps> = ({
         <div className="p-2.5 space-y-2 overflow-y-auto flex-1">
           {isSupremeTab ? (
             !playerNation.supremeTechUnlocked ? (
-              <div className="p-5 rounded-2xl bg-slate-950/70 border border-slate-800 text-center opacity-80 flex flex-col items-center gap-2">
-                <Lock className="w-6 h-6 text-slate-400" />
-                <h4 className="text-sm font-black text-slate-200">Đang khóa</h4>
-                <p className="text-xs text-slate-400">Cần xây Đại Học Viện</p>
+              <div className="p-5 rounded-2xl bg-slate-950 border border-slate-700 text-center flex flex-col items-center gap-2">
+                <Lock className="w-6 h-6 text-slate-200" />
+                <h4 className="text-base font-black text-white">Đang khóa</h4>
+                <p className="text-sm text-slate-200">Cần xây Đại Học Viện</p>
               </div>
             ) : (
               SUPREME_COLUMNS.map(({ key, label, Icon, color, border }) => {
@@ -360,13 +364,13 @@ export const TechModal: React.FC<TechModalProps> = ({
                   .sort((a, b) => a.level - b.level);
 
                 return (
-                  <div key={key} className={`rounded-xl bg-slate-950/50 border ${border} p-2 space-y-1.5`}>
+                  <div key={key} className={`rounded-xl bg-slate-950/80 border ${border} p-2.5 space-y-2`}>
                     <div className="flex items-center justify-between px-1">
                       <div className="flex items-center gap-1.5">
                         <Icon className={`w-4 h-4 ${color}`} />
-                        <span className={`text-xs font-black ${color}`}>{label}</span>
+                        <span className={`text-sm font-black ${color}`}>{label}</span>
                       </div>
-                      <span className="text-[11px] font-mono text-slate-400">{colLvl}/3</span>
+                      <span className="text-sm font-mono text-slate-200">{colLvl}/3</span>
                     </div>
 
                     {colTechs.map((tech) => {
@@ -410,17 +414,17 @@ export const TechModal: React.FC<TechModalProps> = ({
               {linearTechs.map((tech) => renderNormalRow(tech, 'linear'))}
 
               <div className="pt-1">
-                <div className="flex items-center justify-between text-[11px] font-bold text-slate-300 mb-1.5 px-1">
+                <div className="flex items-center justify-between text-sm font-bold text-slate-100 mb-1.5 px-1">
                   <span>Cấp 3 · Chọn 1 trong 2</span>
                   {currentLevel === 3 && (
-                    <span className="text-emerald-400 font-mono">Đã chọn {selectedChoice}</span>
+                    <span className="text-emerald-300 font-mono">Đã chọn {selectedChoice}</span>
                   )}
                 </div>
                 <div className="space-y-2">
                   {level3Techs.map((tech) => renderNormalRow(tech, 'choice'))}
                 </div>
                 {currentLevel < 2 && (
-                  <p className="text-[11px] text-slate-500 mt-1.5 px-1">Cần học xong cấp 2 trước.</p>
+                  <p className="text-sm text-slate-200 mt-1.5 px-1">Cần học xong cấp 2 trước.</p>
                 )}
               </div>
             </>

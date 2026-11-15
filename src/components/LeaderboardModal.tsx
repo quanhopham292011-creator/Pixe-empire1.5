@@ -23,24 +23,24 @@ export const LeaderboardModal: React.FC<LeaderboardModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-lg w-full p-3 sm:p-4 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-150">
+      <div className="bg-slate-950 border-2 border-slate-600 rounded-3xl max-w-lg w-full p-3 sm:p-4 shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
         {/* Header Modal */}
-        <div className="flex items-center justify-between pb-2 mb-1 border-b border-slate-800">
+        <div className="flex items-center justify-between pb-2 mb-1 border-b border-slate-700">
           <div className="flex items-center gap-2">
-            <Trophy className="w-5 h-5 text-amber-400" />
+            <Trophy className="w-5 h-5 text-amber-300" />
             <h2 className="text-base sm:text-lg font-black text-white tracking-wide">BẢNG XẾP HẠNG QUỐC GIA</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-200 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Hướng dẫn ngắn */}
-        <div className="text-[11px] text-slate-400 mb-2 font-medium">
+        <div className="text-sm text-slate-200 mb-2 font-medium">
           💡 Chạm vào bất kỳ quốc gia nào để chuyển camera đến lãnh thổ của họ.
         </div>
 

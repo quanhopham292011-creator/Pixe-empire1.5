@@ -290,7 +290,6 @@ export default function App() {
   // Nhiệm vụ trong game
   const [currentQuest, setCurrentQuest] = useState<QuestStep>(1);
   const [questDismissed, setQuestDismissed] = useState<boolean>(false);
-  const [questExpanded, setQuestExpanded] = useState(false);
 
   // Trạng thái mở khóa ngoại giao
   const [hasMetBot, setHasMetBot] = useState<boolean>(false);
@@ -4697,8 +4696,8 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-full h-dvh h-[100dvh] w-full max-w-full overflow-hidden bg-slate-950 text-slate-100 select-none font-sans">
-      {/* THÔNG BÁO CHƠI OFFLINE KHI MẤT MẠNG */}
-      <OfflineIndicator />
+      {/* THÔNG BÁO CHƠI OFFLINE KHI MẤT MẠNG (CHỈ Ở MÀN HÌNH CHỜ; TRONG TRẬN ĐÃ GỘP VÀO THANH TRÊN DUY NHẤT) */}
+      {gameState === 'TITLE' && <OfflineIndicator />}
       
       {/* 1. MÀN HÌNH BẮT ĐẦU VỚI TỔ HỢP TITLE MENU MỚI */}
       {gameState === 'TITLE' && (
@@ -4735,68 +4734,20 @@ export default function App() {
       {(gameState === 'PLAYING' || gameState === 'VICTORY' || gameState === 'DEFEAT') && (
         <div className="relative flex-1 flex flex-col overflow-hidden w-full h-full">
 
-
-          {/* BANNER HIỂN THỊ SỰ KIỆN / THẢM HỌA THIÊN NHIÊN ĐANG DIỄN RA */}
-          {(() => {
-            const ev = gameDataRef.current.activeSeasonEvent;
-            if (!ev) return null;
-            return (
-              <div className="absolute top-12 right-2 z-30 max-w-[36%] flex items-center gap-1.5 px-2.5 py-1 bg-indigo-950/90 border border-indigo-500/50 rounded-full shadow-md backdrop-blur-md text-[11px] text-white">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-extrabold text-amber-300 truncate">{ev.name}</span>
-                </div>
-                <div className="flex items-center gap-1.5 font-mono text-cyan-300 font-bold shrink-0 ml-2">
-                  <span>⏳ {ev.remainingTime}s</span>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* BANNER CẢNH BÁO SỚM: TÊN LỬA HƯỚNG TỚI LÃNH THỔ */}
-          {(() => {
-            const data = gameDataRef.current;
-            const myId = isMultiplayer ? myPlayerNationId : 1;
-            const incomingToPlayer = (data.flyingMissiles || []).filter(m => {
-              const tgt = data.tiles[m.targetY]?.[m.targetX];
-              return m.fromNation !== myId && tgt && tgt.owner === myId;
-            });
-
-            if (incomingToPlayer.length === 0) return null;
-
-            const nearest = incomingToPlayer[0];
-            const cfg = MISSILE_CONFIG[nearest.type];
-            const spd = nearest.speed || (1 / (MISSILE_SETTINGS.DEFAULT_FLIGHT_DURATION_SECONDS || 8));
-            const secondsLeft = Math.max(1, Math.ceil((1.0 - nearest.progress) / (spd * (gameSpeed || 1))));
-
-            return (
-              <div className="bg-gradient-to-r from-red-950 via-rose-900 to-red-950 border-b-2 border-red-500 px-3 py-2 flex items-center justify-between text-xs text-white z-40 shrink-0 shadow-2xl animate-pulse">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="p-1 bg-red-600 rounded-lg text-white font-extrabold text-[10px] animate-bounce shrink-0">🚨 CẢNH BÁO SỚM RADAR</span>
-                  <span className="font-bold text-red-100 text-xs truncate">
-                    ⚠️ Tên lửa {cfg.name} hướng tới Tọa độ ({nearest.targetX}, {nearest.targetY})!
-                  </span>
-                </div>
-                <div className="flex items-center gap-1 font-mono text-amber-300 font-extrabold text-xs shrink-0 ml-2 bg-black/50 px-2 py-0.5 rounded-lg border border-red-500/60">
-                  <span>💥 NỔ SAU: {secondsLeft}s</span>
-                </div>
-              </div>
-            );
-          })()}
-
           {/* BANNER THÔNG BÁO TẠM DỪNG */}
           {isPaused && (
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px] z-35 flex flex-col items-center justify-center pointer-events-auto p-4 animate-in fade-in duration-150">
-              <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl">
-                <Pause className="w-12 h-12 text-amber-400 mx-auto mb-2 animate-pulse" />
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-35 flex flex-col items-center justify-center pointer-events-auto p-4 animate-in fade-in duration-150">
+              <div className="bg-slate-900 border border-slate-600 rounded-3xl p-6 text-center max-w-xs w-full shadow-2xl">
+                <Pause className="w-12 h-12 text-amber-300 mx-auto mb-2 animate-pulse" />
                 <h3 className="text-lg font-black text-white mb-1">TRẬN ĐẤU TẠM DỪNG</h3>
-                <p className="text-xs text-slate-400 mb-4 leading-relaxed">Thời gian và các đợt hành quân đang được giữ nguyên.</p>
-                <div className="flex flex-col gap-2">
+                <p className="text-sm text-slate-200 mb-4 leading-relaxed">Thời gian và các đợt hành quân đang được giữ nguyên.</p>
+                <div className="flex flex-col gap-2.5">
                   <button
                     onClick={() => {
                       setIsPaused(false);
                       soundManager.playClick();
                     }}
-                    className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-lg"
+                    className="w-full min-h-[46px] py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg"
                   >
                     <Play className="w-4 h-4 fill-current" /> Tiếp Tục Trận Đấu
                   </button>
@@ -4805,9 +4756,9 @@ export default function App() {
                       setIsSettingsOpen(true);
                       soundManager.playClick();
                     }}
-                    className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 border border-slate-700"
+                    className="w-full min-h-[44px] py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2 border border-slate-600"
                   >
-                    <Settings className="w-4 h-4 text-amber-400" /> Cài Đặt Trận Đấu
+                    <Settings className="w-4 h-4 text-amber-300" /> Cài Đặt Trận Đấu
                   </button>
                   {isUserAdmin(currentUser) && (
                     <button
@@ -4815,85 +4766,13 @@ export default function App() {
                         setIsAdminPanelOpen(true);
                         soundManager.playClick();
                       }}
-                      className="w-full py-2.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 border border-amber-400/60 shadow-lg active:scale-95 transition-all"
+                      className="w-full min-h-[44px] py-2.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 border border-amber-400/60 shadow-lg active:scale-95 transition-all"
                     >
-                      <Crown className="w-4 h-4 text-amber-300" /> Bảng Điều Khiển Admin
+                      <Crown className="w-4 h-4 text-amber-200" /> Bảng Điều Khiển Admin
                     </button>
                   )}
                 </div>
               </div>
-            </div>
-          )}
-
-          {/* THANH NHIỆM VỤ THU GỌN - CHỐNG TRÀN MÀN HÌNH DI ĐỘNG */}
-          {!questDismissed && currentQuest <= 5 && (
-            <div className="absolute top-12 left-2 z-30 max-w-[60%] flex items-start justify-between pl-2.5 pr-1 py-1 bg-blue-950/85 border border-blue-500/40 rounded-2xl shadow-md backdrop-blur-md">
-              <div
-                className="flex items-start gap-1 text-xs text-blue-100 min-w-0 flex-1 cursor-pointer"
-                onClick={() => setQuestExpanded(v => !v)}
-              >
-                <span className="text-sm leading-none shrink-0">🎯</span>
-                <span className="font-bold text-amber-300 text-[11px] shrink-0">{currentQuest}/5</span>
-                <span className={`text-[11px] text-slate-200 ${questExpanded ? '' : 'truncate'}`}>
-                  {currentQuest === 1 && 'Khởi đầu: Chiếm 12 ô đất xung quanh Việt Nam'}
-                  {currentQuest === 2 && 'Phát triển: Xây dựng 1 Doanh Trại (Barracks)'}
-                  {currentQuest === 3 && 'Mở rộng: Chinh phục 25 ô đất thế giới'}
-                  {currentQuest === 4 && 'Công nghệ: Mở bảng Công Nghệ & nâng cấp'}
-                  {currentQuest === 5 && 'Bá chủ: Tiếp tục mở rộng đế quốc!'}
-                </span>
-              </div>
-              <button
-                onClick={() => setQuestDismissed(true)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg shrink-0 ml-1"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
-
-          {/* SỰ KIỆN & MINIMAP */}
-          <div className="absolute top-24 left-2.5 z-20 pointer-events-auto max-w-[220px] sm:max-w-xs">
-            <EventTicker
-              events={gameDataRef.current.events}
-              onOpenLog={() => setIsEventLogOpen(true)}
-              pendingTradeOffer={gameDataRef.current.pendingTradeOffer}
-              offerGoldAmount={(() => {
-                const off = gameDataRef.current.pendingTradeOffer;
-                const p = gameDataRef.current.nations[1];
-                const b = off ? gameDataRef.current.nations[off.nationId] : null;
-                const m = gameDataRef.current.market;
-                if (!off || !p || !b || !m) return undefined;
-                const prices = getAITradePrices(p, b, m, off.resource);
-                return off.mode === 'AI_SELL'
-                  ? Math.max(1, Math.ceil(prices.aiSellPrice * off.qty))
-                  : Math.max(0, Math.floor(prices.aiBuyPrice * off.qty));
-              })()}
-              onRespondTradeOffer={handleRespondTradeOffer}
-            />
-          </div>
-
-          {showMinimap && (
-            <div className="absolute top-24 right-2.5 z-20 pointer-events-auto animate-in fade-in duration-150">
-              <Minimap
-                tiles={gameDataRef.current.tiles}
-                nations={gameDataRef.current.nations}
-                mapSize={mapSize}
-                camera={cameraRef.current}
-                darkTitan={gameDataRef.current.darkTitan}
-                darkTitans={gameDataRef.current.darkTitans}
-                pendingTitanSpawn={gameDataRef.current.pendingTitanSpawn}
-                fogOfWarEnabled={fogOfWarEnabled}
-                playerNationId={isMultiplayer ? myPlayerNationId : 1}
-                onNavigate={(mapX, mapY) => {
-                  const vpW = viewportSizeRef.current.width || 360;
-                  const vpH = viewportSizeRef.current.height || 560;
-                  const curZoom = cameraRef.current.zoom;
-                  const rawX = vpW / 2 - (mapX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2) * curZoom;
-                  const rawY = vpH / 2 - (mapY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2) * curZoom;
-                  const clamped = clampCamera(rawX, rawY, curZoom);
-                  cameraRef.current = { x: clamped.x, y: clamped.y, zoom: curZoom };
-                }}
-              />
             </div>
           )}
 
@@ -4955,6 +4834,83 @@ export default function App() {
             setIsMarketOpen={setIsMarketOpen}
             playerNationId={isMultiplayer ? myPlayerNationId : 1}
             airAimingMode={airAimingMode}
+            onCancelAirAiming={() => {
+              setAirAimingMode(null);
+              airAimingModeRef.current = null;
+              bomberAimStartRef.current = null;
+              showMissileToast('Đã hủy lệnh xuất kích Không Quân.');
+            }}
+            missileAimingMode={missileAimingMode}
+            onCancelMissileAiming={() => {
+              setMissileAimingMode(null);
+              missileAimingModeRef.current = null;
+              showMissileToast('Đã hủy ngắm bắn tên lửa.');
+            }}
+            currentQuest={currentQuest}
+            questDismissed={questDismissed}
+            onDismissQuest={() => setQuestDismissed(true)}
+            activeSeasonEvent={gameDataRef.current.activeSeasonEvent ? {
+              name: gameDataRef.current.activeSeasonEvent.name,
+              remainingTime: gameDataRef.current.activeSeasonEvent.remainingTime,
+            } : null}
+            incomingMissileWarning={(() => {
+              const data = gameDataRef.current;
+              const myId = isMultiplayer ? myPlayerNationId : 1;
+              const incomingToPlayer = (data.flyingMissiles || []).filter(m => {
+                const tgt = data.tiles[m.targetY]?.[m.targetX];
+                return m.fromNation !== myId && tgt && tgt.owner === myId;
+              });
+              if (incomingToPlayer.length === 0) return null;
+              const nearest = incomingToPlayer[0];
+              const cfg = MISSILE_CONFIG[nearest.type];
+              const spd = nearest.speed || (1 / (MISSILE_SETTINGS.DEFAULT_FLIGHT_DURATION_SECONDS || 8));
+              const secondsLeft = Math.max(1, Math.ceil((1.0 - nearest.progress) / (spd * (gameSpeed || 1))));
+              return {
+                missileName: cfg.name,
+                targetX: nearest.targetX,
+                targetY: nearest.targetY,
+                secondsLeft,
+              };
+            })()}
+            missileFeedbackToast={missileFeedbackToast}
+            loadErrorToast={loadErrorToast}
+            pendingTradeOffer={gameDataRef.current.pendingTradeOffer}
+            offerGoldAmount={(() => {
+              const off = gameDataRef.current.pendingTradeOffer;
+              const p = gameDataRef.current.nations[1];
+              const b = off ? gameDataRef.current.nations[off.nationId] : null;
+              const m = gameDataRef.current.market;
+              if (!off || !p || !b || !m) return undefined;
+              const prices = getAITradePrices(p, b, m, off.resource);
+              return off.mode === 'AI_SELL'
+                ? Math.max(1, Math.ceil(prices.aiSellPrice * off.qty))
+                : Math.max(0, Math.floor(prices.aiBuyPrice * off.qty));
+            })()}
+            onRespondTradeOffer={handleRespondTradeOffer}
+            onOpenEventLog={() => setIsEventLogOpen(true)}
+            showMinimap={showMinimap}
+            minimapNode={
+              <Minimap
+                tiles={gameDataRef.current.tiles}
+                nations={gameDataRef.current.nations}
+                mapSize={mapSize}
+                camera={cameraRef.current}
+                darkTitan={gameDataRef.current.darkTitan}
+                darkTitans={gameDataRef.current.darkTitans}
+                pendingTitanSpawn={gameDataRef.current.pendingTitanSpawn}
+                fogOfWarEnabled={fogOfWarEnabled}
+                playerNationId={isMultiplayer ? myPlayerNationId : 1}
+                onNavigate={(mapX, mapY) => {
+                  const vpW = viewportSizeRef.current.width || 360;
+                  const vpH = viewportSizeRef.current.height || 560;
+                  const curZoom = cameraRef.current.zoom;
+                  const rawX = vpW / 2 - (mapX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2) * curZoom;
+                  const rawY = vpH / 2 - (mapY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2) * curZoom;
+                  const clamped = clampCamera(rawX, rawY, curZoom);
+                  cameraRef.current = { x: clamped.x, y: clamped.y, zoom: curZoom };
+                }}
+              />
+            }
             onToggleAirAiming={(type) => {
               const isSameBomber = type === 'BOMBER' && (airAimingMode === 'BOMBER_START' || airAimingMode === 'BOMBER_END');
               if (airAimingMode === type || isSameBomber) {
@@ -5650,77 +5606,11 @@ export default function App() {
         soundManager={soundManager}
       />
 
-      {/* TOAST THÔNG BÁO LỖI NẠP VÁN */}
-      {loadErrorToast && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white font-bold px-4 py-2.5 rounded-2xl shadow-2xl text-xs flex items-center gap-2 border border-rose-400 animate-in slide-in-from-top pointer-events-none">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-white" />
-          <span>{loadErrorToast}</span>
-        </div>
-      )}
-
-      {/* TOAST THÔNG BÁO TÊN LỬA / NGẮM BẮN */}
-      {missileFeedbackToast && (
-        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-rose-500 text-rose-300 font-black px-4 py-3 rounded-2xl shadow-2xl text-xs flex items-center gap-2 backdrop-blur-md animate-in slide-in-from-top pointer-events-none">
-          <Rocket className="w-4 h-4 text-rose-400 shrink-0 animate-bounce" />
-          <span>{missileFeedbackToast}</span>
-        </div>
-      )}
-
-      {/* BANNER HƯỚNG DẪN KHI ĐANG Ở CHẾ ĐỘ XUẤT KÍCH KHÔNG QUÂN */}
-      {airAimingMode && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-sky-950/90 via-slate-900/95 to-amber-950/90 border border-sky-400/80 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md animate-in slide-in-from-top">
-          <div className="text-left">
-            <div className="text-xs font-black text-sky-300">
-              {airAimingMode === 'BOMBER_START'
-                ? '💣 Ném Bom (Loại 3) — Bước 1/2: Chọn ĐIỂM ĐẦU'
-                : airAimingMode === 'BOMBER_END'
-                  ? '💣 Ném Bom (Loại 3) — Bước 2/2: Chọn ĐIỂM CUỐI'
-                  : `✈️ Xuất kích ${airAimingMode === 'FIGHTER' ? 'Tiêm Kích (Loại 1)' : 'Tiểu Đội 3 chiếc (Loại 2)'}`}
-            </div>
-            <div className="text-[11px] text-slate-300">
-              {airAimingMode === 'BOMBER_START'
-                ? 'Chạm điểm bắt đầu hành lang rải bom trên bản đồ.'
-                : airAimingMode === 'BOMBER_END'
-                  ? `Chạm điểm cuối để thả bom hạng nặng (tối đa ${AIR_SYSTEM_CONFIG.BOMBER_MAX_CORRIDOR_TILES} ô).`
-                  : 'Chạm vào mục tiêu ưu tiên (đất địch, công trình, tàu địch hoặc Tà Thần)!'}
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              setAirAimingMode(null);
-              airAimingModeRef.current = null;
-              bomberAimStartRef.current = null;
-              showMissileToast('Đã hủy lệnh xuất kích Không Quân.');
-            }}
-            className="ml-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 active:scale-95"
-          >
-            Hủy Bỏ
-          </button>
-        </div>
-      )}
-
-      {/* BANNER HƯỚNG DẪN KHI ĐANG Ở CHẾ ĐỘ NGẮM BẮN TÊN LỬA */}
-      {missileAimingMode && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-rose-950/90 via-slate-900/95 to-amber-950/90 border border-rose-500/80 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md animate-in slide-in-from-top pointer-events-none">
-          <Rocket className="w-5 h-5 text-rose-400 animate-pulse shrink-0" />
-          <div className="text-left">
-            <div className="text-xs font-black text-amber-300">
-              Đang ngắm bắn: {MISSILE_CONFIG[missileAimingMode].name}
-            </div>
-            <div className="text-[11px] text-slate-300">
-              Chạm vào đất kẻ thù trên bản đồ để phóng!
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              setMissileAimingMode(null);
-              missileAimingModeRef.current = null;
-              showMissileToast('Đã hủy ngắm bắn tên lửa.');
-            }}
-            className="ml-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 active:scale-95 pointer-events-auto"
-          >
-            Hủy Bỏ
-          </button>
+      {/* TOAST THÔNG BÁO LỖI NẠP VÁN (CHỈ Ở TITLE; TRONG TRẬN ĐÃ GỘP VÀO THANH TRÊN DUY NHẤT) */}
+      {gameState === 'TITLE' && loadErrorToast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-rose-700 text-white font-bold px-4 py-2.5 rounded-2xl shadow-2xl text-sm flex items-center gap-2 border border-rose-300 animate-in slide-in-from-top pointer-events-none">
+          <AlertTriangle className="w-5 h-5 shrink-0 text-white" />
+          <span className="whitespace-normal break-words">{loadErrorToast}</span>
         </div>
       )}
 
@@ -5905,8 +5795,8 @@ export default function App() {
         }}
       />
 
-      {/* HỆ THỐNG STICKER MEME MÈO PIXEL */}
-      <MemeLayer />
+      {/* HỆ THỐNG STICKER MEME MÈO PIXEL (CHỈ DÙNG NGOÀI MÀN HÌNH CHƠI; TRONG TRẬN ĐÃ GẮN TRONG GAMEHUD) */}
+      {gameState === 'TITLE' && <MemeLayer />}
     </div>
   );
 }

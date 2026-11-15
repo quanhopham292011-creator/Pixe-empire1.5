@@ -132,16 +132,16 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
   if (!isUserAdmin(currentUser)) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90">
-        <div className="bg-slate-900 border border-red-500/80 rounded-2xl p-6 max-w-sm text-center">
-          <ShieldAlert className="w-12 h-12 text-red-500 mx-auto mb-3" />
+        <div className="bg-slate-950 border-2 border-red-400 rounded-2xl p-6 max-w-sm text-center">
+          <ShieldAlert className="w-12 h-12 text-red-400 mx-auto mb-3" />
           <h3 className="text-lg font-bold text-white mb-2">Truy Cập Bị Từ Chối</h3>
-          <p className="text-xs text-slate-400 mb-4">
+          <p className="text-sm text-slate-200 mb-4">
             Tính năng Admin Panel chỉ dành riêng cho quản trị viên tối cao: <br />
-            <strong className="text-amber-400">{ADMIN_EMAIL}</strong>
+            <strong className="text-amber-300">{ADMIN_EMAIL}</strong>
           </p>
           <button
             onClick={onClose}
-            className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs"
+            className="w-full min-h-[44px] py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm border border-slate-500"
           >
             Đóng
           </button>
@@ -314,52 +314,53 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-fade-in">
-      <div className="w-full max-w-2xl max-h-[90vh] bg-slate-900 border-2 border-amber-500/80 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
+      <div className="w-full max-w-2xl max-h-[90vh] bg-slate-950 border-2 border-amber-400 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-white">
         {/* Header Admin Panel */}
-        <div className="p-4 bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 border-b border-amber-500/50 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-400/60 shadow">
-              <Crown className="w-6 h-6 text-amber-400" />
+        <div className="p-4 bg-gradient-to-r from-amber-950 via-slate-900 to-amber-950 border-b border-amber-400/60 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-400/70 shadow shrink-0">
+              <Crown className="w-6 h-6 text-amber-300" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black text-amber-300">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base sm:text-lg font-black text-amber-200">
                   ADMIN PANEL • QUẢN TRỊ VIÊN TỐI CAO
                 </h2>
-                <span className="text-[10px] font-black bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full uppercase">
+                <span className="text-sm font-black bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full uppercase">
                   Server Verified
                 </span>
               </div>
-              <p className="text-[11px] text-slate-300">
-                Đặc quyền quản trị server cho <strong>{currentUser?.email}</strong>
+              <p className="text-sm text-slate-200 break-all">
+                Đặc quyền quản trị server cho <strong className="text-white">{currentUser?.email}</strong>
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white rounded-full bg-slate-800 hover:bg-slate-700 transition-colors"
+            aria-label="Đóng"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-white rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-600 transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Thông báo Server Status */}
-        <div className="px-4 py-2 bg-slate-950 border-b border-slate-800 text-[11px] flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="px-4 py-2 bg-slate-900 border-b border-slate-700 text-sm flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             {serverVerified === true ? (
-              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <ShieldCheck className="w-4 h-4 text-emerald-300 shrink-0" />
             ) : serverVerified === false ? (
               <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
             ) : (
-              <RefreshCw className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+              <RefreshCw className="w-4 h-4 text-amber-300 animate-spin shrink-0" />
             )}
-            <span className={serverVerified ? 'text-emerald-300' : 'text-slate-300'}>
+            <span className={serverVerified ? 'text-emerald-200' : 'text-slate-100'}>
               {serverStatusText}
             </span>
           </div>
           <button
             onClick={syncAdminConfigToServer}
-            className="text-[10px] px-2 py-1 bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 rounded border border-amber-500/40"
+            className="min-h-[44px] text-sm font-bold px-3 py-2 bg-amber-600/40 hover:bg-amber-600/60 text-amber-100 rounded-xl border border-amber-400/60 shrink-0"
           >
             Lưu Lên Server
           </button>
@@ -367,63 +368,63 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
 
         {/* Toast thông báo hành động */}
         {notification && (
-          <div className="mx-4 mt-3 p-2.5 bg-amber-500/20 border border-amber-400 rounded-xl text-xs text-amber-200 font-bold flex items-center gap-2 animate-bounce">
-            <Zap className="w-4 h-4 text-amber-400 shrink-0" />
+          <div className="mx-4 mt-3 p-3 bg-amber-500/25 border border-amber-400 rounded-xl text-sm text-amber-100 font-bold flex items-center gap-2 animate-bounce">
+            <Zap className="w-4 h-4 text-amber-300 shrink-0" />
             <span>{notification}</span>
           </div>
         )}
 
         {/* Thanh Tabs chuyển đổi */}
-        <div className="flex bg-slate-950/80 border-b border-slate-800 px-3 pt-2 gap-1 overflow-x-auto shrink-0">
+        <div className="flex bg-slate-900 border-b border-slate-700 px-3 pt-2 gap-1.5 overflow-x-auto shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('RESOURCES')}
-            className={`px-3 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`min-h-[44px] px-3.5 py-2 text-sm font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === 'RESOURCES'
-                ? 'bg-slate-900 text-amber-400 border-t-2 border-amber-400 shadow'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-slate-950 text-amber-300 border-t-2 border-amber-400 shadow'
+                : 'text-slate-200 hover:text-white'
             }`}
           >
-            <Coins className="w-3.5 h-3.5" />
+            <Coins className="w-4 h-4" />
             <span>Tài Nguyên Quốc Gia</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('PROGRESSION')}
-            className={`px-3 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`min-h-[44px] px-3.5 py-2 text-sm font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === 'PROGRESSION'
-                ? 'bg-slate-900 text-amber-400 border-t-2 border-amber-400 shadow'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-slate-950 text-amber-300 border-t-2 border-amber-400 shadow'
+                : 'text-slate-200 hover:text-white'
             }`}
           >
-            <Star className="w-3.5 h-3.5" />
+            <Star className="w-4 h-4" />
             <span>Cấp Độ & Tướng</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('MISSILES_SPEED')}
-            className={`px-3 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`min-h-[44px] px-3.5 py-2 text-sm font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === 'MISSILES_SPEED'
-                ? 'bg-slate-900 text-amber-400 border-t-2 border-amber-400 shadow'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-slate-950 text-amber-300 border-t-2 border-amber-400 shadow'
+                : 'text-slate-200 hover:text-white'
             }`}
           >
-            <Rocket className="w-3.5 h-3.5" />
+            <Rocket className="w-4 h-4" />
             <span>Tên Lửa & Tốc Độ</span>
           </button>
 
           <button
             type="button"
             onClick={() => setActiveTab('BOTS')}
-            className={`px-3 py-2 text-xs font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`min-h-[44px] px-3.5 py-2 text-sm font-bold rounded-t-xl transition-all flex items-center gap-1.5 whitespace-nowrap ${
               activeTab === 'BOTS'
-                ? 'bg-slate-900 text-amber-400 border-t-2 border-amber-400 shadow'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-slate-950 text-amber-300 border-t-2 border-amber-400 shadow'
+                : 'text-slate-200 hover:text-white'
             }`}
           >
-            <Bot className="w-3.5 h-3.5" />
+            <Bot className="w-4 h-4" />
             <span>Bot Test & Sức Mạnh</span>
           </button>
         </div>
@@ -434,13 +435,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           {activeTab === 'RESOURCES' && (
             <div className="space-y-4">
               {/* TOGGLE KHÔNG GIỚI HẠN TÀI NGUYÊN (GOD MODE) */}
-              <div className="p-3.5 bg-gradient-to-r from-amber-950/60 to-purple-950/60 rounded-2xl border border-amber-500/50 flex items-center justify-between">
+              <div className="p-3.5 bg-gradient-to-r from-amber-950/70 to-purple-950/70 rounded-2xl border border-amber-400/60 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-sm font-black text-amber-300 flex items-center gap-2">
-                    <InfinityIcon className="w-5 h-5 text-amber-400" />
+                  <div className="text-sm font-black text-amber-200 flex items-center gap-2">
+                    <InfinityIcon className="w-5 h-5 text-amber-300" />
                     <span>Bật Không Giới Hạn Tài Nguyên (God Mode)</span>
                   </div>
-                  <div className="text-xs text-slate-300 mt-0.5">
+                  <div className="text-sm text-slate-200 mt-0.5">
                     Tự động giữ Vàng 9,999,999, Quân đội liên tục hồi tối đa và miễn phí mọi công trình.
                   </div>
                 </div>
@@ -457,10 +458,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     }
                     showToast(next ? '♾️ Đã BẬT Không giới hạn tài nguyên!' : 'Đã TẮT Không giới hạn tài nguyên.');
                   }}
-                  className={`px-4 py-2 rounded-xl text-xs font-black transition-all shadow ${
+                  className={`min-h-[44px] px-4 py-2 rounded-xl text-sm font-black transition-all shadow ${
                     infiniteResources
-                      ? 'bg-emerald-600 text-white shadow-emerald-600/40 border border-emerald-400'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      ? 'bg-emerald-600 text-white shadow-emerald-600/40 border border-emerald-300'
+                      : 'bg-slate-800 text-slate-100 border border-slate-500'
                   }`}
                 >
                   {infiniteResources ? 'ĐANG BẬT' : 'ĐANG TẮT'}
@@ -470,24 +471,24 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               {/* TÙY CHỈNH TỪNG CHỈ SỐ NHẬP SỐ BẤT KỲ */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                 {/* VÀNG */}
-                <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <div className="p-3 bg-slate-900 rounded-2xl border border-slate-700 space-y-2">
+                  <label className="text-sm font-bold text-amber-300 flex items-center gap-1.5">
                     <Coins className="w-4 h-4" /> Vàng Quốc Gia:
                   </label>
                   <input
                     type="number"
                     value={customGold}
                     onChange={(e) => setCustomGold(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono font-bold text-sm focus:border-amber-500 outline-none"
+                    className="w-full min-h-[44px] px-3 py-2 bg-slate-950 border border-slate-600 rounded-xl text-white font-mono font-bold text-sm focus:border-amber-400 outline-none"
                     placeholder="Nhập số vàng..."
                   />
-                  <div className="flex gap-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                     {['10000', '100000', '1000000', '9999999'].map((v) => (
                       <button
                         key={v}
                         type="button"
                         onClick={() => setCustomGold(v)}
-                        className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded-lg font-mono"
+                        className="min-h-[44px] py-2 bg-slate-800 hover:bg-slate-700 text-sm text-slate-100 rounded-lg font-mono font-bold border border-slate-600"
                       >
                         +{parseInt(v, 10) >= 1000000 ? `${parseInt(v, 10) / 1000000}M` : `${parseInt(v, 10) / 1000}k`}
                       </button>
@@ -496,24 +497,24 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 </div>
 
                 {/* QUÂN ĐỘI */}
-                <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-rose-400 flex items-center gap-1.5">
+                <div className="p-3 bg-slate-900 rounded-2xl border border-slate-700 space-y-2">
+                  <label className="text-sm font-bold text-rose-300 flex items-center gap-1.5">
                     <Swords className="w-4 h-4" /> Quân Đội:
                   </label>
                   <input
                     type="number"
                     value={customTroops}
                     onChange={(e) => setCustomTroops(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono font-bold text-sm focus:border-rose-500 outline-none"
+                    className="w-full min-h-[44px] px-3 py-2 bg-slate-950 border border-slate-600 rounded-xl text-white font-mono font-bold text-sm focus:border-rose-400 outline-none"
                     placeholder="Nhập quân số..."
                   />
-                  <div className="flex gap-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                     {['5000', '50000', '500000', '2000000'].map((v) => (
                       <button
                         key={v}
                         type="button"
                         onClick={() => setCustomTroops(v)}
-                        className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded-lg font-mono"
+                        className="min-h-[44px] py-2 bg-slate-800 hover:bg-slate-700 text-sm text-slate-100 rounded-lg font-mono font-bold border border-slate-600"
                       >
                         +{parseInt(v, 10) >= 1000000 ? `${parseInt(v, 10) / 1000000}M` : `${parseInt(v, 10) / 1000}k`}
                       </button>
@@ -522,24 +523,24 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 </div>
 
                 {/* DÂN SỐ */}
-                <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-sky-400 flex items-center gap-1.5">
+                <div className="p-3 bg-slate-900 rounded-2xl border border-slate-700 space-y-2">
+                  <label className="text-sm font-bold text-sky-300 flex items-center gap-1.5">
                     <Users className="w-4 h-4" /> Dân Số Quốc Gia:
                   </label>
                   <input
                     type="number"
                     value={customPopulation}
                     onChange={(e) => setCustomPopulation(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono font-bold text-sm focus:border-sky-500 outline-none"
+                    className="w-full min-h-[44px] px-3 py-2 bg-slate-950 border border-slate-600 rounded-xl text-white font-mono font-bold text-sm focus:border-sky-400 outline-none"
                     placeholder="Nhập dân số..."
                   />
-                  <div className="flex gap-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                     {['10000', '50000', '200000', '1000000'].map((v) => (
                       <button
                         key={v}
                         type="button"
                         onClick={() => setCustomPopulation(v)}
-                        className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded-lg font-mono"
+                        className="min-h-[44px] py-2 bg-slate-800 hover:bg-slate-700 text-sm text-slate-100 rounded-lg font-mono font-bold border border-slate-600"
                       >
                         +{parseInt(v, 10) >= 1000000 ? `${parseInt(v, 10) / 1000000}M` : `${parseInt(v, 10) / 1000}k`}
                       </button>
@@ -548,24 +549,24 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 </div>
 
                 {/* LƯƠNG THỰC / SẢN XUẤT */}
-                <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                <div className="p-3 bg-slate-900 rounded-2xl border border-slate-700 space-y-2">
+                  <label className="text-sm font-bold text-emerald-300 flex items-center gap-1.5">
                     <TrendingUp className="w-4 h-4" /> Hệ Số Sản Xuất / Lương Thực:
                   </label>
                   <input
                     type="number"
                     value={customFoodYield}
                     onChange={(e) => setCustomFoodYield(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono font-bold text-sm focus:border-emerald-500 outline-none"
+                    className="w-full min-h-[44px] px-3 py-2 bg-slate-950 border border-slate-600 rounded-xl text-white font-mono font-bold text-sm focus:border-emerald-400 outline-none"
                     placeholder="Hệ số tăng trưởng %..."
                   />
-                  <div className="flex gap-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                     {['50', '100', '300', '1000'].map((v) => (
                       <button
                         key={v}
                         type="button"
                         onClick={() => setCustomFoodYield(v)}
-                        className="flex-1 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded-lg font-mono"
+                        className="min-h-[44px] py-2 bg-slate-800 hover:bg-slate-700 text-sm text-slate-100 rounded-lg font-mono font-bold border border-slate-600"
                       >
                         {v}%
                       </button>
@@ -577,7 +578,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               <button
                 type="button"
                 onClick={applyNationStats}
-                className="w-full py-3 bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 hover:from-amber-500 hover:to-amber-600 text-white font-black rounded-2xl shadow-lg shadow-amber-950/40 text-xs flex items-center justify-center gap-2"
+                className="w-full min-h-[48px] py-3 bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 hover:from-amber-500 hover:to-amber-600 text-white font-black rounded-2xl shadow-lg shadow-amber-950/40 text-sm flex items-center justify-center gap-2 border border-amber-400/60"
               >
                 <Check className="w-4 h-4" />
                 <span>Áp Dụng Thay Đổi Tài Nguyên Ngay</span>
@@ -588,25 +589,25 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           {/* TAB 2: TIẾN TRÌNH & CẤP ĐỘ, TƯỚNG */}
           {activeTab === 'PROGRESSION' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {/* CẤP ĐỘ */}
-                <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-amber-400">Cấp Độ (1-10):</label>
+                <div className="p-3 bg-slate-900 rounded-2xl border border-slate-700 space-y-2">
+                  <label className="text-sm font-bold text-amber-300">Cấp Độ (1-10):</label>
                   <input
                     type="number"
                     min={1}
                     max={10}
                     value={customLevel}
                     onChange={(e) => setCustomLevel(parseInt(e.target.value, 10) || 1)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono font-bold text-sm"
+                    className="w-full min-h-[44px] px-3 py-2 bg-slate-950 border border-slate-600 rounded-xl text-white font-mono font-bold text-sm"
                   />
-                  <div className="flex gap-1">
+                  <div className="flex gap-1.5">
                     {[1, 5, 10].map((lvl) => (
                       <button
                         key={lvl}
                         type="button"
                         onClick={() => setCustomLevel(lvl)}
-                        className="flex-1 py-1 bg-slate-800 text-[10px] rounded"
+                        className="flex-1 min-h-[44px] py-2 bg-slate-800 hover:bg-slate-700 text-sm text-white font-bold rounded-lg border border-slate-600"
                       >
                         Lv.{lvl}
                       </button>
@@ -615,21 +616,21 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 </div>
 
                 {/* KINH NGHIỆM */}
-                <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-blue-400">EXP:</label>
+                <div className="p-3 bg-slate-900 rounded-2xl border border-slate-700 space-y-2">
+                  <label className="text-sm font-bold text-blue-300">EXP:</label>
                   <input
                     type="number"
                     value={customExp}
                     onChange={(e) => setCustomExp(parseInt(e.target.value, 10) || 0)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono font-bold text-sm"
+                    className="w-full min-h-[44px] px-3 py-2 bg-slate-950 border border-slate-600 rounded-xl text-white font-mono font-bold text-sm"
                   />
-                  <div className="flex gap-1">
+                  <div className="flex gap-1.5">
                     {[100, 1000, 5000].map((ex) => (
                       <button
                         key={ex}
                         type="button"
                         onClick={() => setCustomExp(ex)}
-                        className="flex-1 py-1 bg-slate-800 text-[10px] rounded"
+                        className="flex-1 min-h-[44px] py-2 bg-slate-800 hover:bg-slate-700 text-sm text-white font-bold rounded-lg border border-slate-600"
                       >
                         +{ex}
                       </button>
@@ -638,21 +639,21 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 </div>
 
                 {/* XU PIXEL */}
-                <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-amber-300">Xu Pixel:</label>
+                <div className="p-3 bg-slate-900 rounded-2xl border border-slate-700 space-y-2">
+                  <label className="text-sm font-bold text-amber-200">Xu Pixel:</label>
                   <input
                     type="number"
                     value={customPixelCoins}
                     onChange={(e) => setCustomPixelCoins(parseInt(e.target.value, 10) || 0)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-white font-mono font-bold text-sm"
+                    className="w-full min-h-[44px] px-3 py-2 bg-slate-950 border border-slate-600 rounded-xl text-white font-mono font-bold text-sm"
                   />
-                  <div className="flex gap-1">
+                  <div className="flex gap-1.5">
                     {[500, 2000, 10000].map((c) => (
                       <button
                         key={c}
                         type="button"
                         onClick={() => setCustomPixelCoins(c)}
-                        className="flex-1 py-1 bg-slate-800 text-[10px] rounded"
+                        className="flex-1 min-h-[44px] py-2 bg-slate-800 hover:bg-slate-700 text-sm text-white font-bold rounded-lg border border-slate-600"
                       >
                         +{c}
                       </button>
@@ -661,21 +662,21 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 </div>
 
                 {/* ĐIỂM KỸ NĂNG */}
-                <div className="p-3 bg-slate-950 rounded-2xl border border-amber-500/40 space-y-2">
-                  <label className="text-xs font-bold text-yellow-300">Điểm Kỹ Năng:</label>
+                <div className="p-3 bg-slate-900 rounded-2xl border border-amber-400/60 space-y-2">
+                  <label className="text-sm font-bold text-yellow-200">Điểm Kỹ Năng:</label>
                   <input
                     type="number"
                     value={customSkillPoints}
                     onChange={(e) => setCustomSkillPoints(parseInt(e.target.value, 10) || 0)}
-                    className="w-full px-3 py-2 bg-slate-900 border border-amber-500/50 rounded-xl text-white font-mono font-bold text-sm"
+                    className="w-full min-h-[44px] px-3 py-2 bg-slate-950 border border-amber-400/70 rounded-xl text-white font-mono font-bold text-sm"
                   />
-                  <div className="flex gap-1">
+                  <div className="flex gap-1.5">
                     {[3, 10, 30].map((p) => (
                       <button
                         key={p}
                         type="button"
                         onClick={() => setCustomSkillPoints(p)}
-                        className="flex-1 py-1 bg-amber-950 text-amber-300 text-[10px] rounded font-bold"
+                        className="flex-1 min-h-[44px] py-2 bg-amber-950 hover:bg-amber-900 text-amber-200 text-sm rounded-lg font-bold border border-amber-500/50"
                       >
                         +{p}
                       </button>
@@ -687,48 +688,48 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               <button
                 type="button"
                 onClick={applyProgression}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-1.5"
+                className="w-full min-h-[44px] py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-1.5 border border-blue-400"
               >
                 <Check className="w-4 h-4" />
                 <span>Lưu Cấp Độ, EXP & Điểm Kỹ Năng Lên Cloud Firestore</span>
               </button>
 
               {/* TEST CÂY KỸ NĂNG */}
-              <div className="p-3.5 bg-slate-950 rounded-2xl border border-yellow-500/40 space-y-2">
-                <div className="text-xs font-bold text-yellow-300 flex items-center gap-2">
+              <div className="p-3.5 bg-slate-900 rounded-2xl border border-yellow-400/60 space-y-2">
+                <div className="text-sm font-bold text-yellow-200 flex items-center gap-2">
                   <Sparkles className="w-4 h-4" />
                   <span>Quản Lý & Kiểm Thử Cây Kỹ Năng (Skill Tree Testing)</span>
                 </div>
-                <div className="text-[11px] text-slate-400">
+                <div className="text-sm text-slate-200">
                   Kinh Tế: Cấp {playerProfile.skillTree?.economyLevel || 0}/10 • Quân Đội: Cấp {playerProfile.skillTree?.militaryLevel || 0}/10 • Anh Hùng: Cấp {playerProfile.skillTree?.heroLevel || 0}/10 • Mốc Kết Hợp: {playerProfile.skillTree?.chosenHybrid || 'Chưa chọn'}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                   <button
                     type="button"
                     onClick={adminResetSkillTree}
-                    className="py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-slate-700"
+                    className="min-h-[44px] py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-amber-200 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 border border-slate-500"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />
+                    <RotateCcw className="w-4 h-4" />
                     <span>Reset Cây Kỹ Năng (Hoàn Điểm Test)</span>
                   </button>
                   <button
                     type="button"
                     onClick={adminMaxSkillTree}
-                    className="py-2.5 px-3 bg-gradient-to-r from-yellow-600 to-amber-600 hover:from-yellow-500 hover:to-amber-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow"
+                    className="min-h-[44px] py-2.5 px-3 bg-gradient-to-r from-yellow-600 to-amber-600 hover:from-yellow-500 hover:to-amber-500 text-white rounded-xl text-sm font-black flex items-center justify-center gap-1.5 shadow border border-yellow-400"
                   >
-                    <Zap className="w-3.5 h-3.5 text-yellow-200" />
+                    <Zap className="w-4 h-4 text-yellow-200" />
                     <span>Kích Hoạt Max 3 Nhánh (Lv10 Hết)</span>
                   </button>
                 </div>
               </div>
 
               {/* MỞ KHÓA TẤT CẢ TƯỚNG & KỸ NĂNG */}
-              <div className="p-3.5 bg-slate-950 rounded-2xl border border-amber-500/40 space-y-2.5">
-                <div className="text-xs font-bold text-amber-300 flex items-center gap-2">
+              <div className="p-3.5 bg-slate-900 rounded-2xl border border-amber-400/60 space-y-2.5">
+                <div className="text-sm font-bold text-amber-200 flex items-center gap-2">
                   <Crown className="w-4 h-4" />
                   <span>Mở Khóa Toàn Bộ 5 Đại Tướng & Kỹ Năng Thượng Thừa</span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {GENERAL_ROSTER.map((g) => {
                     const isUnlocked =
                       playerProfile.level >= 10 ||
@@ -737,12 +738,12 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     return (
                       <div
                         key={g.skillId}
-                        className={`p-2 rounded-xl border text-[11px] flex items-center justify-between ${
-                          isUnlocked ? 'bg-amber-950/40 border-amber-500/50 text-amber-200' : 'bg-slate-900 border-slate-800 text-slate-400'
+                        className={`p-2.5 rounded-xl border text-sm flex items-center justify-between gap-2 ${
+                          isUnlocked ? 'bg-amber-950/60 border-amber-400/70 text-amber-100' : 'bg-slate-950 border-slate-700 text-slate-200'
                         }`}
                       >
-                        <span className="font-bold truncate">{g.name}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/40">
+                        <span className="font-bold">{g.name}</span>
+                        <span className="text-sm px-2 py-0.5 rounded bg-black/60 shrink-0 font-bold">
                           {isUnlocked ? 'Đã mở' : 'Khóa'}
                         </span>
                       </div>
@@ -752,26 +753,26 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                 <button
                   type="button"
                   onClick={unlockAllGenerals}
-                  className="w-full py-2.5 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-white font-black rounded-xl text-xs shadow"
+                  className="w-full min-h-[44px] py-2.5 bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-white font-black rounded-xl text-sm shadow border border-amber-300"
                 >
                   🎖️ Mở Khóa Tất Cả 5 Tướng & Tặng 10,000 Xu Pixel
                 </button>
               </div>
 
               {/* ĐẶT LẠI TIẾN TRÌNH */}
-              <div className="p-3.5 bg-red-950/30 rounded-2xl border border-red-500/30 flex items-center justify-between">
+              <div className="p-3.5 bg-red-950/50 rounded-2xl border border-red-400/60 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-bold text-red-300">Đặt Lại Tiến Trình Về Ban Đầu</div>
-                  <div className="text-[10px] text-slate-400">
+                  <div className="text-sm font-bold text-red-200">Đặt Lại Tiến Trình Về Ban Đầu</div>
+                  <div className="text-sm text-slate-200">
                     Khởi tạo lại tài khoản về Cấp 1, 0 EXP, 0 Xu và Tướng mặc định.
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={resetProgression}
-                  className="px-3 py-1.5 bg-red-600/80 hover:bg-red-500 text-white font-bold rounded-xl text-xs flex items-center gap-1"
+                  className="min-h-[44px] px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl text-sm flex items-center gap-1.5 border border-red-300 shrink-0"
                 >
-                  <RotateCcw className="w-3.5 h-3.5" />
+                  <RotateCcw className="w-4 h-4" />
                   <span>Reset Cấp 1</span>
                 </button>
               </div>
@@ -782,11 +783,11 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           {activeTab === 'MISSILES_SPEED' && (
             <div className="space-y-4">
               {/* TỐC ĐỘ GAME & COOLDOWN */}
-              <div className="p-3.5 bg-slate-950 rounded-2xl border border-slate-800 space-y-3">
-                <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+              <div className="p-3.5 bg-slate-900 rounded-2xl border border-slate-700 space-y-3">
+                <div className="text-sm font-bold text-amber-300 flex items-center gap-1.5">
                   <Gauge className="w-4 h-4" /> Tốc Độ Game (Trận Đấu):
                 </div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {[1, 2, 5].map((spd) => (
                     <button
                       key={spd}
@@ -795,10 +796,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                         setGameSpeed(spd);
                         showToast(`⚡ Tốc độ game đã chuyển sang ${spd}x`);
                       }}
-                      className={`py-2.5 rounded-xl font-black text-xs border transition-all ${
+                      className={`min-h-[44px] py-2.5 px-3 rounded-xl font-black text-sm border transition-all ${
                         gameSpeed === spd
-                          ? 'bg-amber-600 border-amber-400 text-white shadow-lg'
-                          : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                          ? 'bg-amber-600 border-amber-300 text-white shadow-lg'
+                          : 'bg-slate-800 border-slate-600 text-slate-100 hover:bg-slate-700'
                       }`}
                     >
                       Tốc độ {spd}x {spd === 1 ? '(Chuẩn)' : spd === 2 ? '(Nhanh)' : '(Siêu Tốc)'}
@@ -806,10 +807,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                   ))}
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-700">
                   <div>
-                    <div className="text-xs font-bold text-white">Xóa Thời Gian Chờ (Cooldown):</div>
-                    <div className="text-[10px] text-slate-400">
+                    <div className="text-sm font-bold text-white">Xóa Thời Gian Chờ (Cooldown):</div>
+                    <div className="text-sm text-slate-200">
                       Ngay lập tức xóa hồi chiêu Bệ phóng Silo, Tướng & Tà Thần về 0s.
                     </div>
                   </div>
@@ -819,18 +820,18 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       onResetCooldowns();
                       showToast('⚡ Toàn bộ thời gian chờ đã được xóa về 0 giây!');
                     }}
-                    className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold rounded-xl text-xs shadow flex items-center gap-1"
+                    className="min-h-[44px] px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold rounded-xl text-sm shadow flex items-center gap-1.5 border border-cyan-300 shrink-0"
                   >
-                    <Zap className="w-3.5 h-3.5" />
+                    <Zap className="w-4 h-4" />
                     <span>Xóa Cooldown Ngay</span>
                   </button>
                 </div>
 
                 {/* SWITCH KHÓA NO COOLDOWN */}
-                <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-700">
                   <div>
-                    <div className="text-xs font-bold text-amber-300">Khóa Không Cooldown (Vĩnh Viễn 0s):</div>
-                    <div className="text-[10px] text-slate-400">
+                    <div className="text-sm font-bold text-amber-200">Khóa Không Cooldown (Vĩnh Viễn 0s):</div>
+                    <div className="text-sm text-slate-200">
                       Mỗi giây tự động ép toàn bộ hồi chiêu tên lửa & kỹ năng về 0s.
                     </div>
                   </div>
@@ -842,8 +843,8 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       if (next) onResetCooldowns();
                       showToast(next ? '⚡ Đã BẬT Khóa No Cooldown!' : 'Đã TẮT Khóa No Cooldown.');
                     }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold ${
-                      noCooldown ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-400'
+                    className={`min-h-[44px] px-4 py-2 rounded-xl text-sm font-bold border shrink-0 ${
+                      noCooldown ? 'bg-emerald-600 border-emerald-300 text-white' : 'bg-slate-800 border-slate-500 text-slate-100'
                     }`}
                   >
                     {noCooldown ? 'Đang BẬT' : 'Đang TẮT'}
@@ -852,8 +853,8 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
               </div>
 
               {/* TÊN LỬA VÀ MIRV */}
-              <div className="p-3.5 bg-slate-950 rounded-2xl border border-rose-500/40 space-y-3">
-                <div className="text-xs font-bold text-rose-400 flex items-center gap-1.5">
+              <div className="p-3.5 bg-slate-900 rounded-2xl border border-rose-400/60 space-y-3">
+                <div className="text-sm font-bold text-rose-300 flex items-center gap-1.5">
                   <Rocket className="w-4 h-4" /> Bệ Phóng & Đòn Tấn Công Hạt Nhân Miễn Phí:
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
@@ -863,10 +864,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       onAddMissiles('ATOM', 1);
                       showToast('🚀 Đã kích hoạt 1 đòn tên lửa ATOM miễn phí!');
                     }}
-                    className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl text-left"
+                    className="min-h-[44px] p-3 bg-slate-950 hover:bg-slate-800 border border-slate-600 rounded-xl text-left"
                   >
-                    <div className="text-xs font-bold text-yellow-300">⚛️ Tên Lửa ATOM</div>
-                    <div className="text-[10px] text-slate-400 mt-1">Bán kính 2.5 ô • Sát thương tiêu chuẩn</div>
+                    <div className="text-sm font-bold text-yellow-200">⚛️ Tên Lửa ATOM</div>
+                    <div className="text-sm text-slate-200 mt-1">Bán kính 2.5 ô • Sát thương tiêu chuẩn</div>
                   </button>
 
                   <button
@@ -875,10 +876,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       onAddMissiles('HYDRO', 1);
                       showToast('💣 Đã kích hoạt 1 đòn bom HYDRO miễn phí!');
                     }}
-                    className="p-3 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded-xl text-left"
+                    className="min-h-[44px] p-3 bg-slate-950 hover:bg-slate-800 border border-slate-600 rounded-xl text-left"
                   >
-                    <div className="text-xs font-bold text-orange-400">💥 Bom HYDRO</div>
-                    <div className="text-[10px] text-slate-400 mt-1">Bán kính 4.5 ô • Hủy diệt diện rộng</div>
+                    <div className="text-sm font-bold text-orange-300">💥 Bom HYDRO</div>
+                    <div className="text-sm text-slate-200 mt-1">Bán kính 4.5 ô • Hủy diệt diện rộng</div>
                   </button>
 
                   <button
@@ -887,10 +888,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                       onAddMissiles('MIRV', 1);
                       showToast('⚡ Đã kích hoạt 1 đòn siêu tên lửa MIRV (12 đầu đạn)!');
                     }}
-                    className="p-3 bg-slate-900 hover:bg-slate-800 border border-rose-500/50 rounded-xl text-left"
+                    className="min-h-[44px] p-3 bg-slate-950 hover:bg-slate-800 border border-rose-400/70 rounded-xl text-left"
                   >
-                    <div className="text-xs font-bold text-rose-400">⚡ Siêu Tên Lửa MIRV</div>
-                    <div className="text-[10px] text-slate-400 mt-1">12 đầu đạn con • Bỏ qua SAM 100%</div>
+                    <div className="text-sm font-bold text-rose-300">⚡ Siêu Tên Lửa MIRV</div>
+                    <div className="text-sm text-slate-200 mt-1">12 đầu đạn con • Bỏ qua SAM 100%</div>
                   </button>
                 </div>
 
@@ -900,7 +901,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     onAddSilos(5);
                     showToast('🚀 Đã tự động xây thêm 5 Bệ Phóng Silo trên đất người chơi!');
                   }}
-                  className="w-full py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow"
+                  className="w-full min-h-[44px] py-2.5 bg-gradient-to-r from-rose-600 to-amber-600 hover:from-rose-500 hover:to-amber-500 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 shadow border border-amber-300"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Xây Thêm 5 Bệ Phóng Silo Ngay Lập Tức</span>
@@ -912,13 +913,13 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
           {/* TAB 4: BOT TEST & SỨC MẠNH */}
           {activeTab === 'BOTS' && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Bot className="w-4 h-4 text-amber-400" />
+                  <div className="text-sm font-bold text-white flex items-center gap-1.5">
+                    <Bot className="w-4 h-4 text-amber-300" />
                     <span>Quản Lý Bot Trong Trận Đấu ({currentBots.length} Bot đang sống)</span>
                   </div>
-                  <div className="text-[10px] text-slate-400">
+                  <div className="text-sm text-slate-200">
                     Thêm bot mới để thử nghiệm, xóa bot hoặc buff/nerf sức mạnh bot.
                   </div>
                 </div>
@@ -928,52 +929,52 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                     onAddBot();
                     showToast('🤖 Đã thêm 1 Bot thử nghiệm mới vào bản đồ!');
                   }}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1 shadow"
+                  className="min-h-[44px] px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm flex items-center gap-1.5 shadow border border-emerald-300 shrink-0"
                 >
-                  <Plus className="w-3.5 h-3.5" />
+                  <Plus className="w-4 h-4" />
                   <span>Thêm Bot Mới</span>
                 </button>
               </div>
 
               {currentBots.length === 0 ? (
-                <div className="p-6 text-center bg-slate-950 rounded-2xl border border-slate-800 text-slate-400 text-xs">
+                <div className="p-6 text-center bg-slate-900 rounded-2xl border border-slate-700 text-slate-200 text-sm">
                   Hiện không còn bot nào trên bản đồ (Bạn đã chiến thắng!). Bấm "Thêm Bot Mới" để sinh bot thử nghiệm.
                 </div>
               ) : (
-                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
                   {currentBots.map((b) => (
                     <div
                       key={b.id}
-                      className="p-3 bg-slate-950 rounded-2xl border border-slate-800 flex items-center justify-between gap-3 text-xs"
+                      className="p-3 bg-slate-900 rounded-2xl border border-slate-700 flex flex-wrap items-center justify-between gap-3 text-sm"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div
-                          className="w-4 h-4 rounded-full shrink-0 border border-white/40"
+                          className="w-4 h-4 rounded-full shrink-0 border border-white/60"
                           style={{ backgroundColor: b.color }}
                         />
-                        <div className="truncate">
-                          <div className="font-bold text-white truncate flex items-center gap-1.5">
+                        <div className="min-w-0">
+                          <div className="font-bold text-white flex flex-wrap items-center gap-1.5">
                             <span>{b.name}</span>
-                            <span className="text-[9px] px-1.5 py-0.2 bg-slate-800 text-slate-300 rounded font-mono">
+                            <span className="text-sm px-2 py-0.5 bg-slate-800 text-slate-100 rounded font-mono border border-slate-600">
                               {b.tier || 'BOT'}
                             </span>
                           </div>
-                          <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
-                            <span>Quân: <strong className="text-rose-400 font-mono">{b.troops.toLocaleString()}</strong></span>
-                            <span>Vàng: <strong className="text-amber-400 font-mono">{b.gold.toLocaleString()}</strong></span>
-                            <span>Ô đất: <strong className="text-blue-400 font-mono">{b.territoryCount}</strong></span>
+                          <div className="text-sm text-slate-200 flex flex-wrap items-center gap-2.5 mt-0.5">
+                            <span>Quân: <strong className="text-rose-300 font-mono">{b.troops.toLocaleString()}</strong></span>
+                            <span>Vàng: <strong className="text-amber-300 font-mono">{b.gold.toLocaleString()}</strong></span>
+                            <span>Ô đất: <strong className="text-sky-300 font-mono">{b.territoryCount}</strong></span>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         <button
                           type="button"
                           onClick={() => {
                             onAdjustBotPower(b.id, 0.2);
                             showToast(`Đã làm yếu bot ${b.name} (-80% quân)`);
                           }}
-                          className="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] rounded font-bold"
+                          className="min-h-[44px] px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-100 text-sm rounded-xl font-bold border border-slate-600"
                           title="Làm yếu bot"
                         >
                           Giảm 80%
@@ -985,7 +986,7 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             onAdjustBotPower(b.id, 3.0);
                             showToast(`Đã tăng sức mạnh bot ${b.name} (x3 quân)`);
                           }}
-                          className="px-2 py-1 bg-amber-600/30 hover:bg-amber-600/50 text-amber-300 border border-amber-500/40 text-[10px] rounded font-bold"
+                          className="min-h-[44px] px-3 py-2 bg-amber-600/40 hover:bg-amber-600/60 text-amber-100 border border-amber-400/70 text-sm rounded-xl font-bold"
                           title="Tăng sức mạnh bot"
                         >
                           x3 Sức Mạnh
@@ -997,10 +998,10 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
                             onRemoveBot(b.id);
                             showToast(`Đã tiêu diệt bot ${b.name}!`);
                           }}
-                          className="p-1.5 bg-red-950 hover:bg-red-900 text-red-400 rounded-lg border border-red-500/30"
+                          className="min-w-[44px] min-h-[44px] flex items-center justify-center bg-red-950 hover:bg-red-900 text-red-200 rounded-xl border border-red-400/60"
                           title="Xóa / Tiêu diệt bot"
                         >
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -1012,14 +1013,14 @@ export const AdminPanelModal: React.FC<AdminPanelModalProps> = ({
         </div>
 
         {/* Footer Admin Panel */}
-        <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between shrink-0">
-          <div className="text-[11px] text-slate-400">
+        <div className="p-3 bg-slate-900 border-t border-slate-700 flex flex-wrap items-center justify-between gap-2 shrink-0">
+          <div className="text-sm text-slate-200 break-all">
             Tài khoản: <strong className="text-white">{currentUser?.email}</strong> (Admin Quyền Năng)
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition-colors"
+            className="min-h-[44px] px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-sm border border-slate-500 transition-colors"
           >
             Đóng Panel
           </button>

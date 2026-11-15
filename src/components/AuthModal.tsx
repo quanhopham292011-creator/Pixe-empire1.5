@@ -124,40 +124,40 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-md bg-slate-900 border border-slate-700/80 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fade-in">
+      <div className="w-full max-w-md bg-slate-950 border-2 border-slate-600 rounded-3xl p-5 sm:p-6 shadow-2xl relative overflow-y-auto max-h-[92vh]">
         {/* Nút đóng */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-full bg-slate-800/60 hover:bg-slate-700 transition-colors"
+          className="absolute top-3 right-3 min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-200 hover:text-white rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-600 transition-colors"
         >
           <X className="w-5 h-5" />
         </button>
 
         {/* Tiêu đề */}
-        <div className="text-center mb-5">
-          <div className="inline-flex p-3 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-blue-500/20 border border-amber-500/30 mb-2">
-            <Sparkles className="w-7 h-7 text-amber-400" />
+        <div className="text-center mb-5 pr-8 pl-8">
+          <div className="inline-flex p-3 rounded-2xl bg-gradient-to-tr from-amber-500/25 to-blue-500/25 border border-amber-400/50 mb-2">
+            <Sparkles className="w-7 h-7 text-amber-300" />
           </div>
           <h2 className="text-xl font-black text-white">Tài Khoản Pixel Empire</h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-sm text-slate-200 mt-1">
             Lưu trữ tiến trình cấp độ, Tướng và dữ liệu game trên Cloud
           </p>
         </div>
 
         {/* Chuyển tab Đăng nhập / Đăng ký */}
-        <div className="flex bg-slate-950 p-1 rounded-2xl border border-slate-800 mb-5">
+        <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-700 mb-5 gap-1">
           <button
             type="button"
             onClick={() => {
               setIsLoginTab(true);
               setErrorMsg(null);
             }}
-            className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-              isLoginTab ? 'bg-amber-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+            className={`flex-1 min-h-[44px] py-2 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              isLoginTab ? 'bg-amber-600 text-white shadow-md' : 'text-slate-200 hover:text-white'
             }`}
           >
-            <LogIn className="w-3.5 h-3.5" />
+            <LogIn className="w-4 h-4" />
             <span>Đăng Nhập</span>
           </button>
           <button
@@ -166,26 +166,26 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               setIsLoginTab(false);
               setErrorMsg(null);
             }}
-            className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
-              !isLoginTab ? 'bg-amber-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+            className={`flex-1 min-h-[44px] py-2 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-1.5 ${
+              !isLoginTab ? 'bg-amber-600 text-white shadow-md' : 'text-slate-200 hover:text-white'
             }`}
           >
-            <UserPlus className="w-3.5 h-3.5" />
+            <UserPlus className="w-4 h-4" />
             <span>Đăng Ký</span>
           </button>
         </div>
 
         {/* Thông báo lỗi / thành công */}
         {errorMsg && (
-          <div className="mb-4 p-3 bg-red-950/70 border border-red-500/50 rounded-xl text-xs text-red-200 flex items-start gap-2">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+          <div className="mb-4 p-3 bg-red-950 border border-red-400/70 rounded-xl text-sm text-red-100 flex items-start gap-2">
+            <AlertCircle className="w-4 h-4 text-red-300 shrink-0 mt-0.5" />
             <span>{errorMsg}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="mb-4 p-3 bg-emerald-950/70 border border-emerald-500/50 rounded-xl text-xs text-emerald-200 flex items-start gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="mb-4 p-3 bg-emerald-950 border border-emerald-400/70 rounded-xl text-sm text-emerald-100 flex items-start gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-300 shrink-0 mt-0.5" />
             <span>{successMsg}</span>
           </div>
         )}
@@ -195,7 +195,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           type="button"
           onClick={handleGoogleLogin}
           disabled={isLoading}
-          className="w-full py-3 px-4 bg-white hover:bg-slate-100 active:scale-98 text-slate-800 font-bold rounded-2xl shadow-md transition-all flex items-center justify-center gap-2.5 text-sm mb-4 border border-slate-200"
+          className="w-full min-h-[46px] py-3 px-4 bg-white hover:bg-slate-100 active:scale-98 text-slate-900 font-bold rounded-2xl shadow-md transition-all flex items-center justify-center gap-2.5 text-sm mb-4 border border-slate-200"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24">
             <path
@@ -219,49 +219,49 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         </button>
 
         <div className="flex items-center gap-3 my-4">
-          <div className="h-px bg-slate-800 flex-1" />
-          <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">hoặc email</span>
-          <div className="h-px bg-slate-800 flex-1" />
+          <div className="h-px bg-slate-700 flex-1" />
+          <span className="text-sm font-bold text-slate-300 uppercase tracking-wider">hoặc email</span>
+          <div className="h-px bg-slate-700 flex-1" />
         </div>
 
         {/* Form Email + Password */}
         <form onSubmit={handleEmailAuth} className="space-y-3.5">
           {!isLoginTab && (
             <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1">Tên Hiển Thị (Display Name):</label>
+              <label className="text-sm font-bold text-slate-100 block mb-1">Tên Hiển Thị (Display Name):</label>
               <div className="relative">
-                <UserIcon className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+                <UserIcon className="w-4 h-4 text-slate-300 absolute left-3.5 top-3.5" />
                 <input
                   type="text"
                   maxLength={32}
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Ví dụ: Chỉ Huy Việt Nam"
-                  className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:border-amber-500 outline-none transition-colors"
+                  className="w-full min-h-[44px] pl-10 pr-3.5 py-2.5 bg-slate-900 border border-slate-600 rounded-xl text-white text-sm focus:border-amber-400 outline-none transition-colors"
                 />
               </div>
             </div>
           )}
 
           <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Email:</label>
+            <label className="text-sm font-bold text-slate-100 block mb-1">Email:</label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <Mail className="w-4 h-4 text-slate-300 absolute left-3.5 top-3.5" />
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="tenban@gmail.com"
-                className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:border-amber-500 outline-none transition-colors"
+                className="w-full min-h-[44px] pl-10 pr-3.5 py-2.5 bg-slate-900 border border-slate-600 rounded-xl text-white text-sm focus:border-amber-400 outline-none transition-colors"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-300 block mb-1">Mật khẩu:</label>
+            <label className="text-sm font-bold text-slate-100 block mb-1">Mật khẩu:</label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <Lock className="w-4 h-4 text-slate-300 absolute left-3.5 top-3.5" />
               <input
                 type="password"
                 required
@@ -269,7 +269,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Tối thiểu 6 ký tự"
-                className="w-full pl-10 pr-3.5 py-2.5 bg-slate-950 border border-slate-700 rounded-xl text-white text-xs focus:border-amber-500 outline-none transition-colors"
+                className="w-full min-h-[44px] pl-10 pr-3.5 py-2.5 bg-slate-900 border border-slate-600 rounded-xl text-white text-sm focus:border-amber-400 outline-none transition-colors"
               />
             </div>
           </div>
@@ -277,7 +277,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 active:scale-98 text-white font-black rounded-xl shadow-lg shadow-amber-900/30 transition-all text-xs flex items-center justify-center gap-2 mt-2"
+            className="w-full min-h-[46px] py-3 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 active:scale-98 text-white font-black rounded-xl shadow-lg shadow-amber-900/30 transition-all text-sm flex items-center justify-center gap-2 mt-2"
           >
             {isLoading ? (
               <span>Đang kết nối...</span>
@@ -295,9 +295,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
         </form>
 
-        <div className="mt-4 p-2.5 bg-slate-950/60 rounded-xl border border-slate-800 text-[10px] text-slate-400 text-center flex items-center justify-center gap-1.5">
-          <ShieldAlert className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-          <span>Tài khoản quản trị đặc quyền dành riêng cho email: <strong>{ADMIN_EMAIL}</strong></span>
+        <div className="mt-4 p-2.5 bg-slate-900 rounded-xl border border-slate-700 text-sm text-slate-200 text-center flex items-center justify-center gap-1.5 flex-wrap">
+          <ShieldAlert className="w-4 h-4 text-amber-300 shrink-0" />
+          <span>Tài khoản quản trị đặc quyền dành riêng cho email: <strong className="text-white">{ADMIN_EMAIL}</strong></span>
         </div>
       </div>
     </div>

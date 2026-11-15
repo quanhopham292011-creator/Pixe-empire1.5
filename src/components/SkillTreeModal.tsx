@@ -334,11 +334,11 @@ const PixelNodeIcon: React.FC<{
       </svg>
       {/* Corner badge for level */}
       <span
-        className="absolute -bottom-1 -right-1 font-mono font-bold leading-none px-0.5 text-[8px]"
+        className="absolute -bottom-2 -right-2 font-mono font-bold leading-none px-1.5 py-0.5 text-sm rounded"
         style={{
           backgroundColor: '#020617',
-          color: isUnlocked ? '#f8fafc' : isAvailable ? '#fbbf24' : '#64748b',
-          border: '1px solid #1e293b',
+          color: isUnlocked ? '#f8fafc' : isAvailable ? '#fbbf24' : '#cbd5e1',
+          border: '1px solid #475569',
         }}
       >
         {level}
@@ -470,40 +470,40 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
     >
       {/* KHUNG CỬA SỔ PIXEL PHONG CÁCH FANTASY 2D */}
       <div
-        className="w-full max-w-2xl h-[98vh] max-h-[820px] flex flex-col bg-[#0b0f19] text-[#e2e8f0] relative"
+        className="w-full max-w-2xl h-[98vh] max-h-[820px] flex flex-col bg-[#0b0f19] text-[#f1f5f9] relative"
         style={{
-          border: '4px solid #334155',
+          border: '4px solid #475569',
           boxShadow: 'inset 0 0 0 2px #0f172a, 0 8px 0 0 #000000',
         }}
       >
         {/* 1. THANH TIÊU ĐỀ TRÊN CÙNG (PIXEL ART HEADER) */}
         <div
-          className="shrink-0 flex items-center justify-between px-3 py-2 bg-[#161f30] border-b-2 border-[#1e293b]"
+          className="shrink-0 flex items-center justify-between gap-2 px-3 py-2 bg-[#161f30] border-b-2 border-[#334155]"
           style={{
-            boxShadow: 'inset 0 1px 0 0 #334155',
+            boxShadow: 'inset 0 1px 0 0 #475569',
           }}
         >
           {/* Logo & Tên cửa sổ */}
           <div className="flex items-center gap-2 min-w-0">
             <div
-              className="w-7 h-7 flex items-center justify-center bg-[#090d16] border border-[#3b82f6] shrink-0"
+              className="w-8 h-8 flex items-center justify-center bg-[#090d16] border border-[#3b82f6] shrink-0"
               style={{ boxShadow: 'inset 0 0 0 1px #1d4ed8' }}
             >
               <PixelIconStar size={18} />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-mono text-xs sm:text-sm font-black text-[#f8fafc] tracking-wider uppercase">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-mono text-sm sm:text-base font-black text-white tracking-wider uppercase">
                   CÂY KỸ NĂNG ĐẾ CHẾ
                 </span>
                 <span
-                  className="font-mono text-[10px] font-bold px-1.5 py-0.2 bg-[#020617] text-[#93c5fd] border border-[#1e3a8a]"
+                  className="font-mono text-sm font-bold px-1.5 py-0.5 bg-[#020617] text-[#bfdbfe] border border-[#2563eb]"
                 >
                   Lv.{playerProfile.level}
                 </span>
               </div>
-              <div className="text-[10px] text-[#94a3b8] font-mono truncate">
-                3 Nhánh: Kinh Tế • Quân Đội • Anh Hùng
+              <div className="text-sm text-[#cbd5e1] font-mono truncate">
+                Kinh Tế • Quân Đội • Anh Hùng
               </div>
             </div>
           </div>
@@ -512,23 +512,23 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
           <div className="flex items-center gap-1.5 shrink-0">
             {/* Điểm Kỹ Năng */}
             <div
-              className="flex items-center gap-1 px-2 py-1 bg-[#1e1b12] border border-[#ca8a04]"
+              className="flex items-center gap-1 px-2 py-1.5 bg-[#1e1b12] border border-[#eab308]"
               title="Điểm kỹ năng khả dụng"
             >
               <PixelIconStar size={14} />
-              <span className="font-mono text-xs font-black text-[#fef08a]">
+              <span className="font-mono text-sm font-black text-[#fef08a]">
                 {playerProfile.skillPoints}
               </span>
-              <span className="text-[9px] font-mono text-[#facc15] hidden xs:inline">Điểm</span>
+              <span className="text-sm font-mono text-[#fde047] hidden sm:inline">Điểm</span>
             </div>
 
             {/* Xu Pixel */}
             <div
-              className="flex items-center gap-1 px-2 py-1 bg-[#0f172a] border border-[#475569]"
+              className="flex items-center gap-1 px-2 py-1.5 bg-[#0f172a] border border-[#64748b]"
               title="Xu Pixel"
             >
               <PixelIconGem size={14} />
-              <span className="font-mono text-xs font-bold text-[#67e8f9]">
+              <span className="font-mono text-sm font-bold text-[#a5f3fc]">
                 {playerProfile.pixelCoins}
               </span>
             </div>
@@ -537,10 +537,10 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
             <button
               type="button"
               onClick={() => setConfirmReset(true)}
-              className="flex items-center gap-1 px-2 py-1 bg-[#3f0f1b] hover:bg-[#5b1527] active:translate-y-0.5 border border-[#be123c] text-[#fecdd3] text-[10px] font-mono font-bold transition-transform"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center gap-1 px-2.5 py-1.5 bg-[#4c0519] hover:bg-[#881337] active:translate-y-0.5 border border-[#f43f5e] text-white text-sm font-mono font-bold transition-transform"
               title="Tẩy điểm cây kỹ năng (15 Xu Pixel)"
             >
-              <RotateCcw className="w-3 h-3 text-[#fb7185]" />
+              <RotateCcw className="w-4 h-4 text-[#fda4af]" />
               <span className="hidden sm:inline">Reset</span>
             </button>
 
@@ -548,9 +548,9 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center bg-[#1e293b] hover:bg-[#334155] active:translate-y-0.5 border border-[#475569] text-[#cbd5e1] hover:text-white"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center bg-[#1e293b] hover:bg-[#334155] active:translate-y-0.5 border border-[#64748b] text-white"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -558,16 +558,16 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
         {/* TOAST THÔNG BÁO */}
         {toastMessage && (
           <div
-            className="absolute top-12 left-1/2 -translate-x-1/2 z-40 px-3 py-1.5 bg-[#090d16] border-2 border-[#f59e0b] text-[#fef08a] font-mono text-xs font-bold shadow-lg flex items-center gap-2"
+            className="absolute top-14 left-1/2 -translate-x-1/2 z-40 px-3.5 py-2 bg-[#090d16] border-2 border-[#f59e0b] text-[#fef08a] font-mono text-sm font-bold shadow-lg flex items-center gap-2"
             style={{ boxShadow: '0 4px 0 0 #000000' }}
           >
-            <Zap className="w-3.5 h-3.5 text-[#facc15]" />
+            <Zap className="w-4 h-4 text-[#facc15]" />
             <span>{toastMessage}</span>
           </div>
         )}
 
         {/* 2. THANH CHUYỂN 3 TAB (KINH TẾ - QUÂN ĐỘI - ANH HÙNG) */}
-        <div className="shrink-0 grid grid-cols-3 gap-1 p-1.5 bg-[#080c14] border-b-2 border-[#1e293b]">
+        <div className="shrink-0 grid grid-cols-3 gap-1 p-1.5 bg-[#080c14] border-b-2 border-[#334155]">
           {/* TAB KINH TẾ (MÀU VÀNG) */}
           <button
             type="button"
@@ -575,20 +575,20 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
               setActiveTab('ECONOMY');
               setSelectedNode(null);
             }}
-            className={`py-2 px-1 text-center font-mono transition-transform border ${
+            className={`min-h-[48px] py-2 px-1 text-center font-mono transition-transform border ${
               activeTab === 'ECONOMY'
                 ? 'bg-[#291b07] border-[#eab308] text-[#fef08a] font-black shadow-sm'
-                : 'bg-[#0f172a] border-[#1e293b] text-[#94a3b8] hover:text-[#cbd5e1]'
+                : 'bg-[#0f172a] border-[#334155] text-[#cbd5e1] hover:text-white'
             }`}
             style={{
               boxShadow: activeTab === 'ECONOMY' ? 'inset 0 -2px 0 0 #ca8a04' : undefined,
             }}
           >
-            <div className="flex items-center justify-center gap-1 text-[11px] sm:text-xs uppercase">
-              <span className="text-sm">🪙</span>
+            <div className="flex items-center justify-center gap-1 text-sm uppercase">
+              <span>🪙</span>
               <span>Kinh Tế</span>
             </div>
-            <div className="text-[10px] text-[#ca8a04] font-bold">
+            <div className="text-sm text-[#fde047] font-bold">
               Cấp {economyLevel}/10
             </div>
           </button>
@@ -600,20 +600,20 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
               setActiveTab('MILITARY');
               setSelectedNode(null);
             }}
-            className={`py-2 px-1 text-center font-mono transition-transform border ${
+            className={`min-h-[48px] py-2 px-1 text-center font-mono transition-transform border ${
               activeTab === 'MILITARY'
                 ? 'bg-[#08203e] border-[#38bdf8] text-[#e0f2fe] font-black shadow-sm'
-                : 'bg-[#0f172a] border-[#1e293b] text-[#94a3b8] hover:text-[#cbd5e1]'
+                : 'bg-[#0f172a] border-[#334155] text-[#cbd5e1] hover:text-white'
             }`}
             style={{
               boxShadow: activeTab === 'MILITARY' ? 'inset 0 -2px 0 0 #0284c7' : undefined,
             }}
           >
-            <div className="flex items-center justify-center gap-1 text-[11px] sm:text-xs uppercase">
-              <span className="text-sm">🛡️</span>
+            <div className="flex items-center justify-center gap-1 text-sm uppercase">
+              <span>🛡️</span>
               <span>Quân Đội</span>
             </div>
-            <div className="text-[10px] text-[#38bdf8] font-bold">
+            <div className="text-sm text-[#7dd3fc] font-bold">
               Cấp {militaryLevel}/10
             </div>
           </button>
@@ -625,20 +625,20 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
               setActiveTab('HERO');
               setSelectedNode(null);
             }}
-            className={`py-2 px-1 text-center font-mono transition-transform border ${
+            className={`min-h-[48px] py-2 px-1 text-center font-mono transition-transform border ${
               activeTab === 'HERO'
                 ? 'bg-[#3b0b18] border-[#f43f5e] text-[#ffe4e6] font-black shadow-sm'
-                : 'bg-[#0f172a] border-[#1e293b] text-[#94a3b8] hover:text-[#cbd5e1]'
+                : 'bg-[#0f172a] border-[#334155] text-[#cbd5e1] hover:text-white'
             }`}
             style={{
               boxShadow: activeTab === 'HERO' ? 'inset 0 -2px 0 0 #be123c' : undefined,
             }}
           >
-            <div className="flex items-center justify-center gap-1 text-[11px] sm:text-xs uppercase">
-              <span className="text-sm">⚔️</span>
+            <div className="flex items-center justify-center gap-1 text-sm uppercase">
+              <span>⚔️</span>
               <span>Anh Hùng</span>
             </div>
-            <div className="text-[10px] text-[#f43f5e] font-bold">
+            <div className="text-sm text-[#fda4af] font-bold">
               Cấp {heroLevel}/10
             </div>
           </button>
@@ -647,19 +647,19 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
         {/* 3. THÂN CHÍNH: DANH SÁCH CÂY DỌC 10 CẤP & KHU VỰC KẾT HỢP */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 sm:p-3 min-h-0 space-y-3 bg-[#0a0e17]">
           {/* BANNER MỐC KẾT HỢP (HIỂN THỊ LIÊN QUAN ĐẾN TAB HIỆN TẠI) */}
-          <div className="p-2 bg-[#0d1424] border-2 border-[#1e293b]">
-            <div className="flex items-center justify-between mb-1.5 pb-1 border-b border-[#1e293b]">
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs">✨</span>
-                <span className="font-mono text-[11px] font-bold text-[#facc15] uppercase">
+          <div className="p-2.5 bg-[#0d1424] border-2 border-[#334155]">
+            <div className="flex items-center justify-between flex-wrap gap-1 mb-1.5 pb-1 border-b border-[#334155]">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-sm">✨</span>
+                <span className="font-mono text-sm font-bold text-[#fde047] uppercase">
                   MỐC KẾT HỢP ĐỘC BẢN
                 </span>
-                <span className="text-[9px] font-mono text-[#94a3b8] hidden sm:inline">
-                  (Chọn 1 duy nhất khi 2 nhánh ≥ Cấp 5)
+                <span className="text-sm font-mono text-[#cbd5e1] hidden sm:inline">
+                  (Chọn 1 khi 2 nhánh ≥ Cấp 5)
                 </span>
               </div>
               {chosenHybrid && (
-                <span className="text-[9px] font-mono bg-[#064e3b] text-[#6ee7b7] border border-[#059669] px-1.5 py-0.2 font-bold">
+                <span className="text-sm font-mono bg-[#064e3b] text-[#a7f3d0] border border-[#10b981] px-2 py-0.5 font-bold">
                   ĐÃ CHỌN 1/1
                 </span>
               )}
@@ -688,40 +688,40 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                       setSelectedNode({ type: 'HYBRID', node: h });
                     }}
                     disabled={isLockedOther}
-                    className={`p-2 text-left font-mono border transition-all relative ${
+                    className={`min-h-[48px] p-2.5 text-left font-mono border transition-all relative ${
                       isSelected
-                        ? 'bg-[#1e1b4b] border-[#a855f7] text-[#f5d0fe]'
+                        ? 'bg-[#1e1b4b] border-[#c084fc] text-[#f5d0fe]'
                         : isLockedOther
-                        ? 'bg-[#090d16] border-[#1e293b] text-[#475569] opacity-40 cursor-not-allowed'
+                        ? 'bg-[#090d16] border-[#334155] text-[#94a3b8] opacity-55 cursor-not-allowed'
                         : isEligible
                         ? 'bg-[#18181b] border-[#eab308] text-[#fef08a] hover:bg-[#27272a]'
-                        : 'bg-[#090d16] border-[#1e293b] text-[#94a3b8] hover:border-[#334155]'
-                    } ${isRelatedToCurrentTab ? 'ring-1 ring-[#38bdf8]/40' : ''}`}
+                        : 'bg-[#090d16] border-[#334155] text-[#e2e8f0] hover:border-[#64748b]'
+                    } ${isRelatedToCurrentTab ? 'ring-1 ring-[#38bdf8]/60' : ''}`}
                     style={{
                       boxShadow: isSelected ? '0 2px 0 0 #581c87' : '0 2px 0 0 #000000',
                     }}
                   >
                     <div className="flex items-center justify-between gap-1 mb-1">
-                      <span className="text-[9px] font-black uppercase text-[#facc15] truncate">
+                      <span className="text-sm font-black uppercase text-[#fde047] truncate">
                         {h.title}
                       </span>
                       {isSelected ? (
-                        <span className="text-[8px] bg-[#065f46] text-[#34d399] px-1 font-bold">
+                        <span className="text-sm bg-[#065f46] text-[#6ee7b7] px-1.5 font-bold">
                           ĐÃ BẬT
                         </span>
                       ) : isLockedOther ? (
-                        <span className="text-[8px] bg-[#1e293b] text-[#64748b] px-1">
+                        <span className="text-sm bg-[#1e293b] text-[#cbd5e1] px-1.5">
                           KHÓA
                         </span>
                       ) : isEligible ? (
-                        <span className="text-[8px] bg-[#78350f] text-[#fde047] px-1 font-bold">
+                        <span className="text-sm bg-[#78350f] text-[#fef08a] px-1.5 font-bold">
                           MỞ ĐƯỢC
                         </span>
                       ) : (
-                        <span className="text-[8px] text-[#64748b]">Cần Lv5</span>
+                        <span className="text-sm text-[#cbd5e1]">Cần Lv5</span>
                       )}
                     </div>
-                    <div className="text-[11px] font-bold text-white truncate leading-tight">
+                    <div className="text-sm font-bold text-white break-words leading-tight">
                       {h.name}
                     </div>
                   </button>
@@ -731,11 +731,11 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
           </div>
 
           {/* TIÊU ĐỀ NHÁNH KỸ NĂNG DỌC */}
-          <div className="flex items-center justify-between px-1">
-            <span className="font-mono text-[11px] font-bold text-[#cbd5e1] uppercase">
+          <div className="flex items-center justify-between flex-wrap gap-1 px-1">
+            <span className="font-mono text-sm font-bold text-white uppercase">
               TIẾN TRÌNH KỸ NĂNG (CẤP 1 → 10)
             </span>
-            <span className="font-mono text-[10px] text-[#94a3b8]">
+            <span className="font-mono text-sm text-[#cbd5e1]">
               Cần mở tuần tự từng cấp
             </span>
           </div>
@@ -745,7 +745,6 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
             {currentBranchData.map((node, index) => {
               const isUnlocked = currentLevel >= node.level;
               const isAvailable = currentLevel === node.level - 1;
-              const isLocked = currentLevel < node.level - 1;
               const isSelected =
                 selectedNode?.type === 'BRANCH' &&
                 selectedNode.branch === activeTab &&
@@ -760,7 +759,7 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                     <div
                       className="w-1.5 h-3 my-0.5 transition-colors"
                       style={{
-                        backgroundColor: currentLevel >= node.level ? '#eab308' : '#1e293b',
+                        backgroundColor: currentLevel >= node.level ? '#eab308' : '#334155',
                         boxShadow: '0 0 0 1px #090d16',
                       }}
                     />
@@ -772,20 +771,20 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                     onClick={() => {
                       setSelectedNode({ type: 'BRANCH', branch: activeTab, node });
                     }}
-                    className={`w-full p-2 font-mono text-left transition-all relative flex items-center justify-between gap-2 border ${
+                    className={`w-full min-h-[56px] p-2.5 font-mono text-left transition-all relative flex items-center justify-between gap-2 border ${
                       isSelected
                         ? 'ring-2 ring-[#fde047] z-10'
                         : ''
                     } ${
                       isUnlocked
                         ? activeTab === 'ECONOMY'
-                          ? 'bg-[#1c1917] border-[#ca8a04] text-[#fef08a]'
+                          ? 'bg-[#1c1917] border-[#eab308] text-[#fef08a]'
                           : activeTab === 'MILITARY'
-                          ? 'bg-[#0f172a] border-[#0284c7] text-[#e0f2fe]'
-                          : 'bg-[#1f0f16] border-[#be123c] text-[#ffe4e6]'
+                          ? 'bg-[#0f172a] border-[#38bdf8] text-[#e0f2fe]'
+                          : 'bg-[#1f0f16] border-[#f43f5e] text-[#ffe4e6]'
                         : isAvailable
                         ? 'bg-[#18181b] border-[#f59e0b] text-[#ffffff] hover:bg-[#27272a]'
-                        : 'bg-[#090d16] border-[#1e293b] text-[#64748b] opacity-60'
+                        : 'bg-[#090d16] border-[#334155] text-[#cbd5e1] opacity-75'
                     }`}
                     style={{
                       boxShadow: isSpecial
@@ -804,23 +803,23 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
 
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="font-mono text-xs font-bold text-white">
+                          <span className="font-mono text-sm font-bold text-white">
                             Cấp {node.level}: {node.name}
                           </span>
                           {node.level === 5 && (
-                            <span className="text-[9px] font-mono px-1 bg-[#854d0e] text-[#fef08a] border border-[#ca8a04]">
-                              ⭐ MỐC CẤP 5
+                            <span className="text-sm font-mono px-1.5 bg-[#854d0e] text-[#fef08a] border border-[#eab308]">
+                              ⭐ MỐC 5
                             </span>
                           )}
                           {node.level === 10 && (
-                            <span className="text-[9px] font-mono px-1 bg-[#991b1b] text-[#fef08a] border border-[#ef4444]">
+                            <span className="text-sm font-mono px-1.5 bg-[#991b1b] text-[#fef08a] border border-[#f87171]">
                               👑 TỐI THƯỢNG
                             </span>
                           )}
                         </div>
 
                         {/* Mô tả ngắn - chữ rõ ràng, không bị cắt */}
-                        <div className="text-[11px] text-[#cbd5e1] leading-tight mt-0.5 break-words">
+                        <div className="text-sm text-[#e2e8f0] leading-snug mt-0.5 break-words">
                           {node.shortDesc}
                         </div>
                       </div>
@@ -829,21 +828,21 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                     {/* Trạng thái mở khóa & giá */}
                     <div className="shrink-0 text-right flex flex-col items-end">
                       {isUnlocked ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#4ade80] bg-[#052e16] px-1.5 py-0.5 border border-[#166534]">
-                          <Check className="w-3 h-3" /> ĐÃ MỞ
+                        <span className="inline-flex items-center gap-1 text-sm font-bold text-[#86efac] bg-[#052e16] px-2 py-1 border border-[#22c55e]">
+                          <Check className="w-3.5 h-3.5" /> ĐÃ MỞ
                         </span>
                       ) : isAvailable ? (
                         <div className="flex flex-col items-end gap-0.5">
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#fde047] bg-[#78350f] px-1.5 py-0.5 border border-[#ca8a04]">
+                          <span className="inline-flex items-center gap-1 text-sm font-bold text-[#fef08a] bg-[#78350f] px-2 py-0.5 border border-[#eab308]">
                             NÂNG ĐƯỢC
                           </span>
-                          <span className="text-[9px] text-[#cbd5e1] font-mono">
+                          <span className="text-sm text-[#f1f5f9] font-mono">
                             1⭐ • {node.coinCost}💎
                           </span>
                         </div>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-[#64748b] bg-[#020617] px-1.5 py-0.5 border border-[#1e293b]">
-                          <Lock className="w-2.5 h-2.5" /> KHÓA
+                        <span className="inline-flex items-center gap-1 text-sm text-[#cbd5e1] bg-[#020617] px-2 py-1 border border-[#334155]">
+                          <Lock className="w-3.5 h-3.5" /> KHÓA
                         </span>
                       )}
                     </div>
@@ -857,7 +856,7 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
         {/* 4. KHUNG MÔ TẢ NHỎ GỌN (BOTTOM DRAWER / PANEL) */}
         {selectedNode && (
           <div
-            className="shrink-0 bg-[#090d16] border-t-4 border-[#334155] p-2.5 sm:p-3 relative"
+            className="shrink-0 bg-[#090d16] border-t-4 border-[#475569] p-3 relative"
             style={{
               boxShadow: '0 -4px 0 0 #000000',
             }}
@@ -866,8 +865,8 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
               <div className="min-w-0 flex-1">
                 {selectedNode.type === 'BRANCH' ? (
                   <>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 bg-[#1e293b] text-[#f8fafc] border border-[#475569]">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-sm font-mono font-bold px-2 py-0.5 bg-[#1e293b] text-white border border-[#64748b]">
                         {selectedNode.branch === 'ECONOMY'
                           ? 'Kinh Tế'
                           : selectedNode.branch === 'MILITARY'
@@ -876,50 +875,50 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                         • Cấp {selectedNode.node.level}/10
                       </span>
                       {selectedNode.node.isSpecialMilestone && (
-                        <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 bg-[#854d0e] text-[#fef08a] border border-[#ca8a04]">
+                        <span className="text-sm font-mono font-bold px-2 py-0.5 bg-[#854d0e] text-[#fef08a] border border-[#eab308]">
                           ⭐ Mốc Đặc Quyền
                         </span>
                       )}
                     </div>
-                    <div className="text-xs sm:text-sm font-bold text-[#ffffff] font-mono">
+                    <div className="text-sm sm:text-base font-bold text-white font-mono">
                       {selectedNode.node.name}
                     </div>
-                    <p className="text-[11px] text-[#cbd5e1] leading-relaxed mt-1 font-mono break-words">
+                    <p className="text-sm text-[#e2e8f0] leading-relaxed mt-1 font-mono break-words">
                       {selectedNode.node.fullDesc}
                     </p>
                   </>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 bg-[#581c87] text-[#f5d0fe] border border-[#a855f7]">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-sm font-mono font-bold px-2 py-0.5 bg-[#581c87] text-[#f5d0fe] border border-[#c084fc]">
                         Mốc Kết Hợp
                       </span>
-                      <span className="text-[10px] font-mono font-bold text-[#facc15]">
+                      <span className="text-sm font-mono font-bold text-[#fde047]">
                         {selectedNode.node.title}
                       </span>
                     </div>
-                    <div className="text-xs sm:text-sm font-bold text-[#ffffff] font-mono">
+                    <div className="text-sm sm:text-base font-bold text-white font-mono">
                       {selectedNode.node.name}
                     </div>
-                    <p className="text-[11px] text-[#cbd5e1] leading-relaxed mt-1 font-mono break-words">
+                    <p className="text-sm text-[#e2e8f0] leading-relaxed mt-1 font-mono break-words">
                       {selectedNode.node.fullDesc}
                     </p>
                   </>
                 )}
               </div>
 
-              {/* Nút đóng drawer nhỏ */}
+              {/* Nút đóng drawer */}
               <button
                 type="button"
                 onClick={() => setSelectedNode(null)}
-                className="w-6 h-6 flex items-center justify-center bg-[#1e293b] hover:bg-[#334155] border border-[#475569] text-[#cbd5e1]"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center bg-[#1e293b] hover:bg-[#334155] border border-[#64748b] text-white shrink-0"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* Chi phí & Nút hành động */}
-            <div className="mt-2.5 pt-2 border-t border-[#1e293b] flex items-center justify-between gap-2 flex-wrap">
+            <div className="mt-2.5 pt-2 border-t border-[#334155] flex items-center justify-between gap-2 flex-wrap">
               {selectedNode.type === 'BRANCH' ? (() => {
                 const curLvl =
                   selectedNode.branch === 'ECONOMY'
@@ -932,7 +931,7 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
 
                 if (isUnlocked) {
                   return (
-                    <div className="text-xs font-mono font-bold text-[#4ade80] flex items-center gap-1.5">
+                    <div className="text-sm font-mono font-bold text-[#86efac] flex items-center gap-1.5">
                       <Check className="w-4 h-4" /> KỸ NĂNG ĐÃ ĐƯỢC KÍCH HOẠT
                     </div>
                   );
@@ -940,8 +939,8 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
 
                 if (!isAvailable) {
                   return (
-                    <div className="text-xs font-mono text-[#94a3b8] flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5" /> Cần mở khóa Cấp {selectedNode.node.level - 1} trước
+                    <div className="text-sm font-mono text-[#cbd5e1] flex items-center gap-1.5">
+                      <Lock className="w-4 h-4" /> Cần mở khóa Cấp {selectedNode.node.level - 1} trước
                     </div>
                   );
                 }
@@ -952,13 +951,13 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
 
                 return (
                   <>
-                    <div className="flex items-center gap-2 text-xs font-mono text-[#cbd5e1]">
+                    <div className="flex items-center gap-2 text-sm font-mono text-[#f1f5f9]">
                       <span>Chi phí:</span>
-                      <span className={playerProfile.skillPoints >= 1 ? 'text-[#fef08a]' : 'text-[#f87171]'}>
+                      <span className={playerProfile.skillPoints >= 1 ? 'text-[#fef08a]' : 'text-[#fca5a5]'}>
                         1⭐
                       </span>
                       <span>•</span>
-                      <span className={playerProfile.pixelCoins >= selectedNode.node.coinCost ? 'text-[#67e8f9]' : 'text-[#f87171]'}>
+                      <span className={playerProfile.pixelCoins >= selectedNode.node.coinCost ? 'text-[#a5f3fc]' : 'text-[#fca5a5]'}>
                         {selectedNode.node.coinCost}💎
                       </span>
                     </div>
@@ -967,10 +966,10 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                       type="button"
                       onClick={() => handleUpgradeBranch(selectedNode.branch, selectedNode.node)}
                       disabled={!canAfford}
-                      className={`px-3 py-1.5 font-mono text-xs font-bold transition-transform ${
+                      className={`min-h-[44px] px-4 py-2 font-mono text-sm font-bold transition-transform ${
                         canAfford
                           ? 'bg-[#b45309] hover:bg-[#d97706] active:translate-y-0.5 text-[#fef08a] border-2 border-[#facc15]'
-                          : 'bg-[#1e293b] text-[#64748b] border border-[#334155] cursor-not-allowed'
+                          : 'bg-[#1e293b] text-[#94a3b8] border border-[#475569] cursor-not-allowed'
                       }`}
                       style={{
                         boxShadow: canAfford ? '0 2px 0 0 #78350f' : undefined,
@@ -992,7 +991,7 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
 
                 if (isSelected) {
                   return (
-                    <div className="text-xs font-mono font-bold text-[#c084fc] flex items-center gap-1.5">
+                    <div className="text-sm font-mono font-bold text-[#d8b4fe] flex items-center gap-1.5">
                       <Check className="w-4 h-4" /> MỐC ĐANG KÍCH HOẠT
                     </div>
                   );
@@ -1000,7 +999,7 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
 
                 if (isLockedOther) {
                   return (
-                    <div className="text-xs font-mono text-[#64748b]">
+                    <div className="text-sm font-mono text-[#cbd5e1]">
                       ĐÃ KHÓA (Bạn đã kích hoạt mốc kết hợp khác)
                     </div>
                   );
@@ -1008,7 +1007,7 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
 
                 if (!isEligible) {
                   return (
-                    <div className="text-xs font-mono text-[#94a3b8]">
+                    <div className="text-sm font-mono text-[#cbd5e1]">
                       Yêu cầu cả 2 nhánh tương ứng đạt tối thiểu Cấp 5
                     </div>
                   );
@@ -1020,13 +1019,13 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
 
                 return (
                   <>
-                    <div className="flex items-center gap-2 text-xs font-mono text-[#cbd5e1]">
+                    <div className="flex items-center gap-2 text-sm font-mono text-[#f1f5f9]">
                       <span>Chi phí:</span>
-                      <span className={playerProfile.skillPoints >= selectedNode.node.skillPointCost ? 'text-[#fef08a]' : 'text-[#f87171]'}>
+                      <span className={playerProfile.skillPoints >= selectedNode.node.skillPointCost ? 'text-[#fef08a]' : 'text-[#fca5a5]'}>
                         {selectedNode.node.skillPointCost}⭐
                       </span>
                       <span>•</span>
-                      <span className={playerProfile.pixelCoins >= selectedNode.node.coinCost ? 'text-[#67e8f9]' : 'text-[#f87171]'}>
+                      <span className={playerProfile.pixelCoins >= selectedNode.node.coinCost ? 'text-[#a5f3fc]' : 'text-[#fca5a5]'}>
                         {selectedNode.node.coinCost}💎
                       </span>
                     </div>
@@ -1035,10 +1034,10 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                       type="button"
                       onClick={() => setConfirmHybrid(selectedNode.node)}
                       disabled={!canAfford}
-                      className={`px-3 py-1.5 font-mono text-xs font-bold transition-transform ${
+                      className={`min-h-[44px] px-4 py-2 font-mono text-sm font-bold transition-transform ${
                         canAfford
                           ? 'bg-[#7e22ce] hover:bg-[#9333ea] active:translate-y-0.5 text-[#f5d0fe] border-2 border-[#c084fc]'
-                          : 'bg-[#1e293b] text-[#64748b] border border-[#334155] cursor-not-allowed'
+                          : 'bg-[#1e293b] text-[#94a3b8] border border-[#475569] cursor-not-allowed'
                       }`}
                       style={{
                         boxShadow: canAfford ? '0 2px 0 0 #581c87' : undefined,
@@ -1057,20 +1056,20 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
         {confirmHybrid && (
           <div className="fixed inset-0 z-60 flex items-center justify-center p-3 bg-black/85">
             <div
-              className="max-w-md w-full bg-[#0b0f19] text-[#e2e8f0] p-4 font-mono space-y-3"
+              className="max-w-md w-full bg-[#0b0f19] text-white p-4 font-mono space-y-3"
               style={{
                 border: '3px solid #eab308',
                 boxShadow: '0 6px 0 0 #000000',
               }}
             >
-              <div className="flex items-center gap-2 text-[#facc15] font-black text-sm">
+              <div className="flex items-center gap-2 text-[#fde047] font-black text-base">
                 <Sparkles className="w-5 h-5" />
                 <span>XÁC NHẬN MỐC KẾT HỢP</span>
               </div>
-              <div className="text-xs font-bold text-white">
+              <div className="text-sm font-bold text-white">
                 {confirmHybrid.name} ({confirmHybrid.title})
               </div>
-              <div className="p-2 bg-[#1c1917] border border-[#ca8a04] text-[11px] text-[#fef08a] leading-relaxed">
+              <div className="p-2.5 bg-[#1c1917] border border-[#eab308] text-sm text-[#fef08a] leading-relaxed">
                 ⚠️ <strong>CẢNH BÁO DUY NHẤT:</strong> Bạn chỉ được chọn{' '}
                 <strong>1 trong 3 mốc kết hợp</strong>. Sau khi chọn, 2 mốc còn lại sẽ bị khóa
                 cho đến khi bạn thực hiện Tẩy Điểm (Reset).
@@ -1079,14 +1078,14 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setConfirmHybrid(null)}
-                  className="flex-1 py-1.5 bg-[#1e293b] hover:bg-[#334155] border border-[#475569] text-xs font-bold text-[#cbd5e1]"
+                  className="flex-1 min-h-[44px] py-2 bg-[#1e293b] hover:bg-[#334155] border border-[#64748b] text-sm font-bold text-white"
                 >
                   HỦY BỎ
                 </button>
                 <button
                   type="button"
                   onClick={() => handleUpgradeHybrid(confirmHybrid)}
-                  className="flex-1 py-1.5 bg-[#ca8a04] hover:bg-[#eab308] border border-[#fef08a] text-xs font-black text-[#0f172a]"
+                  className="flex-1 min-h-[44px] py-2 bg-[#ca8a04] hover:bg-[#eab308] border border-[#fef08a] text-sm font-black text-[#0f172a]"
                 >
                   XÁC NHẬN CHỌN
                 </button>
@@ -1099,22 +1098,22 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
         {confirmReset && (
           <div className="fixed inset-0 z-60 flex items-center justify-center p-3 bg-black/85">
             <div
-              className="max-w-md w-full bg-[#0b0f19] text-[#e2e8f0] p-4 font-mono space-y-3"
+              className="max-w-md w-full bg-[#0b0f19] text-white p-4 font-mono space-y-3"
               style={{
                 border: '3px solid #ef4444',
                 boxShadow: '0 6px 0 0 #000000',
               }}
             >
-              <div className="flex items-center gap-2 text-[#f87171] font-black text-sm">
+              <div className="flex items-center gap-2 text-[#fca5a5] font-black text-base">
                 <RotateCcw className="w-5 h-5" />
                 <span>TẨY ĐIỂM CÂY KỸ NĂNG</span>
               </div>
-              <div className="p-2 bg-[#2d0f17] border border-[#be123c] text-[11px] text-[#fecdd3] leading-relaxed space-y-1">
+              <div className="p-2.5 bg-[#2d0f17] border border-[#f43f5e] text-sm text-[#ffe4e6] leading-relaxed space-y-1">
                 <div>• Hoàn lại toàn bộ Điểm Kỹ Năng đã nâng ở cả 3 nhánh.</div>
                 <div>• Mở khóa lại mốc kết hợp để bạn tự do chọn lại.</div>
                 <div>
                   • Chi phí:{' '}
-                  <strong className="text-[#67e8f9]">
+                  <strong className="text-[#a5f3fc]">
                     {RESET_SKILL_TREE_COIN_COST} Xu Pixel
                   </strong>{' '}
                   (Vàng đã tiêu không hoàn lại).
@@ -1124,14 +1123,14 @@ export const SkillTreeModal: React.FC<SkillTreeModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setConfirmReset(false)}
-                  className="flex-1 py-1.5 bg-[#1e293b] hover:bg-[#334155] border border-[#475569] text-xs font-bold text-[#cbd5e1]"
+                  className="flex-1 min-h-[44px] py-2 bg-[#1e293b] hover:bg-[#334155] border border-[#64748b] text-sm font-bold text-white"
                 >
                   HỦY BỎ
                 </button>
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="flex-1 py-1.5 bg-[#be123c] hover:bg-[#e11d48] border border-[#fecdd3] text-xs font-black text-white"
+                  className="flex-1 min-h-[44px] py-2 bg-[#be123c] hover:bg-[#e11d48] border border-[#fecdd3] text-sm font-black text-white"
                 >
                   XÁC NHẬN TẨY ĐIỂM
                 </button>

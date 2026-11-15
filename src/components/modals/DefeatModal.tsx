@@ -41,16 +41,16 @@ export const DefeatModal: React.FC<DefeatModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-in fade-in zoom-in">
-      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 max-w-md w-full text-center shadow-2xl max-h-[92vh] overflow-y-auto">
-        <AlertTriangle className="w-14 h-14 text-red-500 mx-auto mb-2 animate-pulse" />
+      <div className="bg-slate-950 border-2 border-slate-600 rounded-3xl p-5 sm:p-7 max-w-md w-full text-center shadow-2xl max-h-[92vh] overflow-y-auto">
+        <AlertTriangle className="w-14 h-14 text-red-400 mx-auto mb-2 animate-pulse" />
         <h2 className="text-2xl font-black text-white mb-1">ĐẾ CHẾ SỤP ĐỔ!</h2>
-        <p className="text-xs text-slate-300 mb-2">Lãnh thổ của bạn đã hoàn toàn thất thủ.</p>
+        <p className="text-sm text-slate-200 mb-2">Lãnh thổ của bạn đã hoàn toàn thất thủ.</p>
 
         {victoryReward && !victoryReward.isCreative && (
-          <div className="mb-3 p-3 bg-slate-950/80 border border-slate-700/60 rounded-xl text-center text-xs text-slate-300 shadow">
-            <div>Thưởng an ủi: <strong className="text-amber-400">+{victoryReward.expGained} EXP, +{victoryReward.coinsGained} Xu</strong></div>
+          <div className="mb-3 p-3 bg-slate-900 border border-slate-600 rounded-xl text-center text-sm text-slate-100 shadow">
+            <div>Thưởng an ủi: <strong className="text-amber-300">+{victoryReward.expGained} EXP, +{victoryReward.coinsGained} Xu</strong></div>
             {victoryReward.leveledUp && (
-              <div className="text-amber-300 font-bold mt-1">🎉 Chúc mừng bạn đã lên cấp {victoryReward.newLevel}!</div>
+              <div className="text-amber-200 font-bold mt-1">🎉 Chúc mừng bạn đã lên cấp {victoryReward.newLevel}!</div>
             )}
           </div>
         )}
@@ -63,7 +63,7 @@ export const DefeatModal: React.FC<DefeatModalProps> = ({
           isVictory={false}
         />
 
-        <div className="flex flex-col gap-2 mt-2">
+        <div className="flex flex-col gap-2 mt-3">
           <button
             onClick={() => {
               if (isMultiplayer) {
@@ -84,7 +84,7 @@ export const DefeatModal: React.FC<DefeatModalProps> = ({
                 multiplayerClient.leaveRoom();
                 setGameState('TITLE');
               }}
-              className="w-full py-3 bg-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-bold border border-slate-700 min-h-[44px]"
+              className="w-full py-3 bg-slate-900 text-slate-100 hover:text-white rounded-xl text-sm font-bold border border-slate-600 min-h-[44px]"
             >
               Thoát Về Màn Hình Chính
             </button>

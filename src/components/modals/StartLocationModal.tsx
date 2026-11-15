@@ -228,35 +228,35 @@ export const StartLocationModal: React.FC<StartLocationModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-2 sm:p-4 animate-in fade-in duration-200">
       <div 
-        className="w-full max-w-lg bg-slate-950 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-slate-100"
+        className="w-full max-w-lg bg-slate-950 border-2 border-slate-600 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-slate-100"
         style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         {/* HEADER */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-900/90 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-400">
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-slate-700 bg-slate-900 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="p-2 bg-amber-500/20 border border-amber-400/60 rounded-xl text-amber-300 shrink-0">
               <Compass className="w-5 h-5" />
             </div>
-            <div>
+            <div className="min-w-0">
               <h3 className="font-extrabold text-white text-base tracking-wide flex items-center gap-1.5">
                 TỰ CHỌN VỊ TRÍ KHỞI ĐẦU
               </h3>
-              <p className="text-[11px] text-slate-400">
+              <p className="text-sm text-slate-200">
                 Chạm bản đồ để chọn Thủ đô & Lãnh thổ ban đầu
               </p>
             </div>
           </div>
           <button 
             onClick={onClose} 
-            className="p-2 text-slate-400 hover:text-white rounded-xl active:bg-slate-800 bg-slate-900 border border-slate-800"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-slate-200 hover:text-white rounded-xl active:bg-slate-800 bg-slate-900 border border-slate-600 shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* MAP CANVAS DISPLAY */}
-        <div className="p-3 bg-slate-900/50 flex flex-col items-center justify-center shrink-0 border-b border-slate-800">
-          <div className="relative w-full max-w-[340px] aspect-square rounded-2xl overflow-hidden border-2 border-slate-700/80 shadow-2xl bg-blue-950 cursor-crosshair touch-none">
+        <div className="p-3 bg-slate-900/70 flex flex-col items-center justify-center shrink-0 border-b border-slate-700">
+          <div className="relative w-full max-w-[340px] aspect-square rounded-2xl overflow-hidden border-2 border-slate-600 shadow-2xl bg-blue-950 cursor-crosshair touch-none">
             <canvas
               ref={canvasRef}
               className="w-full h-full block"
@@ -269,17 +269,17 @@ export const StartLocationModal: React.FC<StartLocationModalProps> = ({
             />
 
             {/* OVERLAY LEGEND BADGES */}
-            <div className="absolute top-2 left-2 flex items-center gap-1 bg-slate-950/80 backdrop-blur px-2 py-1 rounded-lg text-[10px] text-slate-300 font-bold border border-slate-800">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+            <div className="absolute top-2 left-2 flex items-center gap-1.5 bg-slate-950/90 backdrop-blur px-2.5 py-1 rounded-lg text-sm text-white font-bold border border-slate-600">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
               <span>Vị trí chọn</span>
             </div>
 
-            <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-slate-950/80 backdrop-blur px-2 py-1 rounded-lg text-[10px] text-slate-300 font-bold border border-slate-800">
-              <span className="w-2 h-2 rounded-full bg-red-500" />
+            <div className="absolute top-2 right-2 flex items-center gap-1.5 bg-slate-950/90 backdrop-blur px-2.5 py-1 rounded-lg text-sm text-white font-bold border border-slate-600">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
               <span>Thủ đô khác</span>
             </div>
           </div>
-          <p className="text-[10px] text-slate-400 mt-1.5 text-center font-medium">
+          <p className="text-sm text-slate-200 mt-1.5 text-center font-medium">
             💡 Mẹo: Chạm vào vùng đất xanh để đặt Thủ đô. Vòng viền đứt nét là bán kính kiểm soát ban đầu.
           </p>
         </div>
@@ -287,28 +287,28 @@ export const StartLocationModal: React.FC<StartLocationModalProps> = ({
         {/* DETAILS & VALIDATION PANEL */}
         <div className="p-3 sm:p-4 space-y-2.5 overflow-y-auto flex-1 bg-slate-950">
           {/* STATUS BADGE */}
-          <div className={`p-2.5 rounded-2xl border flex items-start gap-2.5 transition-colors ${
+          <div className={`p-3 rounded-2xl border flex items-start gap-2.5 transition-colors ${
             validation.isValid 
-              ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200' 
-              : 'bg-rose-950/40 border-rose-500/50 text-rose-200'
+              ? 'bg-emerald-950/70 border-emerald-400/70 text-emerald-100' 
+              : 'bg-rose-950/70 border-rose-400/70 text-rose-100'
           }`}>
             {validation.isValid ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+              <CheckCircle2 className="w-5 h-5 text-emerald-300 shrink-0 mt-0.5" />
             ) : (
-              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <AlertCircle className="w-5 h-5 text-rose-300 shrink-0 mt-0.5" />
             )}
             <div className="min-w-0 flex-1">
-              <div className="flex items-center justify-between gap-1">
-                <span className="font-extrabold text-xs tracking-wide">
+              <div className="flex items-center justify-between flex-wrap gap-1">
+                <span className="font-extrabold text-sm tracking-wide text-white">
                   {validation.isValid ? '🟢 VỊ TRÍ HỢP LỆ' : '🔴 KHÔNG THỂ KHỞI ĐẦU TẠI ĐÂY'}
                 </span>
                 {selectedPos && (
-                  <span className="font-mono text-[11px] px-1.5 py-0.5 bg-slate-900 border border-slate-800 rounded-md text-amber-300 font-bold">
+                  <span className="font-mono text-sm px-2 py-0.5 bg-slate-900 border border-slate-600 rounded-md text-amber-200 font-bold">
                     ({selectedPos.x}, {selectedPos.y})
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
+              <p className="text-sm text-slate-100 mt-1 leading-snug">
                 {validation.isValid
                   ? `Lãnh thổ ban đầu gồm ${validation.initialLandCount} ô đất. ${validation.hasHarborAccess ? 'Vùng ven biển thuận lợi xây Hải Cảng 🌊.' : 'Nội địa an toàn 🏞️.'}`
                   : validation.reason}
@@ -318,28 +318,28 @@ export const StartLocationModal: React.FC<StartLocationModalProps> = ({
 
           {/* GEOGRAPHY & RESOURCE BADGES */}
           {validation.isValid && (
-            <div className="grid grid-cols-3 gap-1.5">
-              <div className="p-2 bg-slate-900 border border-slate-800 rounded-xl flex items-center gap-1.5">
-                <Shield className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+            <div className="grid grid-cols-3 gap-2">
+              <div className="p-2 bg-slate-900 border border-slate-700 rounded-xl flex items-center gap-1.5">
+                <Shield className="w-4 h-4 text-blue-300 shrink-0" />
                 <div>
-                  <div className="text-[9px] text-slate-400 font-bold uppercase">Phòng thủ</div>
-                  <div className="text-[11px] font-black text-blue-300">{validation.defenseBonus}x</div>
+                  <div className="text-sm text-slate-200 font-bold">Thủ</div>
+                  <div className="text-sm font-black text-blue-200">{validation.defenseBonus}x</div>
                 </div>
               </div>
 
-              <div className="p-2 bg-slate-900 border border-slate-800 rounded-xl flex items-center gap-1.5">
-                <Trees className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <div className="p-2 bg-slate-900 border border-slate-700 rounded-xl flex items-center gap-1.5">
+                <Trees className="w-4 h-4 text-emerald-300 shrink-0" />
                 <div>
-                  <div className="text-[9px] text-slate-400 font-bold uppercase">Rừng lân cận</div>
-                  <div className="text-[11px] font-black text-emerald-300">{validation.nearbyForests} ô</div>
+                  <div className="text-sm text-slate-200 font-bold">Rừng</div>
+                  <div className="text-sm font-black text-emerald-200">{validation.nearbyForests} ô</div>
                 </div>
               </div>
 
-              <div className="p-2 bg-slate-900 border border-slate-800 rounded-xl flex items-center gap-1.5">
-                <Anchor className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+              <div className="p-2 bg-slate-900 border border-slate-700 rounded-xl flex items-center gap-1.5">
+                <Anchor className="w-4 h-4 text-amber-300 shrink-0" />
                 <div>
-                  <div className="text-[9px] text-slate-400 font-bold uppercase">Thù địch gần nhất</div>
-                  <div className="text-[11px] font-black text-amber-300">{validation.nearestEnemyDist.toFixed(1)} ô</div>
+                  <div className="text-sm text-slate-200 font-bold">Địch gần</div>
+                  <div className="text-sm font-black text-amber-200">{validation.nearestEnemyDist.toFixed(1)} ô</div>
                 </div>
               </div>
             </div>
@@ -347,21 +347,21 @@ export const StartLocationModal: React.FC<StartLocationModalProps> = ({
         </div>
 
         {/* FOOTER ACTIONS */}
-        <div className="p-3 bg-slate-900/90 border-t border-slate-800 space-y-2 shrink-0">
+        <div className="p-3 bg-slate-900 border-t border-slate-700 space-y-2 shrink-0">
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleRandomPosition}
-              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-1.5 text-xs active:scale-95"
+              className="min-h-[44px] py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-600 transition-all flex items-center justify-center gap-1.5 text-sm active:scale-95"
             >
-              <Shuffle className="w-4 h-4 text-amber-400" />
+              <Shuffle className="w-4 h-4 text-amber-300" />
               <span>Đổi Vị Trí</span>
             </button>
 
             <button
               onClick={handleNewMapSeed}
-              className="py-2.5 px-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-1.5 text-xs active:scale-95"
+              className="min-h-[44px] py-2.5 px-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-600 transition-all flex items-center justify-center gap-1.5 text-sm active:scale-95"
             >
-              <Map className="w-4 h-4 text-blue-400" />
+              <Map className="w-4 h-4 text-blue-300" />
               <span>Đổi Bản Đồ</span>
             </button>
           </div>
@@ -369,10 +369,10 @@ export const StartLocationModal: React.FC<StartLocationModalProps> = ({
           <button
             disabled={!validation.isValid}
             onClick={handleConfirm}
-            className={`w-full py-3.5 px-4 font-black rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 text-sm active:scale-98 ${
+            className={`w-full min-h-[48px] py-3.5 px-4 font-black rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 text-sm active:scale-98 ${
               validation.isValid
                 ? 'bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 hover:from-emerald-500 hover:to-blue-500 text-white shadow-emerald-600/30'
-                : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
+                : 'bg-slate-800 text-slate-300 border border-slate-600 cursor-not-allowed opacity-60'
             }`}
           >
             <Check className="w-5 h-5" />

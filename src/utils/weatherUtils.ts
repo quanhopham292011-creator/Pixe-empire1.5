@@ -7,7 +7,7 @@ export function generateWeatherParticles(dimension: MapDimension, type: WeatherT
   const particles: WeatherParticle[] = [];
 
   // 1. Luôn tạo 20-30 cụm mây trôi bềnh bồng pixel-art
-  const cloudCount = dimension === 64 ? 18 : dimension === 96 ? 26 : 34;
+  const cloudCount = dimension === 64 ? 8 : dimension === 96 ? 12 : 16;
   for (let i = 0; i < cloudCount; i++) {
     const x = Math.random() * (mapPx + 200) - 100;
     const y = Math.random() * (mapPx + 100) - 50;
@@ -41,7 +41,7 @@ export function generateWeatherParticles(dimension: MapDimension, type: WeatherT
 
   // 2. Nếu trời MƯA (RAIN), thêm 80-120 hạt mưa lướt nghiêng
   if (type === 'RAIN') {
-    const rainCount = dimension === 64 ? 65 : dimension === 96 ? 95 : 130;
+    const rainCount = dimension === 64 ? 30 : dimension === 96 ? 45 : 60;
     for (let i = 0; i < rainCount; i++) {
       particles.push({
         x: Math.random() * (mapPx + 100) - 50,

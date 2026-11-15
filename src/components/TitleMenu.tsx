@@ -116,12 +116,12 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
         WebkitOverflowScrolling: 'touch'
       }}
     >
-      <div className="max-w-md w-full bg-slate-900/95 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-2xl backdrop-blur-md my-auto space-y-3.5">
+      <div className="max-w-md w-full bg-slate-950/95 border border-slate-700 rounded-3xl p-4 sm:p-5 shadow-2xl backdrop-blur-md my-auto space-y-3.5">
         
         {/* 1. TÊN GAME: PIXEL EMPIRE */}
         <div className="text-center pt-0.5 pb-0.5 select-none">
           <h1 
-            className="text-2xl sm:text-3xl font-black tracking-wider text-amber-400 uppercase font-mono"
+            className="text-2xl sm:text-3xl font-black tracking-wider text-amber-300 uppercase font-mono"
             style={{
               textShadow: '0 2px 0 #78350f, 0 4px 10px rgba(245, 158, 11, 0.35)',
               letterSpacing: '0.08em'
@@ -129,17 +129,17 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
           >
             PIXEL EMPIRE
           </h1>
-          <p className="text-[11px] sm:text-xs font-semibold text-slate-300 tracking-wider uppercase mt-0.5 flex items-center justify-center gap-1.5">
-            <span className="text-amber-500">⚔️</span>
+          <p className="text-sm font-semibold text-slate-100 tracking-wider uppercase mt-0.5 flex items-center justify-center gap-1.5">
+            <span className="text-amber-400">⚔️</span>
             <span>Chinh phục thế giới</span>
-            <span className="text-amber-500">🛡️</span>
+            <span className="text-amber-400">🛡️</span>
           </p>
         </div>
 
         {/* 2. HÀNG THÔNG TIN NGƯỜI CHƠI (Lv, Tên, Xu) */}
-        <div className="flex items-center justify-between bg-slate-950/80 border border-slate-800 rounded-2xl p-2.5 sm:p-3 shadow-inner gap-2">
+        <div className="flex items-center justify-between bg-slate-900 border border-slate-700 rounded-2xl p-2.5 sm:p-3 shadow-inner gap-2">
           <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-300 font-black text-xs shrink-0 shadow">
+            <div className="min-w-[44px] h-11 px-2 rounded-xl bg-amber-500/20 border border-amber-400/60 flex items-center justify-center text-amber-200 font-black text-sm shrink-0 shadow">
               Lv.{playerProfile.level}
             </div>
             <div className="min-w-0 flex-1 text-left">
@@ -150,20 +150,20 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
                   placeholder="Tên quốc gia..."
-                  className="w-full bg-transparent text-white font-bold text-xs sm:text-sm focus:bg-slate-900 px-1 py-0.5 rounded outline-none border-b border-transparent focus:border-amber-500 transition-colors truncate"
+                  className="w-full min-h-[44px] bg-transparent text-white font-bold text-sm sm:text-base focus:bg-slate-950 px-1 py-1 rounded outline-none border-b border-slate-600 focus:border-amber-400 transition-colors"
                 />
               </div>
-              <div className="text-[11px] text-slate-300 px-1 flex items-center gap-1 mt-0.5">
-                <Crown className="w-3 h-3 text-amber-400 shrink-0" />
+              <div className="text-sm text-slate-200 px-1 flex items-center gap-1 mt-0.5">
+                <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" />
                 <span className="truncate">Đế Quốc Của Tôi</span>
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-500/15 border border-amber-500/40 rounded-xl shadow-inner min-h-[38px]">
-              <Coins className="w-4 h-4 text-amber-400 shrink-0" />
-              <span className="text-xs font-black text-amber-300 font-mono">
+            <div className="flex items-center gap-1.5 px-3 py-2 bg-amber-500/20 border border-amber-400/60 rounded-xl shadow-inner min-h-[44px]">
+              <Coins className="w-4 h-4 text-amber-300 shrink-0" />
+              <span className="text-sm font-black text-amber-200 font-mono">
                 {playerProfile.pixelCoins}
               </span>
             </div>
@@ -178,32 +178,32 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
               <button
                 type="button"
                 onClick={loadGame}
-                className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold rounded-2xl shadow-lg shadow-emerald-500/20 border border-emerald-400/40 transition-all flex items-center justify-between min-h-[58px] active:scale-98"
+                className="w-full py-3.5 px-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-white font-extrabold rounded-2xl shadow-lg shadow-emerald-500/20 border border-emerald-400/50 transition-all flex items-center justify-between min-h-[58px] active:scale-98"
               >
                 <div className="flex items-center gap-3 text-left min-w-0">
-                  <RotateCcw className="w-5 h-5 text-emerald-200 shrink-0" />
+                  <RotateCcw className="w-5 h-5 text-emerald-100 shrink-0" />
                   <div className="min-w-0">
-                    <div className="text-sm sm:text-base font-black leading-tight flex items-center gap-2">
+                    <div className="text-sm sm:text-base font-black leading-tight flex items-center gap-2 flex-wrap">
                       <span>Tiếp Tục Ván Cũ</span>
-                      <span className="text-[11px] font-bold bg-emerald-950/80 text-emerald-300 px-2 py-0.5 rounded-md border border-emerald-500/30">
+                      <span className="text-sm font-bold bg-emerald-950/90 text-emerald-200 px-2 py-0.5 rounded-md border border-emerald-400/50">
                         {savedGameInfo.mode}
                       </span>
                     </div>
-                    <div className="text-[11px] sm:text-xs text-slate-200 font-normal mt-0.5 truncate">
+                    <div className="text-sm text-slate-100 font-normal mt-0.5 break-words">
                       {savedGameInfo.playerName} • Lưu: {savedGameInfo.timestamp} ({savedGameInfo.gameTimeStr})
                     </div>
                   </div>
                 </div>
-                <ChevronRight className="w-5 h-5 text-emerald-200 shrink-0" />
+                <ChevronRight className="w-5 h-5 text-emerald-100 shrink-0" />
               </button>
 
               {/* Nút nhỏ: Chơi mới (Xóa ván cũ) với viền đỏ nhạt */}
               <button
                 type="button"
                 onClick={() => setShowConfirmNewGame(true)}
-                className="w-full py-2.5 px-3 bg-slate-900/80 hover:bg-red-950/30 text-red-300 font-semibold rounded-xl border border-red-500/30 hover:border-red-500/50 transition-all flex items-center justify-center gap-2 text-xs min-h-[44px] active:scale-98 shadow-sm"
+                className="w-full py-2.5 px-3 bg-slate-900 hover:bg-red-950/50 text-red-200 font-semibold rounded-xl border border-red-400/50 hover:border-red-400 transition-all flex items-center justify-center gap-2 text-sm min-h-[44px] active:scale-98 shadow-sm"
               >
-                <RotateCcw className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                <RotateCcw className="w-4 h-4 text-red-300 shrink-0" />
                 <span>Chơi Mới (Xóa ván cũ)</span>
               </button>
             </>
@@ -213,8 +213,8 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
               onClick={() => startNewGame(difficulty, mapSize, playerName, gameMode)}
               className={`w-full py-4 px-4 text-white font-extrabold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2.5 text-base min-h-[58px] active:scale-98 ${
                 gameMode === 'CREATIVE'
-                  ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 hover:from-purple-500 hover:to-pink-500 shadow-purple-500/25 border border-purple-400/40'
-                  : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 shadow-blue-500/25 border border-blue-400/40'
+                  ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-indigo-600 hover:from-purple-500 hover:to-pink-500 shadow-purple-500/25 border border-purple-400/50'
+                  : 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 shadow-blue-500/25 border border-blue-400/50'
               }`}
             >
               {gameMode === 'CREATIVE' ? (
@@ -233,29 +233,29 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
         <button
           type="button"
           onClick={() => { soundManager.playClick(); setIsSettingsSheetOpen(true); }}
-          className="w-full py-2.5 px-3.5 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 font-bold rounded-xl border border-slate-700/80 transition-all flex items-center justify-between min-h-[46px] active:scale-98 shadow-sm"
+          className="w-full py-2.5 px-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl border border-slate-600 transition-all flex items-center justify-between gap-2 min-h-[46px] active:scale-98 shadow-sm"
         >
           <div className="flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-amber-400 shrink-0" />
-            <span className="text-xs sm:text-sm font-bold text-slate-200">Tùy chỉnh ván</span>
+            <Sliders className="w-4 h-4 text-amber-300 shrink-0" />
+            <span className="text-sm font-bold text-white">Tùy chỉnh ván</span>
           </div>
-          <span className="text-[11px] font-mono font-bold bg-slate-900/90 text-amber-300 border border-slate-700 px-2 py-0.5 rounded-lg shrink-0">
+          <span className="text-sm font-mono font-bold bg-slate-950 text-amber-200 border border-slate-600 px-2.5 py-0.5 rounded-lg shrink-0">
             {mapSize}x{mapSize} • {gameMode === 'CREATIVE' ? 'Sáng Tạo' : difficultyLabel}
           </span>
         </button>
 
         {/* 5. LƯỚI 4 NÚT CHỨC NĂNG (2 CỘT x 2 HÀNG, ICON TRÁI - CHỮ PHẢI) */}
-        <div className="pt-2 border-t border-slate-800/80">
+        <div className="pt-2 border-t border-slate-800">
           <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
             {menuGridItems.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={item.onClick}
-                className="relative flex items-center gap-3 px-3.5 h-[64px] min-h-[58px] bg-slate-950/80 hover:bg-slate-800/90 active:scale-98 border border-slate-800 hover:border-amber-500/50 rounded-2xl transition-all shadow-md group text-left"
+                className="relative flex items-center gap-2.5 px-3 py-2 min-h-[64px] bg-slate-900 hover:bg-slate-800 active:scale-98 border border-slate-700 hover:border-amber-400/70 rounded-2xl transition-all shadow-md group text-left"
               >
                 {item.badge !== undefined && (
-                  <span className="absolute top-2 right-2.5 px-1.5 py-0.5 bg-amber-500 text-slate-950 text-[11px] font-black rounded-full shadow leading-none">
+                  <span className="absolute top-1.5 right-2 px-2 py-0.5 bg-amber-400 text-slate-950 text-sm font-black rounded-full shadow leading-none">
                     {item.badge}
                   </span>
                 )}
@@ -263,10 +263,10 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
                   {item.icon}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <span className="text-xs sm:text-sm font-bold text-slate-100 group-hover:text-amber-300 transition-colors block truncate">
+                  <span className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors block truncate">
                     {item.label}
                   </span>
-                  <span className="text-[11px] text-slate-300 block truncate">
+                  <span className="text-sm text-slate-200 block truncate">
                     {item.sublabel}
                   </span>
                 </div>
@@ -276,22 +276,22 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
         </div>
 
         {/* 6. TÀI KHOẢN & ADMIN (XUỐNG CUỐI, THU NHỎ THÀNH 1 DÒNG GỌN) */}
-        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2 text-xs">
+        <div className="pt-2 border-t border-slate-800 flex items-center justify-between gap-2 text-sm">
           {currentUser ? (
             <div className="flex items-center justify-between w-full gap-2">
               <button
                 type="button"
                 onClick={() => setIsAuthModalOpen(true)}
-                className="flex items-center gap-2 min-h-[44px] px-2.5 py-1.5 rounded-xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 text-slate-200 transition-colors min-w-0 text-left"
+                className="flex items-center gap-2 min-h-[44px] px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-white transition-colors min-w-0 text-left"
               >
-                <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0">
+                <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white font-black text-sm flex items-center justify-center shrink-0">
                   {(currentUser.displayName || currentUser.email || 'U').charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 truncate">
-                  <div className="text-[11px] font-bold text-white truncate max-w-[120px] sm:max-w-[150px]">
+                  <div className="text-sm font-bold text-white truncate max-w-[130px] sm:max-w-[160px]">
                     {currentUser.displayName || currentUser.email?.split('@')[0]}
                   </div>
-                  <div className="text-[11px] text-emerald-400 font-medium">Đã đồng bộ</div>
+                  <div className="text-sm text-emerald-300 font-medium">Đã đồng bộ</div>
                 </div>
               </button>
 
@@ -300,17 +300,17 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsAdminPanelOpen(true)}
-                    className="min-h-[44px] px-2.5 py-1.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold rounded-xl border border-amber-400/60 flex items-center gap-1.5 text-xs shadow transition-all active:scale-95"
+                    className="min-h-[44px] px-3 py-1.5 bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white font-bold rounded-xl border border-amber-400/70 flex items-center gap-1.5 text-sm shadow transition-all active:scale-95"
                     title="Mở Bảng Điều Khiển Admin"
                   >
-                    <Crown className="w-3.5 h-3.5 text-amber-300" />
+                    <Crown className="w-4 h-4 text-amber-200" />
                     <span>Admin</span>
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={async () => { await fbSignOut(auth); }}
-                  className="min-h-[44px] min-w-[44px] p-2 text-slate-300 hover:text-red-400 rounded-xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-center transition-colors"
+                  className="min-h-[44px] min-w-[44px] p-2 text-slate-200 hover:text-red-300 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 flex items-center justify-center transition-colors"
                   title="Đăng xuất"
                 >
                   <LogOut className="w-4 h-4" />
@@ -322,18 +322,18 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
               <button
                 type="button"
                 onClick={() => setIsAuthModalOpen(true)}
-                className="flex-1 min-h-[44px] py-2 px-3 bg-slate-950/60 hover:bg-slate-800/80 text-slate-200 hover:text-white font-semibold rounded-xl border border-slate-800 text-xs flex items-center justify-center gap-2 transition-all active:scale-98"
+                className="flex-1 min-h-[44px] py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl border border-slate-600 text-sm flex items-center justify-center gap-2 transition-all active:scale-98"
               >
-                <LogIn className="w-3.5 h-3.5 text-blue-400" />
+                <LogIn className="w-4 h-4 text-blue-300" />
                 <span>Đăng Nhập / Đồng Bộ Cloud</span>
               </button>
               {isUserAdmin(currentUser) && (
                 <button
                   type="button"
                   onClick={() => setIsAdminPanelOpen(true)}
-                  className="min-h-[44px] px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl border border-amber-400/60 text-xs flex items-center gap-1.5"
+                  className="min-h-[44px] px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl border border-amber-400/70 text-sm flex items-center gap-1.5"
                 >
-                  <Crown className="w-3.5 h-3.5 text-amber-300" />
+                  <Crown className="w-4 h-4 text-amber-200" />
                   <span>Admin</span>
                 </button>
               )}
@@ -345,19 +345,19 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
 
       {/* BOTTOM SHEET: TÙY CHỈNH VÁN CHƠI */}
       {isSettingsSheetOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 backdrop-blur-sm animate-fade-in">
           <div 
-            className="w-full max-w-md bg-slate-900 border-t border-slate-700 rounded-t-3xl p-5 sm:p-6 shadow-2xl space-y-4 text-left animate-slide-up max-h-[90vh] overflow-y-auto"
+            className="w-full max-w-md bg-slate-950 border-t-2 border-slate-600 rounded-t-3xl p-5 sm:p-6 shadow-2xl space-y-4 text-left animate-slide-up max-h-[90vh] overflow-y-auto"
             style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom, 0px))' }}
           >
-            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-700">
               <div className="flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-amber-400" />
+                <Sliders className="w-5 h-5 text-amber-300" />
                 <h3 className="text-base font-black text-white">Tùy Chỉnh Ván Chơi</h3>
               </div>
               <button
                 onClick={() => { soundManager.playClick(); setIsSettingsSheetOpen(false); }}
-                className="p-2 text-slate-300 hover:text-white rounded-full bg-slate-800 min-h-[44px] min-w-[44px] flex items-center justify-center"
+                className="p-2 text-slate-200 hover:text-white rounded-full bg-slate-800 border border-slate-600 min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -365,16 +365,16 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
 
             {/* Kích thước thế giới */}
             <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1.5">Kích thước thế giới:</label>
+              <label className="text-sm font-bold text-slate-100 block mb-1.5">Kích thước thế giới:</label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[64, 96, 128, 192].map(sz => (
                   <button
                     key={sz}
                     onClick={() => setMapSize(sz as MapDimension)}
-                    className={`py-3 rounded-xl text-xs font-bold border transition-all min-h-[44px] ${
+                    className={`py-2.5 px-1.5 rounded-xl text-sm font-bold border transition-all min-h-[44px] ${
                       mapSize === sz
                         ? 'bg-blue-600 border-blue-400 text-white shadow-md'
-                        : 'bg-slate-800/80 border-slate-700 text-slate-300'
+                        : 'bg-slate-900 border-slate-600 text-slate-200'
                     }`}
                   >
                     {sz}x{sz} {sz === 96 ? '(Chuẩn)' : sz === 64 ? '(Nhỏ)' : sz === 128 ? '(Lớn)' : '(Trái Đất)'}
@@ -385,15 +385,15 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
 
             {/* Chế độ chơi */}
             <div>
-              <label className="text-xs font-bold text-slate-300 block mb-1.5">Chọn chế độ chơi:</label>
-              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-950 rounded-2xl border border-slate-800">
+              <label className="text-sm font-bold text-slate-100 block mb-1.5">Chọn chế độ chơi:</label>
+              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-2xl border border-slate-700">
                 <button
                   type="button"
                   onClick={() => setGameMode('STANDARD')}
-                  className={`py-3 px-2 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 min-h-[44px] ${
+                  className={`py-3 px-2 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-1.5 min-h-[44px] ${
                     gameMode === 'STANDARD'
                       ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30'
-                      : 'text-slate-300 hover:text-white'
+                      : 'text-slate-200 hover:text-white'
                   }`}
                 >
                   <Swords className="w-4 h-4" />
@@ -403,10 +403,10 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
                 <button
                   type="button"
                   onClick={() => setGameMode('CREATIVE')}
-                  className={`py-3 px-2 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-1.5 min-h-[44px] ${
+                  className={`py-3 px-2 rounded-xl font-black text-sm transition-all flex items-center justify-center gap-1.5 min-h-[44px] ${
                     gameMode === 'CREATIVE'
                       ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg shadow-purple-500/40'
-                      : 'text-slate-300 hover:text-white'
+                      : 'text-slate-200 hover:text-white'
                   }`}
                 >
                   <Wand2 className="w-4 h-4 text-amber-300" />
@@ -417,12 +417,12 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
 
             {/* Độ khó */}
             {gameMode === 'CREATIVE' ? (
-              <div className="bg-gradient-to-r from-purple-950/60 to-pink-950/60 border border-purple-500/60 p-3 rounded-2xl space-y-1 shadow-inner">
-                <div className="flex items-center gap-1.5 font-bold text-amber-300 text-xs">
+              <div className="bg-gradient-to-r from-purple-950/80 to-pink-950/80 border border-purple-400/70 p-3 rounded-2xl space-y-1 shadow-inner">
+                <div className="flex items-center gap-1.5 font-bold text-amber-200 text-sm">
                   <Sparkles className="w-4 h-4 text-amber-300" />
                   <span>Đặc Quyền Chế Độ Sáng Tạo:</span>
                 </div>
-                <ul className="text-[11px] sm:text-xs text-purple-200/90 list-disc list-inside space-y-0.5">
+                <ul className="text-sm text-purple-100 list-disc list-inside space-y-0.5">
                   <li>Khởi đầu với 999,999 Vàng & 50,000 Quân đội.</li>
                   <li>Tự do tăng giảm Vàng & Quân tùy thích.</li>
                   <li>Spam thời tiết & triệu hồi Tà Thần Cổ Đại.</li>
@@ -430,17 +430,17 @@ export const TitleMenu: React.FC<TitleMenuProps> = ({
               </div>
             ) : (
               <div>
-                <label className="text-xs font-bold text-slate-300 block mb-1.5">Độ khó thử thách:</label>
+                <label className="text-sm font-bold text-slate-100 block mb-1.5">Độ khó thử thách:</label>
                 <div className="grid grid-cols-4 gap-2">
                   {(['EASY', 'NORMAL', 'HARD', 'EXTREME'] as GameDifficulty[]).map(diff => (
                     <button
                       key={diff}
                       type="button"
                       onClick={() => setDifficulty(diff)}
-                      className={`py-3 rounded-xl text-xs font-bold border transition-all min-h-[44px] ${
+                      className={`py-2.5 px-1 rounded-xl text-sm font-bold border transition-all min-h-[44px] ${
                         difficulty === diff
                           ? 'bg-amber-600 border-amber-400 text-white shadow-md'
-                          : 'bg-slate-800/80 border-slate-700 text-slate-300'
+                          : 'bg-slate-900 border-slate-600 text-slate-200'
                       }`}
                     >
                       {diff === 'EASY' ? 'Dễ' : diff === 'NORMAL' ? 'Vừa' : diff === 'HARD' ? 'Khó' : 'Cực Khó'}

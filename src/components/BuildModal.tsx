@@ -130,7 +130,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex overflow-y-auto bg-black/60 backdrop-blur-[2px] p-3"
+      className="fixed inset-0 z-50 flex overflow-y-auto bg-black/75 backdrop-blur-[2px] p-3"
       style={{
         paddingTop: 'calc(0.75rem + env(safe-area-inset-top, 0px))',
         paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom, 0px))',
@@ -139,14 +139,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="m-auto flex flex-col items-center gap-3 text-slate-100" style={{ width: 'min(94vw, 380px)' }}>
+      <div className="m-auto flex flex-col items-center gap-3 text-white" style={{ width: 'min(94vw, 410px)' }}>
         <div className="text-center">
-          <p className="text-xs font-bold text-slate-200">
+          <p className="text-sm font-bold text-slate-100">
             Ô ({selectedTile.x}, {selectedTile.y}) · {terrainLabel}
             {selectedTile.hasHarborAccess ? ' · Giáp biển' : ''}
           </p>
           {existing && (
-            <p className="text-[11px] text-amber-300 mt-1">
+            <p className="text-sm text-amber-200 mt-1">
               Ô này đang có {BUILDING_INFO[existing].name} (Cấp {selectedTile.buildingLevel || 1}). Xây loại khác sẽ
               THAY THẾ nó.
             </p>
@@ -154,17 +154,17 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         </div>
 
         <div className="relative w-full" style={{ aspectRatio: '1 / 1' }}>
-          <div className="pointer-events-none absolute inset-[13%] rounded-full bg-slate-950/75 border border-slate-700/60" />
+          <div className="pointer-events-none absolute inset-[13%] rounded-full bg-slate-950/85 border border-slate-600" />
 
           <button
             onClick={onClose}
-            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-24 h-24 rounded-full bg-slate-900 border-2 border-slate-700 flex flex-col items-center justify-center active:scale-95 transition-transform"
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-28 h-28 min-w-[44px] min-h-[44px] rounded-full bg-slate-900 border-2 border-slate-500 flex flex-col items-center justify-center active:scale-95 transition-transform"
             aria-label="Đóng"
           >
-            <X className="w-6 h-6 text-slate-300" />
-            <span className="text-[11px] font-mono font-bold text-amber-300 mt-0.5">💰 {formatPopulation(gold)}</span>
+            <X className="w-6 h-6 text-white" />
+            <span className="text-sm font-mono font-bold text-amber-200 mt-0.5">💰 {formatPopulation(gold)}</span>
             {resOn && (
-              <span className="text-[10px] font-mono font-bold text-violet-300">⛏️ {Math.floor(minerals)}</span>
+              <span className="text-sm font-mono font-bold text-violet-200">⛏️ {Math.floor(minerals)}</span>
             )}
           </button>
 
@@ -195,41 +195,41 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                   onClose();
                 }}
                 style={{ left: `${left}%`, top: `${top}%` }}
-                className={`absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-1 transition-transform active:scale-95 ${
-                  canAfford ? '' : 'opacity-40 grayscale'
+                className={`absolute -translate-x-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] flex flex-col items-center gap-1 transition-transform active:scale-95 ${
+                  canAfford ? '' : 'opacity-50 grayscale'
                 }`}
               >
                 <span
-                  className={`relative w-16 h-16 rounded-full bg-slate-900 border-2 flex items-center justify-center shadow-lg ${
-                    isCurrent ? 'border-blue-400' : 'border-slate-600'
+                  className={`relative w-14 h-14 rounded-full bg-slate-900 border-2 flex items-center justify-center shadow-lg ${
+                    isCurrent ? 'border-blue-400' : 'border-slate-500'
                   }`}
                 >
                   <BuildingSvgIcon
                     type={type}
-                    className="w-8 h-8 text-white [&_*]:stroke-current [&_*]:fill-none"
+                    className="w-7 h-7 text-white [&_*]:stroke-current [&_*]:fill-none"
                   />
                   {badge && (
-                    <span className="absolute -top-1 -right-3 whitespace-nowrap rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-black leading-none text-slate-950">
+                    <span className="absolute -top-1.5 -right-3 whitespace-nowrap rounded-full bg-amber-400 px-1.5 py-0.5 text-sm font-black leading-none text-slate-950">
                       {badge}
                     </span>
                   )}
                 </span>
 
-                <span className="text-[11px] font-bold leading-none text-white whitespace-nowrap">
+                <span className="text-sm font-bold leading-none text-white whitespace-nowrap drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)]">
                   {SHORT_NAME[type]}
                 </span>
 
                 <span
-                  className={`text-[11px] font-mono font-bold leading-none whitespace-nowrap ${
-                    gold >= totalCost ? 'text-amber-300' : 'text-red-400'
+                  className={`text-sm font-mono font-bold leading-none whitespace-nowrap drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)] ${
+                    gold >= totalCost ? 'text-amber-200' : 'text-red-300'
                   }`}
                 >
                   {formatPopulation(totalCost)} 💰
                 </span>
                 {totalMinerals > 0 && (
                   <span
-                    className={`text-[10px] font-mono font-bold leading-none whitespace-nowrap ${
-                      minerals >= totalMinerals ? 'text-violet-300' : 'text-red-400'
+                    className={`text-sm font-mono font-bold leading-none whitespace-nowrap drop-shadow-[0_1px_2px_rgba(0,0,0,0.95)] ${
+                      minerals >= totalMinerals ? 'text-violet-200' : 'text-red-300'
                     }`}
                   >
                     {fmtM(totalMinerals)} ⛏️
@@ -241,12 +241,12 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         </div>
 
         {superUnlocked && (
-          <div className="w-full rounded-2xl bg-slate-950/85 border border-amber-500/40 p-2.5">
+          <div className="w-full rounded-2xl bg-slate-950/95 border border-amber-400/60 p-3">
             <div className="flex items-center justify-between mb-2 px-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-amber-300">
+              <span className="text-sm font-bold uppercase tracking-wider text-amber-200">
                 Siêu Công Trình
               </span>
-              <span className="text-[11px] font-mono text-slate-300">
+              <span className="text-sm font-mono text-slate-100">
                 {ownedSuperTotal}/{SUPER_BUILDING_CONFIG.MAX_TOTAL_PER_NATION}
               </span>
             </div>
@@ -271,31 +271,31 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                       onClose();
                     }}
                     title={BUILDING_INFO[sType].desc}
-                    className={`flex flex-col items-center gap-1 rounded-xl p-1.5 transition-transform active:scale-95 ${
-                      enabled ? 'hover:bg-slate-900/70' : 'opacity-40 grayscale cursor-not-allowed'
+                    className={`min-h-[44px] flex flex-col items-center gap-1 rounded-xl p-1.5 transition-transform active:scale-95 ${
+                      enabled ? 'hover:bg-slate-900' : 'opacity-50 grayscale cursor-not-allowed'
                     }`}
                   >
-                    <span className="relative w-14 h-14 rounded-full bg-slate-900 border-2 border-amber-400/70 flex items-center justify-center shadow-lg">
+                    <span className="relative w-14 h-14 rounded-full bg-slate-900 border-2 border-amber-400 flex items-center justify-center shadow-lg">
                       <BuildingSvgIcon
                         type={sType}
                         className="w-7 h-7 text-white [&_*]:stroke-current [&_*]:fill-none"
                       />
                       <span
-                        className={`absolute -top-1 -right-2 whitespace-nowrap rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none ${
+                        className={`absolute -top-1.5 -right-2 whitespace-nowrap rounded-full px-1.5 py-0.5 text-sm font-black leading-none ${
                           alreadyOwned
-                            ? 'bg-emerald-500 text-slate-950'
-                            : 'bg-amber-500 text-slate-950'
+                            ? 'bg-emerald-400 text-slate-950'
+                            : 'bg-amber-400 text-slate-950'
                         }`}
                       >
                         {badge}
                       </span>
                     </span>
-                    <span className="text-[10px] font-bold leading-tight text-white text-center">
+                    <span className="text-sm font-bold leading-tight text-white text-center">
                       {SHORT_NAME[sType]}
                     </span>
                     <span
-                      className={`text-[11px] font-mono font-bold leading-none whitespace-nowrap ${
-                        gold >= cost ? 'text-amber-300' : 'text-red-400'
+                      className={`text-sm font-mono font-bold leading-none whitespace-nowrap ${
+                        gold >= cost ? 'text-amber-200' : 'text-red-300'
                       }`}
                     >
                       {formatPopulation(cost)} 💰
@@ -307,8 +307,8 @@ export const BuildModal: React.FC<BuildModalProps> = ({
           </div>
         )}
 
-        <div className="w-full rounded-2xl bg-slate-950/80 border border-slate-800 p-2">
-          <p className="text-[11px] text-center text-slate-400 mb-1.5">
+        <div className="w-full rounded-2xl bg-slate-950/95 border border-slate-700 p-2.5">
+          <p className="text-sm text-center text-slate-100 mb-2">
             Số lượng mỗi lần chạm: {selectedBatch === 'MAX' ? 'tối đa theo số Vàng' : `x${selectedBatch}`}
           </p>
           <div className="grid grid-cols-4 gap-1.5">
@@ -316,10 +316,10 @@ export const BuildModal: React.FC<BuildModalProps> = ({
               <button
                 key={String(opt)}
                 onClick={() => setSelectedBatch(opt)}
-                className={`h-11 rounded-xl text-sm font-bold border transition-all active:scale-95 ${
+                className={`min-h-[44px] h-11 rounded-xl text-sm font-bold border transition-all active:scale-95 ${
                   selectedBatch === opt
-                    ? 'bg-amber-500 border-amber-300 text-slate-950 font-black'
-                    : 'bg-slate-900 border-slate-700 text-slate-300'
+                    ? 'bg-amber-400 border-amber-200 text-slate-950 font-black'
+                    : 'bg-slate-900 border-slate-600 text-white'
                 }`}
               >
                 {opt === 'MAX' ? 'MAX' : `x${opt}`}

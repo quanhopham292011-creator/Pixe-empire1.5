@@ -36,16 +36,16 @@ export const MatchLeaderboard: React.FC<MatchLeaderboardProps> = ({
   const myNation = sortedNations[myRankIndex];
 
   return (
-    <div className="w-full bg-slate-950/80 border border-slate-800 rounded-2xl p-3 sm:p-4 text-left shadow-inner">
+    <div className="w-full bg-slate-950 border border-slate-700 rounded-2xl p-3 sm:p-4 text-left shadow-inner">
       {/* TIÊU ĐỀ BẢNG XẾP HẠNG */}
-      <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
+      <div className="flex items-center justify-between flex-wrap gap-1 pb-2 mb-2 border-b border-slate-700">
         <div className="flex items-center gap-2">
-          <Trophy className={`w-4 h-4 ${isVictory ? 'text-amber-400' : 'text-blue-400'}`} />
-          <span className="text-xs sm:text-sm font-black text-slate-100 tracking-wide uppercase">
+          <Trophy className={`w-4 h-4 ${isVictory ? 'text-amber-300' : 'text-blue-300'}`} />
+          <span className="text-sm sm:text-base font-black text-white tracking-wide uppercase">
             Bảng Xếp Hạng Lãnh Thổ & Sức Mạnh
           </span>
         </div>
-        <span className="text-[10px] text-slate-400 font-mono">
+        <span className="text-sm text-slate-200 font-mono">
           Tổng {formatPopulation(safeTotalLand)} ô đất
         </span>
       </div>
@@ -53,17 +53,17 @@ export const MatchLeaderboard: React.FC<MatchLeaderboardProps> = ({
       {/* THẺ TÓM TẮT THỨ HẠNG CỦA NGƯỜI CHƠI */}
       {myNation && (
         <div
-          className={`mb-2.5 px-3 py-1.5 rounded-xl border text-[11px] font-bold flex items-center justify-between ${
+          className={`mb-2.5 px-3 py-2 rounded-xl border text-sm font-bold flex items-center justify-between flex-wrap gap-1 ${
             myRankIndex === 0
-              ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-              : 'bg-blue-500/15 border-blue-500/30 text-blue-300'
+              ? 'bg-amber-950/70 border-amber-400/70 text-amber-200'
+              : 'bg-blue-950/70 border-blue-400/70 text-blue-200'
           }`}
         >
           <span className="flex items-center gap-1.5">
-            {myRankIndex === 0 ? <Crown className="w-3.5 h-3.5 text-amber-400" /> : <Medal className="w-3.5 h-3.5 text-blue-400" />}
+            {myRankIndex === 0 ? <Crown className="w-4 h-4 text-amber-300" /> : <Medal className="w-4 h-4 text-blue-300" />}
             Thứ hạng của bạn:
           </span>
-          <span className="font-mono font-black">
+          <span className="font-mono font-black text-white">
             #{myRankIndex + 1} / {sortedNations.length} ({myNation.territoryCount || 0} ô - {Math.round(((myNation.territoryCount || 0) / safeTotalLand) * 100)}%)
           </span>
         </div>
@@ -84,26 +84,26 @@ export const MatchLeaderboard: React.FC<MatchLeaderboardProps> = ({
 
           // Huy hiệu thứ hạng
           let rankBadge = (
-            <span className="w-5 h-5 rounded-md bg-slate-800 text-slate-400 text-[10px] font-mono font-bold flex items-center justify-center shrink-0">
+            <span className="min-w-[28px] h-7 px-1 rounded-md bg-slate-800 text-slate-200 text-sm font-mono font-bold flex items-center justify-center shrink-0">
               #{idx + 1}
             </span>
           );
 
           if (idx === 0) {
             rankBadge = (
-              <span className="w-5 h-5 rounded-md bg-amber-500/20 text-amber-400 border border-amber-500/40 text-[10px] font-black flex items-center justify-center shrink-0">
+              <span className="min-w-[28px] h-7 px-1 rounded-md bg-amber-500/25 text-amber-300 border border-amber-400/60 text-sm font-black flex items-center justify-center shrink-0">
                 🥇
               </span>
             );
           } else if (idx === 1) {
             rankBadge = (
-              <span className="w-5 h-5 rounded-md bg-slate-300/20 text-slate-200 border border-slate-300/40 text-[10px] font-black flex items-center justify-center shrink-0">
+              <span className="min-w-[28px] h-7 px-1 rounded-md bg-slate-300/25 text-slate-100 border border-slate-300/60 text-sm font-black flex items-center justify-center shrink-0">
                 🥈
               </span>
             );
           } else if (idx === 2) {
             rankBadge = (
-              <span className="w-5 h-5 rounded-md bg-amber-700/20 text-amber-500 border border-amber-700/40 text-[10px] font-black flex items-center justify-center shrink-0">
+              <span className="min-w-[28px] h-7 px-1 rounded-md bg-amber-700/30 text-amber-300 border border-amber-500/60 text-sm font-black flex items-center justify-center shrink-0">
                 🥉
               </span>
             );
@@ -118,70 +118,70 @@ export const MatchLeaderboard: React.FC<MatchLeaderboardProps> = ({
                   onClose?.();
                 }
               }}
-              className={`p-2 rounded-xl transition-all ${
-                onSelectNation ? 'cursor-pointer hover:bg-slate-800/90 active:scale-[0.99]' : ''
+              className={`p-2.5 min-h-[44px] rounded-xl transition-all ${
+                onSelectNation ? 'cursor-pointer hover:bg-slate-800 active:scale-[0.99]' : ''
               } ${
                 isMe
-                  ? 'bg-amber-500/10 border border-amber-500/60 shadow-md ring-1 ring-amber-500/30'
+                  ? 'bg-amber-950/50 border border-amber-400/80 shadow-md ring-1 ring-amber-400/40'
                   : isAlly
-                  ? 'bg-emerald-950/40 border border-emerald-500/40'
-                  : 'bg-slate-900/60 border border-slate-800/80'
-              } ${isEliminated && !isMe ? 'opacity-50' : ''}`}
+                  ? 'bg-emerald-950/60 border border-emerald-400/60'
+                  : 'bg-slate-900 border border-slate-700'
+              } ${isEliminated && !isMe ? 'opacity-65' : ''}`}
             >
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 {/* HẠNG, TÊN QUỐC GIA & CÁC NHÃN TRẠNG THÁI */}
                 <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
                   {rankBadge}
                   <span
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0 shadow-xs"
+                    className="w-3 h-3 rounded-full flex-shrink-0 shadow-xs border border-white/40"
                     style={{ backgroundColor: nation.color || '#94a3b8' }}
                   />
-                  <span className={`text-xs truncate font-bold ${isMe ? 'text-amber-300' : isAlly ? 'text-emerald-300' : 'text-slate-200'}`}>
+                  <span className={`text-sm font-bold break-words ${isMe ? 'text-amber-200' : isAlly ? 'text-emerald-200' : 'text-white'}`}>
                     {nation.name}
                   </span>
                   {isMe && (
-                    <span className="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/30 px-1 py-0.2 rounded font-black flex-shrink-0">
+                    <span className="text-sm bg-amber-500/25 text-amber-200 border border-amber-400/50 px-1.5 py-0.5 rounded font-black flex-shrink-0">
                       BẠN
                     </span>
                   )}
                   {isAlly && (
-                    <span className="text-xs shrink-0" title="Đồng minh sắt son">
+                    <span className="text-sm shrink-0" title="Đồng minh sắt son">
                       🤝
                     </span>
                   )}
                   {isTraitor && (
-                    <span className="text-[9px] bg-red-950/90 text-red-300 border border-red-600/60 px-1 py-0.2 rounded font-bold shrink-0 animate-pulse">
+                    <span className="text-sm bg-red-950 text-red-200 border border-red-500 px-1.5 py-0.5 rounded font-bold shrink-0 animate-pulse">
                       ⚠️ Kẻ phản bội
                     </span>
                   )}
                   {isEliminated && (
-                    <span className="text-[9px] bg-rose-500/20 text-rose-400 border border-rose-500/30 px-1 py-0.2 rounded font-semibold flex-shrink-0">
+                    <span className="text-sm bg-rose-950 text-rose-200 border border-rose-500/60 px-1.5 py-0.5 rounded font-semibold flex-shrink-0">
                       Thất thủ
                     </span>
                   )}
                 </div>
 
                 {/* THỐNG KÊ: LÃNH THỔ, QUÂN & VÀNG */}
-                <div className="flex items-center gap-2 flex-shrink-0 text-right text-[11px] font-mono">
+                <div className="flex items-center gap-2 flex-shrink-0 text-right text-sm font-mono">
                   {/* Số quân */}
-                  <span className="text-blue-300 font-bold" title="Số quân hiện tại">
+                  <span className="text-blue-200 font-bold" title="Số quân hiện tại">
                     🪖 {formatPopulation(nation.troops || 0)}
                   </span>
 
                   {/* Vàng: Chỉ hiện vàng của mình và đồng minh, nước khác hiện ? */}
-                  <span className="text-amber-300 font-bold min-w-[42px] text-right" title="Kho vàng">
+                  <span className="text-amber-200 font-bold min-w-[44px] text-right" title="Kho vàng">
                     🪙 {isMe || isAlly ? formatPopulation(nation.gold || 0) : '?'}
                   </span>
 
                   {/* SỐ Ô LÃNH THỔ & TỶ LỆ % */}
-                  <span className="text-slate-100 font-bold min-w-[50px] text-right">
-                    {formatPopulation(territory)} <span className="text-[9px] text-amber-400 font-extrabold">({percent}%)</span>
+                  <span className="text-white font-bold min-w-[54px] text-right">
+                    {formatPopulation(territory)} <span className="text-sm text-amber-300 font-extrabold">({percent}%)</span>
                   </span>
                 </div>
               </div>
 
               {/* THANH TIẾN ĐỘ THỂ HIỆN % LÃNH THỔ TRÊN BẢN ĐỒ */}
-              <div className="w-full bg-slate-950/80 rounded-full h-1.5 overflow-hidden mt-1.5 border border-slate-800/80">
+              <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden mt-2 border border-slate-700">
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{

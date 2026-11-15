@@ -136,8 +136,15 @@ export function useGameRenderer({
 
     let animId: number;
     let lastTimestamp = performance.now();
+    let lastFrameTime = 0;
 
     const render = (timestamp: number) => {
+      if (timestamp - lastFrameTime < 12) {
+        animId = requestAnimationFrame(render);
+        return;
+      }
+      lastFrameTime = timestamp;
+
       const deltaSec = Math.min(0.1, (timestamp - lastTimestamp) / 1000);
       lastTimestamp = timestamp;
 
@@ -154,7 +161,7 @@ export function useGameRenderer({
 
       const clientW = canvas.clientWidth;
       const clientH = canvas.clientHeight;
-      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
 
       if (clientW > 0 && clientH > 0) {
         viewportSizeRef.current = { width: clientW, height: clientH, dpr };
@@ -768,35 +775,40 @@ export function useGameRenderer({
           if (widthOnScreen < 55 && nation.id !== 1) return; // nước nhỏ thì không hiện chữ
           const nameStr = String(nation.name).replace(/\s*\[.*?\]/g, '').replace(/\s*\(.*?\)/g, '').trim();
           const popStr = `${formatPopulation(nation.population || 0)}`;
-          const fs = Math.max(7, Math.min(40, 11 / zoom)); // chữ luôn cỡ ~11px trên màn hình
+          const fs = Math.max(12, Math.min(56, 17 / zoom)); // chữ to rõ ~17px+ trên màn hình
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.lineJoin = 'round';
-          ctx.lineWidth = fs * 0.28;
-          ctx.strokeStyle = 'rgba(15,23,42,0.85)';
-          ctx.font = `bold ${fs}px sans-serif`;
-          ctx.strokeText(nameStr, pos.px, pos.py - fs * 0.5);
+          ctx.miterLimit = 2;
+          ctx.lineWidth = Math.max(4, fs * 0.42);
+          ctx.strokeStyle = '#000000';
+          ctx.font = `900 ${fs}px sans-serif`;
+          ctx.strokeText(nameStr, pos.px, pos.py - fs * 0.55);
           ctx.fillStyle = '#ffffff';
-          ctx.fillText(nameStr, pos.px, pos.py - fs * 0.5);
+          ctx.fillText(nameStr, pos.px, pos.py - fs * 0.55);
           if (widthOnScreen >= 100) {
-            ctx.font = `${fs * 0.85}px sans-serif`;
-            ctx.strokeText(popStr, pos.px, pos.py + fs * 0.6);
-            ctx.fillStyle = '#e2e8f0';
-            ctx.fillText(popStr, pos.px, pos.py + fs * 0.6);
+            const popFs = Math.max(10, fs * 0.85);
+            ctx.font = `bold ${popFs}px sans-serif`;
+            ctx.lineWidth = Math.max(3.5, popFs * 0.42);
+            ctx.strokeStyle = '#000000';
+            ctx.strokeText(popStr, pos.px, pos.py + fs * 0.58);
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(popStr, pos.px, pos.py + fs * 0.58);
           }
 
           // Huy hiệu bắt tay xanh: quốc gia đã liên minh với người chơi
           if (nation.id !== 1 && nations[1]?.diplomacy?.[nation.id]?.status === 'ALLIANCE') {
+            const badgeY = pos.py + fs * 1.45;
             ctx.fillStyle = '#2563eb';
             ctx.beginPath();
-            ctx.arc(pos.px, pos.py + 18, 6.5, 0, Math.PI * 2);
+            ctx.arc(pos.px, badgeY, 7.5, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = '#93c5fd';
-            ctx.lineWidth = 1;
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = 2;
             ctx.stroke();
             ctx.fillStyle = '#ffffff';
-            ctx.font = '9px sans-serif';
-            ctx.fillText('🤝', pos.px, pos.py + 18.5);
+            ctx.font = '10px sans-serif';
+            ctx.fillText('🤝', pos.px, badgeY + 0.5);
           }
         });
       }
@@ -1698,11 +1710,13 @@ export function useGameRenderer({
           ctx.lineTo(p.targetX, p.targetY);
 
           // Hào quang hồng chói neon (Neon Pink Glow)
+          const baseAlpha = Math.max(0.1, p.life / p.maxLife);
           ctx.strokeStyle = p.color || '#ec4899';
+          ctx.globalAlpha = baseAlpha * 0.35;
+          ctx.lineWidth = 8;
+          ctx.stroke();
+          ctx.globalAlpha = baseAlpha;
           ctx.lineWidth = 3.6;
-          ctx.globalAlpha = Math.max(0.1, p.life / p.maxLife);
-          ctx.shadowColor = '#f472b6';
-          ctx.shadowBlur = 12;
           ctx.stroke();
 
           // Lõi tia laser trắng sáng ở giữa
