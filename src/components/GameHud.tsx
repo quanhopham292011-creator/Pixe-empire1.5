@@ -412,30 +412,30 @@ export const GameHud: React.FC<GameHudProps> = ({
       
       {/* 1. THANH TRÊN CÙNG + 1 THANH NHIỆM VỤ / THÔNG BÁO DUY NHẤT */}
       <div className="shrink-0 flex flex-col">
-        <header className="pointer-events-auto bg-slate-950/95 border-b border-slate-700 px-2.5 py-1.5 flex flex-wrap items-center justify-between gap-1.5 text-sm backdrop-blur-md shadow-lg">
-          <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+        <header className="pointer-events-auto bg-slate-950/95 border-b border-slate-700 px-2 py-1 flex items-center justify-between gap-1.5 text-sm backdrop-blur-md shadow-lg overflow-x-auto no-scrollbar whitespace-nowrap">
+          <div className="flex items-center gap-1.5 min-w-0 flex-nowrap shrink-0">
             {/* Xu */}
             <div className="flex items-center gap-1 bg-amber-500/20 border border-amber-400/60 px-2 py-1 rounded-lg shrink-0">
-              <Coins className="w-4 h-4 text-amber-300" />
+              <Coins className="w-4 h-4 text-amber-300 shrink-0" />
               <span className="font-black text-amber-200 font-mono text-sm">{hudStats.gold}</span>
               <span className="text-sm text-emerald-300 font-mono font-bold">+{hudStats.goldIncome}</span>
             </div>
 
             {/* Dân số */}
             <div className="flex items-center gap-1 bg-blue-500/20 border border-blue-400/60 px-2 py-1 rounded-lg shrink-0">
-              <Users className="w-4 h-4 text-blue-300" />
+              <Users className="w-4 h-4 text-blue-300 shrink-0" />
               <span className="font-bold text-blue-100 font-mono text-sm">{formatPopulation(hudStats.population ?? (gameDataRef.current?.nations?.[1]?.population || 0))}</span>
             </div>
 
             {/* % Đất */}
             <div className="flex items-center gap-1 bg-emerald-500/20 border border-emerald-400/60 px-2 py-1 rounded-lg shrink-0">
-              <span className="text-sm">🗺️</span>
+              <span className="text-sm shrink-0">🗺️</span>
               <span className="font-bold text-emerald-100 font-mono text-sm">{hudStats.landPercent}%</span>
             </div>
 
             {/* Level */}
             <div className="flex items-center gap-1 bg-purple-500/20 border border-purple-400/60 px-2 py-1 rounded-lg shrink-0">
-              <Crown className="w-4 h-4 text-purple-300" />
+              <Crown className="w-4 h-4 text-purple-300 shrink-0" />
               <span className="font-bold text-purple-100 font-mono text-sm">Lv.{playerProfile.level}</span>
             </div>
 
@@ -446,7 +446,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                   soundManager.playClick();
                   setIsMarketOpen?.(true);
                 }}
-                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 border border-sky-400/70 px-2.5 py-1 rounded-lg shrink-0 min-h-[44px] active:scale-95 transition-all text-sm"
+                className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 border border-sky-400/70 px-2.5 py-1 rounded-lg shrink-0 min-h-[44px] active:scale-95 transition-all text-sm"
                 title="Mở Chợ Tài Nguyên (Dầu & Khoáng sản)"
               >
                 <span className="font-bold text-sky-200 font-mono">🛢️ {formatResource(playerNation.oil)}</span>
@@ -523,11 +523,11 @@ export const GameHud: React.FC<GameHudProps> = ({
       {/* 4. BẢNG THÔNG TIN Ô ĐẤT: Hiện chi tiết theo trạng thái Ngoại giao */}
       {selectedTile && (
         <div 
-          className="pointer-events-auto left-2 right-2 mx-2 sm:mx-auto mb-1.5 max-w-lg w-auto box-border bg-slate-950/95 border border-slate-600 rounded-2xl p-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-150 max-h-[28vh] overflow-y-auto"
+          className="pointer-events-auto left-2 right-2 mx-2 sm:mx-auto mb-1.5 max-w-lg w-auto box-border bg-slate-950/95 border border-slate-600 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom duration-150 max-h-[22vh] overflow-y-auto"
         >
-          <div className="flex items-center justify-between pb-1.5 border-b border-slate-700 text-sm gap-2">
+          <div className="flex items-center justify-between pb-1 border-b border-slate-700 text-xs gap-2">
             <div className="flex items-center flex-wrap gap-1.5 font-bold text-white min-w-0 flex-1">
-              {selectedTile.owner === 1 ? <Crown className="w-4 h-4 text-amber-300 shrink-0" /> : <Shield className="w-4 h-4 text-blue-300 shrink-0" />}
+              {selectedTile.owner === 1 ? <Crown className="w-3.5 h-3.5 text-amber-300 shrink-0" /> : <Shield className="w-3.5 h-3.5 text-blue-300 shrink-0" />}
               <span className="whitespace-normal break-words">
                 {selectedTile.owner === 1 
                   ? `${playerName} (Lãnh thổ của bạn)` 
@@ -536,7 +536,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                   : 'Đất hoang trung lập'}
               </span>
               {selectedTile.owner > 1 && (
-                <span className={`px-2 py-0.5 rounded-lg text-sm font-bold border shrink-0 ${
+                <span className={`px-1.5 py-0.5 rounded-lg text-xs font-bold border shrink-0 ${
                   dipStatus === 'ALLIANCE' ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400' :
                   dipStatus === 'TRUCE' ? 'bg-amber-500/25 text-amber-200 border-amber-400' :
                   'bg-red-500/25 text-red-200 border-red-400'
@@ -547,14 +547,14 @@ export const GameHud: React.FC<GameHudProps> = ({
             </div>
             <button 
               onClick={() => setSelectedTile(null)}
-              className="min-w-[44px] min-h-[44px] p-2 text-slate-100 hover:text-white hover:bg-slate-800 rounded-xl shrink-0 flex items-center justify-center"
+              className="min-w-[40px] min-h-[40px] p-1.5 text-slate-100 hover:text-white hover:bg-slate-800 rounded-xl shrink-0 flex items-center justify-center"
               aria-label="Đóng"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
 
-          <div className="flex flex-col gap-2 mt-2 text-sm">
+          <div className="flex flex-col gap-1.5 mt-1.5 text-xs">
             <div className="text-slate-100 flex flex-wrap items-center gap-1.5 leading-snug">
               <span>
                 📍 ({selectedTile.x}, {selectedTile.y}) • <strong className="text-white">{selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi'}</strong>
@@ -565,28 +565,28 @@ export const GameHud: React.FC<GameHudProps> = ({
                 </span>
               )}
               {isSuperBuilding(selectedTile.building) && (
-                <span className="px-2 py-0.5 rounded bg-slate-800 border border-amber-400/60 text-sm font-bold text-amber-200">
+                <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-amber-400/60 text-xs font-bold text-amber-200">
                   {getSuperBuildingStateLabel(selectedTile)}
                 </span>
               )}
               {areResourcesEnabled() && selectedTile.deposit && selectedTile.discovered && (
-                <span className="px-2 py-0.5 rounded bg-slate-800 border border-slate-600 text-sm font-mono text-sky-200">
+                <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-600 text-xs font-mono text-sky-200">
                   {selectedTile.deposit === 'OIL' ? '🛢️' : '⛏️'} {depositName(selectedTile.deposit)} ({formatResource(selectedTile.reserve)})
                   {isExtractor(selectedTile.building) && ` • Độ bền ${Math.round(selectedTile.condition ?? 100)}%`}
                 </span>
               )}
               {isExtractor(selectedTile.building) && selectedTile.isAdvancedExtractor && (
-                <span className="px-2 py-0.5 rounded bg-amber-500/25 border border-amber-400 text-sm font-bold text-amber-200">
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/25 border border-amber-400 text-xs font-bold text-amber-200">
                   ⭐ Cao Cấp (x1.5)
                 </span>
               )}
               {selectedTile.burnZoneTimer && selectedTile.burnZoneTimer > 0 ? (
-                <span className="px-2 py-0.5 rounded bg-orange-500/25 border border-orange-400 text-sm font-bold text-orange-200">
+                <span className="px-1.5 py-0.5 rounded bg-orange-500/25 border border-orange-400 text-xs font-bold text-orange-200">
                   🔥 Vùng Cháy ({Math.ceil(selectedTile.burnZoneTimer)}s)
                 </span>
               ) : null}
               {selectedTile.radiationTimer && selectedTile.radiationTimer > 0 ? (
-                <span className="px-2 py-0.5 rounded bg-lime-500/25 border border-lime-400 text-sm font-bold text-lime-200">
+                <span className="px-1.5 py-0.5 rounded bg-lime-500/25 border border-lime-400 text-xs font-bold text-lime-200">
                   ☢️ Phóng Xạ ({Math.ceil(selectedTile.radiationTimer)}s)
                 </span>
               ) : null}
@@ -625,7 +625,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                             }
                           }
                         }}
-                        className={`min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm flex items-center gap-1 shadow ${
+                        className={`min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs flex items-center gap-1 shadow ${
                           canAffordRepair
                             ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
                             : 'bg-slate-800 text-slate-300 border border-slate-600 cursor-not-allowed opacity-70'
@@ -649,7 +649,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                             }
                           }
                         }}
-                        className="min-h-[44px] px-3 py-2 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-sm flex items-center gap-1 shadow"
+                        className="min-h-[40px] px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs flex items-center gap-1 shadow"
                         title={`Sửa chữa (${rc.gold} Vàng, ${rc.minerals} Khoáng)`}
                       >
                         <span>🔧 Sửa ({rc.gold}💰{rc.minerals > 0 ? ` ${rc.minerals}⛏️` : ''})</span>
@@ -666,7 +666,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                           onUpgradeAdvancedExtractor?.(selectedTile);
                           setForceUpdate(v => v + 1);
                         }}
-                        className={`min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm flex items-center gap-1 shadow ${
+                        className={`min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs flex items-center gap-1 shadow ${
                           canAffordAdv
                             ? 'bg-gradient-to-r from-violet-600 to-amber-500 hover:brightness-110 text-white'
                             : 'bg-slate-800 text-slate-300 border border-slate-600 cursor-not-allowed opacity-70'
@@ -683,18 +683,18 @@ export const GameHud: React.FC<GameHudProps> = ({
                   })()}
                   <button
                     onClick={() => setIsBuildOpen(true)}
-                    className="min-h-[44px] px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-sm flex items-center gap-1.5 shadow"
+                    className="min-h-[40px] px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow"
                   >
-                    <Building2 className="w-4 h-4" />
+                    <Building2 className="w-3.5 h-3.5" />
                     <span>Xây Dựng</span>
                   </button>
                 </>
               ) : selectedTile.owner === 0 ? (
                 <button
                   onClick={handleAttackTile}
-                  className="min-h-[44px] px-3.5 py-2 font-bold rounded-xl text-sm text-white shadow bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1.5"
+                  className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-white shadow bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1.5"
                 >
-                  <Swords className="w-4 h-4" />
+                  <Swords className="w-3.5 h-3.5" />
                   <span>Mở Rộng ({actualAttackTroops}q)</span>
                 </button>
               ) : (
@@ -704,41 +704,41 @@ export const GameHud: React.FC<GameHudProps> = ({
                     <>
                       <button
                         onClick={handleAttackTile}
-                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-white shadow bg-red-600 hover:bg-red-500 flex items-center gap-1.5"
+                        className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-white shadow bg-red-600 hover:bg-red-500 flex items-center gap-1.5"
                       >
-                        <Swords className="w-4 h-4" />
+                        <Swords className="w-3.5 h-3.5" />
                         <span>Tấn Công ({actualAttackTroops}q)</span>
                       </button>
                       {airType1Unlocked && airSummary.fighterReady > 0 && onLaunchAirAtTile && (
                         <button
                           onClick={() => onLaunchAirAtTile(selectedTile, 'FIGHTER')}
-                          className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-white bg-sky-700 hover:bg-sky-600 border border-sky-400 flex items-center gap-1.5 shadow"
+                          className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-white bg-sky-700 hover:bg-sky-600 border border-sky-400 flex items-center gap-1.5 shadow"
                           title="Xuất kích Máy Bay Chiến Đấu (L1) tới mục tiêu này (0 Dầu, 1 lượt xuất kích)"
                         >
-                          <Plane className="w-4 h-4" />
+                          <Plane className="w-3.5 h-3.5" />
                           <span>Không Kích L1</span>
                         </button>
                       )}
                       {airType23Unlocked && airSummary.squadronReady > 0 && onLaunchAirAtTile && (
                         <button
                           onClick={() => onLaunchAirAtTile(selectedTile, 'SQUADRON')}
-                          className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-white bg-amber-700 hover:bg-amber-600 border border-amber-400 flex items-center gap-1.5 shadow"
+                          className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-white bg-amber-700 hover:bg-amber-600 border border-amber-400 flex items-center gap-1.5 shadow"
                           title="Xuất kích Tiểu Đội 3 chiếc (L2) tới mục tiêu này (0 Dầu, 1 lượt xuất kích)"
                         >
-                          <Plane className="w-4 h-4" />
+                          <Plane className="w-3.5 h-3.5" />
                           <span>Tiểu Đội L2</span>
                         </button>
                       )}
                       <button
                         onClick={() => onProposeAlliance?.(selectedTile.owner)}
-                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-emerald-100 bg-emerald-900 hover:bg-emerald-800 border border-emerald-400 flex items-center gap-1.5"
+                        className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-emerald-100 bg-emerald-900 hover:bg-emerald-800 border border-emerald-400 flex items-center gap-1.5"
                       >
-                        <Handshake className="w-4 h-4 text-emerald-300" />
+                        <Handshake className="w-3.5 h-3.5 text-emerald-300" />
                         <span>Kết Minh</span>
                       </button>
                       <button
                         onClick={() => onProposeTruce?.(selectedTile.owner)}
-                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-amber-100 bg-amber-900 hover:bg-amber-800 border border-amber-400 flex items-center gap-1.5"
+                        className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-amber-100 bg-amber-900 hover:bg-amber-800 border border-amber-400 flex items-center gap-1.5"
                       >
                         <span>🕊️ Đình Chiến</span>
                       </button>
@@ -749,16 +749,16 @@ export const GameHud: React.FC<GameHudProps> = ({
                     <>
                       <button
                         onClick={() => onProposeAlliance?.(selectedTile.owner)}
-                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-emerald-100 bg-emerald-900 hover:bg-emerald-800 border border-emerald-400 flex items-center gap-1.5"
+                        className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-emerald-100 bg-emerald-900 hover:bg-emerald-800 border border-emerald-400 flex items-center gap-1.5"
                       >
-                        <Handshake className="w-4 h-4 text-emerald-300" />
+                        <Handshake className="w-3.5 h-3.5 text-emerald-300" />
                         <span>Kết Minh</span>
                       </button>
                       <button
                         onClick={() => onDeclareWar?.(selectedTile.owner)}
-                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-red-100 bg-red-900 hover:bg-red-800 border border-red-400 flex items-center gap-1.5"
+                        className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-red-100 bg-red-900 hover:bg-red-800 border border-red-400 flex items-center gap-1.5"
                       >
-                        <Swords className="w-4 h-4" />
+                        <Swords className="w-3.5 h-3.5" />
                         <span>Tuyên Chiến</span>
                       </button>
                     </>
@@ -768,21 +768,21 @@ export const GameHud: React.FC<GameHudProps> = ({
                     <>
                       <button
                         onClick={() => onSendGoldAid?.(selectedTile.owner)}
-                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-amber-100 bg-amber-900 hover:bg-amber-800 border border-amber-400 flex items-center gap-1.5"
+                        className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-amber-100 bg-amber-900 hover:bg-amber-800 border border-amber-400 flex items-center gap-1.5"
                       >
-                        <Coins className="w-4 h-4 text-amber-300" />
+                        <Coins className="w-3.5 h-3.5 text-amber-300" />
                         <span>Tặng 30% Vàng</span>
                       </button>
                       <button
                         onClick={() => onSendTroopAid?.(selectedTile.owner)}
-                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-blue-100 bg-blue-900 hover:bg-blue-800 border border-blue-400 flex items-center gap-1.5"
+                        className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-blue-100 bg-blue-900 hover:bg-blue-800 border border-blue-400 flex items-center gap-1.5"
                       >
-                        <Users className="w-4 h-4 text-blue-300" />
+                        <Users className="w-3.5 h-3.5 text-blue-300" />
                         <span>Tặng 30% Quân</span>
                       </button>
                       <button
                         onClick={() => onDeclareWar?.(selectedTile.owner)}
-                        className="min-h-[44px] px-3 py-2 font-bold rounded-xl text-sm text-rose-100 bg-rose-900 hover:bg-rose-800 border border-rose-400 flex items-center gap-1.5"
+                        className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-rose-100 bg-rose-900 hover:bg-rose-800 border border-rose-400 flex items-center gap-1.5"
                       >
                         <span>🗡️ Huỷ Minh</span>
                       </button>
@@ -909,13 +909,13 @@ export const GameHud: React.FC<GameHudProps> = ({
                   <div className="flex items-center gap-2 px-2 py-1">
                     <div className="shrink-0"><GeneralModel skillId={pGen.skillId} size={30} /></div>
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5 text-sm font-bold text-amber-200">
-                        <span className="truncate">{pGen.name}</span>
-                        <span className="px-1.5 bg-amber-500/25 border border-amber-400/60 rounded text-sm font-mono shrink-0">Lv.{pGen.level || 1}</span>
+                      <div className="flex items-center gap-1.5 text-sm font-bold text-amber-200 min-w-0">
+                        <span className="truncate max-w-full font-bold">{pGen.name}</span>
+                        <span className="px-1.5 bg-amber-500/25 border border-amber-400/60 rounded text-xs font-mono shrink-0">Lv.{pGen.level || 1}</span>
                         {(isMarching || isInjured || isRecovering) && (
-                          <span className="text-sm shrink-0">{isMarching ? '⚔️' : isInjured ? '🚨' : '⏳'}</span>
+                          <span className="text-xs shrink-0">{isMarching ? '⚔️' : isInjured ? '🚨' : '⏳'}</span>
                         )}
-                        {(pGen.loyalty ?? 100) < 30 && <span className="text-sm shrink-0 animate-pulse">⚠️</span>}
+                        {(pGen.loyalty ?? 100) < 30 && <span className="text-xs shrink-0 animate-pulse">⚠️</span>}
                       </div>
                       <div className="w-full bg-slate-800 rounded-full h-2 mt-1 overflow-hidden">
                         <div
@@ -924,19 +924,6 @@ export const GameHud: React.FC<GameHudProps> = ({
                         />
                       </div>
                     </div>
-
-                    <button
-                      onClick={() => {
-                        if (canDeploy) setPlayerGeneralDeployMode(prev => !prev);
-                        else soundManager.playClick();
-                      }}
-                      disabled={!canDeploy}
-                      className={`min-w-[44px] min-h-[44px] shrink-0 rounded-xl border text-base flex items-center justify-center ${
-                        !canDeploy ? 'bg-slate-900 border-slate-700 text-slate-400' : playerGeneralDeployMode ? 'bg-amber-500/30 border-amber-400 text-white' : 'bg-slate-800 border-slate-600 text-white'
-                      }`}
-                    >
-                      {!canDeploy ? ((pGen.loyalty ?? 100) < 30 ? '🚫' : '🔒') : playerGeneralDeployMode ? '⚔️' : '🛡️'}
-                    </button>
 
                     <button
                       onClick={() => {
@@ -1059,15 +1046,15 @@ export const GameHud: React.FC<GameHudProps> = ({
           )}
         </div>
 
-        {/* 7. THANH DƯỚI CÙNG: 5 hoặc 6 nút icon có nhãn rõ >= 14px, nút >= 44px */}
+        {/* 7. THANH DƯỚI CÙNG: 5 hoặc 6 nút */}
         <div className={`grid ${gameMode === 'CREATIVE' ? 'grid-cols-6' : 'grid-cols-5'} gap-1 shrink-0`}>
           {/* Nút 1: Tấn Công */}
           <button
             onClick={() => setIsMissileOpen(true)}
-            className="flex flex-col items-center justify-center py-1 px-0.5 bg-red-950/90 hover:bg-red-900 active:scale-95 border border-red-400/80 rounded-xl text-white transition-all min-h-[48px]"
+            className="flex flex-col items-center justify-center py-1 px-0.5 bg-red-950/90 hover:bg-red-900 active:scale-95 border border-red-400/80 rounded-xl text-white transition-all min-h-[40px]"
           >
-            <Rocket className="w-4 h-4 text-red-300 mb-0.5 shrink-0" />
-            <span className="text-sm font-bold leading-tight text-center">Tấn Công</span>
+            <Rocket className="w-3 h-3 text-red-300 mb-0 shrink-0" />
+            <span className="text-xs font-bold leading-none text-center">Tấn Công</span>
           </button>
 
           {/* Nút 2: Xây Dựng */}
@@ -1082,22 +1069,22 @@ export const GameHud: React.FC<GameHudProps> = ({
               }
               setIsBuildOpen(true);
             }}
-            className="flex flex-col items-center justify-center py-1 px-0.5 bg-amber-950/90 hover:bg-amber-900 active:scale-95 border border-amber-400/80 rounded-xl text-white transition-all min-h-[48px]"
+            className="flex flex-col items-center justify-center py-1 px-0.5 bg-amber-950/90 hover:bg-amber-900 active:scale-95 border border-amber-400/80 rounded-xl text-white transition-all min-h-[40px]"
           >
-            <Building2 className="w-4 h-4 text-amber-300 mb-0.5 shrink-0" />
-            <span className="text-sm font-bold leading-tight text-center">Xây Dựng</span>
+            <Building2 className="w-3 h-3 text-amber-300 mb-0 shrink-0" />
+            <span className="text-xs font-bold leading-none text-center">Xây Dựng</span>
           </button>
 
           {/* Nút 3: Công Nghệ */}
           <button
             disabled={!canTech}
             onClick={() => setIsTechOpen(true)}
-            className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all min-h-[48px] border ${
+            className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all min-h-[40px] border ${
               canTech ? 'bg-blue-950/90 hover:bg-blue-900 border-blue-400/80 text-white active:scale-95' : 'bg-slate-900 border-slate-700 text-slate-400 cursor-not-allowed'
             }`}
           >
-            <Cpu className="w-4 h-4 text-blue-300 mb-0.5 shrink-0" />
-            <span className="text-sm font-bold leading-tight text-center">Công Nghệ</span>
+            <Cpu className="w-3 h-3 text-blue-300 mb-0 shrink-0" />
+            <span className="text-xs font-bold leading-none text-center">Công Nghệ</span>
           </button>
 
           {/* Nút 4: Xếp Hạng */}
@@ -1106,10 +1093,10 @@ export const GameHud: React.FC<GameHudProps> = ({
               soundManager.playClick();
               setIsLeaderboardOpen(true);
             }}
-            className="flex flex-col items-center justify-center py-1 px-0.5 bg-amber-950/90 hover:bg-amber-900 active:scale-95 border border-amber-400/80 rounded-xl text-white transition-all min-h-[48px]"
+            className="flex flex-col items-center justify-center py-1 px-0.5 bg-amber-950/90 hover:bg-amber-900 active:scale-95 border border-amber-400/80 rounded-xl text-white transition-all min-h-[40px]"
           >
-            <Trophy className="w-4 h-4 text-amber-300 mb-0.5 shrink-0" />
-            <span className="text-sm font-bold leading-tight text-center">Xếp Hạng</span>
+            <Trophy className="w-3 h-3 text-amber-300 mb-0 shrink-0" />
+            <span className="text-xs font-bold leading-none text-center">Xếp Hạng</span>
           </button>
 
           {/* Nút Sáng Tạo (Chỉ hiển thị khi gameMode === 'CREATIVE') */}
@@ -1119,23 +1106,23 @@ export const GameHud: React.FC<GameHudProps> = ({
                 soundManager.playClick();
                 setIsCreativeOpen(true);
               }}
-              className="flex flex-col items-center justify-center py-1 px-0.5 bg-purple-950/90 hover:bg-purple-900 active:scale-95 border border-purple-400 rounded-xl text-white transition-all min-h-[48px] shadow-md"
+              className="flex flex-col items-center justify-center py-1 px-0.5 bg-purple-950/90 hover:bg-purple-900 active:scale-95 border border-purple-400 rounded-xl text-white transition-all min-h-[40px] shadow-md"
               title="Mở Bảng Sáng Tạo"
             >
-              <Wand2 className="w-4 h-4 text-purple-300 mb-0.5 shrink-0" />
-              <span className="text-sm font-bold leading-tight text-center">Sáng Tạo</span>
+              <Wand2 className="w-3 h-3 text-purple-300 mb-0 shrink-0" />
+              <span className="text-xs font-bold leading-none text-center">Sáng Tạo</span>
             </button>
           )}
 
           {/* Nút 5: Tự Động */}
           <button
             onClick={() => setAutoExpand(!autoExpand)}
-            className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all min-h-[48px] border ${
+            className={`flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition-all min-h-[40px] border ${
               autoExpand ? 'bg-emerald-700 border-emerald-400 text-white' : 'bg-slate-800 border-slate-500 text-slate-100'
             }`}
           >
-            <span className="text-base mb-0.5 leading-none">🤖</span>
-            <span className="text-sm font-bold leading-tight text-center">{autoExpand ? 'Tự Động' : 'Tắt'}</span>
+            <span className="text-sm mb-0 leading-none">🤖</span>
+            <span className="text-xs font-bold leading-none text-center">{autoExpand ? 'Tự Động' : 'Tắt'}</span>
           </button>
         </div>
       </footer>
