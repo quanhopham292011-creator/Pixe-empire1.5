@@ -2,6 +2,7 @@ import React, { useCallback } from 'react';
 import { Nation, Tile, BuildingType, GameDifficulty, GeneralBehavior } from '../types';
 import { RoomState } from '../multiplayer/types';
 import { BUILDING_INFO, formatGameTime } from '../utils/constants';
+import { hasBuildingNearby } from '../utils/buildingSpacing';
 import { GENERAL_CONSTANTS, canDeployGeneral } from '../utils/generalCombat';
 import { getStyleAIWeights } from '../utils/generalEvolution';
 import { countActiveAlliances, reconcileNationAlliances } from './useTradeRoutes';
@@ -823,7 +824,7 @@ export function useBotAI({
         }
       }
 
-      // 6e. Bot xuất kích Máy Bay Chiến Đấu (Quân Sự Tối Thượng 3, tối đa 5 chiếc)
+      // 6e. Bot xuất kích Máy Bay Chiến Đấu (Quân Sự Tối Thượng 3, tối đa MAX_FIGHTERS_PER_NATION chiếc)
       if (
         canLaunchFighterPlane(bot) &&
         (bot.id + gameTime) % 8 === 0 &&
@@ -861,7 +862,27 @@ export function useBotAI({
           if (t.building === 'BARRACKS') botBarracks += (t.buildingLevel || 1);
         });
 
-        const targetForBuilding = borderThreats.find(b => b.isCapital || b.strategicScore >= 40 || b.tile.building === 'NONE');
+        // AI xây Bệ Tên Lửa khi đủ vàng, số lượng theo độ khó
+        const siloMaxByDiff = difficulty === 'EXTREME' ? 4 : difficulty === 'HARD' ? 3 : difficulty === 'NORMAL' ? 2 : 1;
+        const siloMinGold = difficulty === 'EASY' ? 6000 : difficulty === 'NORMAL' ? 4500 : 3500;
+        let botSilos = 0;
+        ownedList.forEach(t => { if (t.building === 'MISSILE_SILO') botSilos++; });
+        if (botSilos < siloMaxByDiff && bot.gold >= siloMinGold + BUILDING_INFO.MISSILE_SILO.baseCost) {
+          const siloSpot = ownedList.find(t => t.terrain === 'LAND' && t.building === 'NONE' && !(t.x === bot.capitalX && t.y === bot.capitalY) && !hasBuildingNearby(tiles, t.x, t.y));
+          if (siloSpot) {
+            bot.gold -= BUILDING_INFO.MISSILE_SILO.baseCost;
+            siloSpot.building = 'MISSILE_SILO';
+            siloSpot.buildingLevel = 1;
+            offscreenTerritoryDirtyRef.current = true;
+            fogBaseDirtyRef.current = true;
+            dirtyTerritoryTilesRef.current.push({ x: siloSpot.x, y: siloSpot.y });
+          }
+        }
+
+        const targetForBuilding = borderThreats.find(b =>
+          (b.isCapital || b.strategicScore >= 40 || b.tile.building === 'NONE') &&
+          (b.tile.building !== 'NONE' || !hasBuildingNearby(tiles, b.tile.x, b.tile.y))
+        );
         if (targetForBuilding) {
           const tileToBuild = targetForBuilding.tile;
           if (tileToBuild.building === 'NONE') {

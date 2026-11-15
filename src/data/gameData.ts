@@ -467,36 +467,38 @@ const SUPREME_LEVEL_COSTS = {
   3: { gold: 40_000, oil: 5_000, minerals: 5_000, researchTime: 90 },
 } as const;
 
+export const SUPREME_TECH_EFFECTS = {
+  ECONOMY_1_RESOURCE_PROD_BONUS: 0.25, // +25% sản lượng Dầu & Khoáng sản
+  ECONOMY_1_GOLD_INCOME_BONUS: 0.05, // +5% thu nhập Vàng
+  ECONOMY_2_ADVANCED_EXTRACTOR_LIMIT: 2, // Tối đa 2 Mỏ/Giàn Dầu Cao Cấp
+  ECONOMY_3_ADVANCED_EXTRACTOR_LIMIT: 4, // Thêm 2 -> tổng tối đa 4
+  ADVANCED_EXTRACTOR_MULT: 1.5, // Sản lượng x1.5
+  ADVANCED_EXTRACTOR_MINERAL_COST: 120, // Chi phí nâng cấp bằng Khoáng sản
+  MILITARY_1_BURN_ZONE_SECONDS: 15, // Vùng Cháy 15s (10-20s)
+  MILITARY_2_ATOM_RADIUS: 6.0, // Bom Atom nâng cấp: bán kính lớn hơn (~x8-10 diện tích & x10 sát thương)
+  MILITARY_2_ATOM_TROOP_LOSS: 3500, // x10 sát thương quân (350 -> 3500)
+  MILITARY_2_ATOM_SUPER_DAMAGE: 420,
+  MILITARY_2_RADIATION_SECONDS: 50, // Vùng Phóng Xạ 50s (40-60s)
+  MILITARY_2_RADIATION_RES_PENALTY: 0.75, // Giảm mạnh sản lượng Dầu & Khoáng (-75%)
+  MILITARY_2_RADIATION_GOLD_PENALTY: 0.35, // Giảm mạnh thu nhập Vàng trong vùng phóng xạ (-35%)
+  MILITARY_2_RADIATION_REGEN_PENALTY: 0.35, // Chậm hồi quân trong vùng phóng xạ (-35%)
+  MILITARY_3_MAX_FIGHTERS: 6, // Tối đa 6 máy bay chiến đấu hoạt động cùng lúc
+  MILITARY_3_FIGHTER_GOLD_COST: 500,
+  MILITARY_3_FIGHTER_OIL_COST: 32,
+  DEFENSE_1_BORDER_DEFENSE_BONUS: 0.25, // +25% phòng thủ ô biên giới
+  DEFENSE_2_FORTRESS_RADIUS: 11, // Pháo Đài Tối Thượng: 8 -> 11 ô
+  DEFENSE_2_FORTRESS_REDUCTION_ACTIVE: 0.90, // 80% -> 90% (thay thế, không cộng dồn)
+  DEFENSE_2_FORTRESS_REDUCTION_DAMAGED: 0.40, // 30% -> 40% khi hư hại
+  DEFENSE_3_AUTO_BUNKERS: 4, // Tự xây 4 lô cốt dọc biên giới (3-5)
+  DEFENSE_3_MAX_BUNKERS: 10, // Tối đa 10 lô cốt / nước
+  DEFENSE_3_BUNKER_WAVE_DAMAGE: 18, // Sát thương bắn tỉa chống bộ binh của Lô Cốt
+  SUPREME_MISSILE_PRICE_MULT: 2.0, // Hệ số nhân giá tên lửa sau khi nâng cấp (HYDRO cấp 1, ATOM cấp 2)
+};
+
 export const SUPREME_TECH_CONFIG = {
   MAX_LEVEL: 3,
   COSTS_BY_LEVEL: SUPREME_LEVEL_COSTS,
-  EFFECTS: {
-    ECONOMY_1_RESOURCE_PROD_BONUS: 0.25, // +25% sản lượng Dầu & Khoáng sản
-    ECONOMY_1_GOLD_INCOME_BONUS: 0.05, // +5% thu nhập Vàng
-    ECONOMY_2_ADVANCED_EXTRACTOR_LIMIT: 2, // Tối đa 2 Mỏ/Giàn Dầu Cao Cấp
-    ECONOMY_3_ADVANCED_EXTRACTOR_LIMIT: 4, // Thêm 2 -> tổng tối đa 4
-    ADVANCED_EXTRACTOR_MULT: 1.5, // Sản lượng x1.5
-    ADVANCED_EXTRACTOR_MINERAL_COST: 120, // Chi phí nâng cấp bằng Khoáng sản
-    MILITARY_1_BURN_ZONE_SECONDS: 15, // Vùng Cháy 15s (10-20s)
-    MILITARY_2_ATOM_RADIUS: 6.0, // Bom Atom nâng cấp: bán kính lớn hơn (~x8-10 diện tích & x10 sát thương)
-    MILITARY_2_ATOM_TROOP_LOSS: 3500, // x10 sát thương quân (350 -> 3500)
-    MILITARY_2_ATOM_SUPER_DAMAGE: 420,
-    MILITARY_2_RADIATION_SECONDS: 50, // Vùng Phóng Xạ 50s (40-60s)
-    MILITARY_2_RADIATION_RES_PENALTY: 0.75, // Giảm mạnh sản lượng Dầu & Khoáng (-75%)
-    MILITARY_2_RADIATION_GOLD_PENALTY: 0.35, // Giảm mạnh thu nhập Vàng trong vùng phóng xạ (-35%)
-    MILITARY_2_RADIATION_REGEN_PENALTY: 0.35, // Chậm hồi quân trong vùng phóng xạ (-35%)
-    MILITARY_3_MAX_FIGHTERS: 5, // Tối đa 5 máy bay chiến đấu hoạt động cùng lúc
-    MILITARY_3_FIGHTER_GOLD_COST: 600,
-    MILITARY_3_FIGHTER_OIL_COST: 40,
-    DEFENSE_1_BORDER_DEFENSE_BONUS: 0.25, // +25% phòng thủ ô biên giới
-    DEFENSE_2_FORTRESS_RADIUS: 11, // Pháo Đài Tối Thượng: 8 -> 11 ô
-    DEFENSE_2_FORTRESS_REDUCTION_ACTIVE: 0.90, // 80% -> 90% (thay thế, không cộng dồn)
-    DEFENSE_2_FORTRESS_REDUCTION_DAMAGED: 0.40, // 30% -> 40% khi hư hại
-    DEFENSE_3_AUTO_BUNKERS: 4, // Tự xây 4 lô cốt dọc biên giới (3-5)
-    DEFENSE_3_MAX_BUNKERS: 10, // Tối đa 10 lô cốt / nước
-    DEFENSE_3_BUNKER_WAVE_DAMAGE: 18, // Sát thương bắn tỉa chống bộ binh của Lô Cốt
-    SUPREME_MISSILE_PRICE_MULT: 2.0, // Hệ số nhân giá tên lửa sau khi nâng cấp (HYDRO cấp 1, ATOM cấp 2)
-  },
+  EFFECTS: SUPREME_TECH_EFFECTS,
   BRANCHES: [
     { key: 'economy' as SupremeTechBranch, branch: 'ECONOMY' as TechBranch, label: 'Kinh Tế' },
     { key: 'military' as SupremeTechBranch, branch: 'MILITARY' as TechBranch, label: 'Quân Sự' },
@@ -577,7 +579,7 @@ export const SUPREME_TECH_CONFIG = {
       branchKey: 'military',
       level: 3,
       name: 'Máy Bay Chiến Đấu',
-      description: 'Mở khóa Phi Đội Chiến Đấu bay từ Thủ Đô (tối đa 5 chiếc cùng lúc, tốn Vàng + Dầu), oanh tạc mục tiêu; có thể bị SAM bắn hạ.',
+      description: `Mở khóa Phi Đội Chiến Đấu bay từ Thủ Đô (tối đa ${SUPREME_TECH_EFFECTS.MILITARY_3_MAX_FIGHTERS} chiếc cùng lúc, tốn ${SUPREME_TECH_EFFECTS.MILITARY_3_FIGHTER_GOLD_COST} Vàng + ${SUPREME_TECH_EFFECTS.MILITARY_3_FIGHTER_OIL_COST} Dầu), oanh tạc mục tiêu; có thể bị SAM bắn hạ.`,
       cost: SUPREME_LEVEL_COSTS[3].gold,
       oilCost: SUPREME_LEVEL_COSTS[3].oil,
       mineralCost: SUPREME_LEVEL_COSTS[3].minerals,

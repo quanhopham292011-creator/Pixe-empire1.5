@@ -25,11 +25,11 @@ export const EventTicker: React.FC<EventTickerProps> = ({
       {latestEvent && (
         <div
           onClick={onOpenLog}
-          className="max-w-xs sm:max-w-sm px-3 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-full shadow-lg backdrop-blur-md flex items-center gap-2 cursor-pointer hover:bg-slate-800 transition-all active:scale-95"
+          className="max-w-full px-3 py-1.5 bg-slate-900/90 border border-slate-700/80 rounded-full shadow-lg backdrop-blur-md flex items-center gap-2 cursor-pointer hover:bg-slate-800 transition-all active:scale-95"
         >
           <div className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
           <span className="text-[11px] font-medium text-slate-200 truncate flex-1">
-            {latestEvent.title}: {latestEvent.description}
+            {latestEvent.title}
           </span>
           <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
         </div>

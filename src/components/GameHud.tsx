@@ -22,7 +22,7 @@ import {
 } from '../utils/supremeTech';
 import { GeneralModel } from './GeneralModel';
 import { 
-  Coins, Users, Building2, Swords, Play, Pause, Settings, X, Shield, Handshake, Crown, Rocket, Cpu, Trophy, Wand2, Plane
+  Coins, Users, Building2, Swords, Play, Pause, Settings, X, Shield, Handshake, Crown, Rocket, Cpu, Trophy, Wand2, Plane, Info
 } from 'lucide-react';
 
 interface GameHudProps {
@@ -118,8 +118,8 @@ export const GameHud: React.FC<GameHudProps> = ({
   onLaunchFighterAtTile,
   onUpgradeAdvancedExtractor,
 }) => {
-  const [showSkillDesc, setShowSkillDesc] = useState(false);
   const [showReserves, setShowReserves] = useState(false);
+  const [showGenInfo, setShowGenInfo] = useState(false);
   const [, setForceUpdate] = useState(0);
   const [latestEventText, setLatestEventText] = useState<string | null>(null);
 
@@ -596,7 +596,7 @@ export const GameHud: React.FC<GameHudProps> = ({
 
       {/* THANH DƯỚI CÙNG (5 NÚT ICON + BẢNG XUẤT QUÂN & TƯỚNG) */}
       <footer 
-        className="pointer-events-auto bg-slate-900/95 border-t border-slate-800 p-2 sm:p-2.5 z-20 shrink-0 space-y-2 backdrop-blur-md"
+        className="pointer-events-auto bg-slate-900/95 border-t border-slate-800 px-2 pt-1.5 sm:px-2.5 z-20 shrink-0 space-y-1.5 backdrop-blur-md"
         style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         {/* BẢNG XUẤT QUÂN GỌN 1 HÀNG */}
@@ -635,7 +635,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               <span className="truncate">
                 Máy Bay Chiến Đấu: <span className="font-mono text-white">{activeFightersCount}/{MAX_FIGHTERS_PER_NATION}</span>
               </span>
-              <span className="text-[10px] font-mono text-amber-300 shrink-0">
+              <span className="text-[10px] font-mono text-amber-300 shrink-0 hidden sm:inline">
                 ({FIGHTER_PLANE_CONFIG.goldCost}💰 {FIGHTER_PLANE_CONFIG.oilCost}🛢️)
               </span>
             </div>
@@ -654,125 +654,99 @@ export const GameHud: React.FC<GameHudProps> = ({
 
         {/* TƯỚNG VÀ KỸ NĂNG */}
         {(pGen || reserveGenerals.length > 0) && (
-          <div className="flex flex-col bg-slate-950/85 rounded-xl border border-slate-800 text-xs shadow-lg overflow-hidden backdrop-blur-md">
+          <div className="relative flex flex-col bg-slate-950/85 rounded-xl border border-slate-800 text-xs shadow-lg backdrop-blur-md">
             {pGen && rosterItem && (
-              <div className="flex items-center justify-between px-2.5 py-1.5 gap-2">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <div className="shrink-0 scale-90">
-                    <GeneralModel skillId={pGen.skillId} size={28} />
-                  </div>
-                  <div className="text-left truncate min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 font-bold text-amber-300 text-[11px] truncate flex-wrap">
-                      <span className="truncate">{pGen.name}</span>
-                      <span className="px-1 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[9px] font-mono font-bold shrink-0">
-                        Lv.{pGen.level || 1}
-                      </span>
-                      {styleInfo && (
-                        <span 
-                          className="px-1 py-0.5 bg-purple-500/20 text-purple-300 border border-purple-500/40 rounded text-[9px] font-bold shrink-0"
-                          title={styleInfo.desc}
-                        >
-                          {styleInfo.icon} {styleInfo.name}
-                        </span>
-                      )}
-                      <span 
-                        className={`px-1 py-0.5 rounded text-[9px] font-bold border shrink-0 ${
-                          (pGen.loyalty ?? 100) < 10
-                            ? 'bg-red-950/90 text-red-300 border-red-500 animate-pulse'
-                            : loyaltyState === 'TRUNG_THANH'
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                            : loyaltyState === 'BAT_MAN'
-                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                            : 'bg-red-500/20 text-red-300 border-red-500/40 animate-pulse'
-                        }`}
-                        title={`Lòng trung thành: ${pGen.loyalty ?? 100}/100`}
-                      >
-                        {(pGen.loyalty ?? 100) < 10
-                          ? '⚠️ Sắp rời bỏ'
-                          : loyaltyState === 'TRUNG_THANH'
-                          ? '🤝 Trung thành'
-                          : loyaltyState === 'BAT_MAN'
-                          ? '⚠️ Bất mãn'
-                          : '🚨 Nguy cơ phản bội'}{' '}
-                        ({pGen.loyalty ?? 100})
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-mono font-normal shrink-0">
-                        {pGen.hp ?? 1000}/{pGen.maxHp || 1000}
-                      </span>
+              <>
+                {showGenInfo && (
+                  <div className="absolute bottom-full left-0 right-0 mb-1.5 z-30 max-h-[45vh] overflow-y-auto bg-slate-950/95 border border-slate-700 rounded-xl p-2.5 text-[11px] text-slate-300 space-y-1.5 shadow-2xl backdrop-blur-md">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-amber-300">Thông tin Đại Tướng</span>
+                      <button onClick={() => setShowGenInfo(false)} className="p-1 text-slate-400">
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    {/* Thanh HP */}
-                    <div className="w-24 max-w-full bg-slate-800 rounded-full h-1 mt-0.5 overflow-hidden">
-                      <div 
-                        className={`h-full transition-all duration-300 ${
-                          hpPercent >= 60 ? 'bg-emerald-500' : hpPercent > 20 ? 'bg-amber-500' : 'bg-red-500 animate-pulse'
-                        }`}
+                    <div>Kỹ năng: <b className="text-amber-200">{rosterItem.emoji} {rosterItem.skillName}</b></div>
+                    {styleInfo && <div>{styleInfo.icon} {styleInfo.name}: <span className="text-slate-400">{styleInfo.desc}</span></div>}
+                    <div>Giáp {Math.round((pGen.armor || 0.20) * 100)}% • Sát thương {pGen.attack || 90} • HP {pGen.hp ?? 1000}/{pGen.maxHp || 1000}</div>
+                    <div className={(pGen.loyalty ?? 100) < 10 ? 'text-red-400 font-bold' : loyaltyState === 'TRUNG_THANH' ? 'text-emerald-400' : loyaltyState === 'BAT_MAN' ? 'text-amber-400' : 'text-red-400'}>
+                      {(pGen.loyalty ?? 100) < 10 ? '⚠️ Sắp rời bỏ' : loyaltyState === 'TRUNG_THANH' ? '🤝 Trung thành' : loyaltyState === 'BAT_MAN' ? '⚠️ Bất mãn' : '🚨 Nguy cơ phản bội'} ({pGen.loyalty ?? 100})
+                    </div>
+                    <div>
+                      {isMarching ? '⚔️ Đang xuất trận' : isInjured ? '🚨 Trọng thương (Hồi 3%/s)' : isRecovering ? `⏳ Hồi phục (${hpPercent}% • Cần 60%)` : '🛡️ Đang ở thủ đô'}
+                    </div>
+                    <div className="text-slate-400">⚔️ = tướng xuất kèm khi tấn công • 🛡️ = giữ ở thủ đô</div>
+                    {!canDeploy && (
+                      <div className="text-red-300">
+                        {(pGen.loyalty ?? 100) < 30 ? 'Tướng có nguy cơ phản bội, từ chối xuất quân' : 'Cần ít nhất 60% HP để xuất trận'}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 px-2 py-1">
+                  <div className="shrink-0"><GeneralModel skillId={pGen.skillId} size={28} /></div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-300">
+                      <span className="truncate">{pGen.name}</span>
+                      <span className="px-1 bg-amber-500/20 border border-amber-500/40 rounded text-[9px] font-mono shrink-0">Lv.{pGen.level || 1}</span>
+                      {(isMarching || isInjured || isRecovering) && (
+                        <span className="text-[10px] shrink-0">{isMarching ? '⚔️' : isInjured ? '🚨' : '⏳'}</span>
+                      )}
+                      {(pGen.loyalty ?? 100) < 30 && <span className="text-[10px] shrink-0 animate-pulse">⚠️</span>}
+                    </div>
+                    <div className="w-full bg-slate-800 rounded-full h-1.5 mt-1 overflow-hidden">
+                      <div
+                        className={`h-full transition-all duration-300 ${hpPercent >= 60 ? 'bg-emerald-500' : hpPercent > 20 ? 'bg-amber-500' : 'bg-red-500 animate-pulse'}`}
                         style={{ width: `${Math.min(100, Math.max(0, hpPercent))}%` }}
                       />
                     </div>
-                    <div className="text-[9px] text-slate-400 mt-0.5 truncate">
-                      {isMarching ? (
-                        <span className="text-amber-300 font-semibold">⚔️ Đang Xuất Trận</span>
-                      ) : isInjured ? (
-                        <span className="text-red-400 font-semibold">🚨 Trọng Thương (0 HP • Hồi 3%/s)</span>
-                      ) : isRecovering ? (
-                        <span className="text-amber-400 font-semibold">⏳ Hồi Phục ({hpPercent}% • Cần 60%)</span>
-                      ) : (
-                        <span>🛡️ Thủ Đô (Giáp: {Math.round((pGen.armor || 0.20) * 100)}% • Atk: {pGen.attack || 90})</span>
-                      )}
-                    </div>
                   </div>
-                </div>
 
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {canDeploy ? (
-                    <button
-                      onClick={() => setPlayerGeneralDeployMode(prev => !prev)}
-                      className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${playerGeneralDeployMode ? 'bg-amber-500/20 border-amber-500/60 text-amber-300' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
-                      title={playerGeneralDeployMode ? 'Đang xuất kèm tướng khi tấn công' : 'Đang giữ tướng ở thủ đô'}
-                    >
-                      {playerGeneralDeployMode ? '⚔️ Xuất Kèm' : '🛡️ Giữ'}
-                    </button>
-                  ) : (
-                    <button
-                      disabled
-                      className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-900 border border-slate-800 text-slate-500 cursor-not-allowed"
-                      title={
-                        (pGen.loyalty ?? 100) < 30
-                          ? `Tướng có nguy cơ phản bội (Loyalty: ${pGen.loyalty ?? 100} < 30), từ chối xuất quân!`
-                          : `Cần ít nhất 60% HP để xuất trận (Hiện tại: ${hpPercent}%)`
-                      }
-                    >
-                      {(pGen.loyalty ?? 100) < 30 ? '🚫 Bất Tuân' : '🔒 <60% HP'}
-                    </button>
-                  )}
+                  <button
+                    onClick={() => {
+                      if (canDeploy) setPlayerGeneralDeployMode(prev => !prev);
+                      else soundManager.playClick();
+                    }}
+                    disabled={!canDeploy}
+                    className={`w-10 h-10 shrink-0 rounded-lg border text-base flex items-center justify-center ${
+                      !canDeploy ? 'bg-slate-900 border-slate-800 text-slate-600' : playerGeneralDeployMode ? 'bg-amber-500/20 border-amber-500/60' : 'bg-slate-800 border-slate-700'
+                    }`}
+                  >
+                    {!canDeploy ? ((pGen.loyalty ?? 100) < 30 ? '🚫' : '🔒') : playerGeneralDeployMode ? '⚔️' : '🛡️'}
+                  </button>
 
-                  {/* Nút kỹ năng */}
                   <button
                     onClick={() => {
                       if (canUseSkill) activateGeneralSkill(1);
                       else soundManager.playClick();
                     }}
                     disabled={!canUseSkill}
-                    onClickCapture={() => setShowSkillDesc(prev => !prev)}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-extrabold border flex items-center gap-1 ${
-                      isInjured ? 'bg-slate-900 text-slate-600 border-slate-800 cursor-not-allowed' :
+                    className={`w-12 h-10 shrink-0 rounded-lg border flex flex-col items-center justify-center gap-0.5 ${
+                      isInjured ? 'bg-slate-900 text-slate-600 border-slate-800' :
                       isSkillActive ? 'bg-amber-600 text-white border-amber-400 animate-pulse' :
                       isSkillOnCooldown ? 'bg-slate-800 text-slate-400 border-slate-700' :
                       'bg-gradient-to-r from-amber-600 to-amber-500 text-slate-950 border-amber-400 shadow'
                     }`}
                   >
-                    <span>{rosterItem.emoji}</span>
-                    <span className="truncate max-w-[80px]">{rosterItem.skillName}</span>
-                    {isSkillActive && <span className="font-mono">({pGen.skillActiveTimer}s)</span>}
-                    {isSkillOnCooldown && <span className="font-mono">({pGen.skillCooldown}s)</span>}
+                    <span className="text-base leading-none">{rosterItem.emoji}</span>
+                    <span className="text-[9px] font-mono font-bold leading-none">
+                      {isSkillActive ? `${pGen.skillActiveTimer}s` : isSkillOnCooldown ? `${pGen.skillCooldown}s` : 'Dùng'}
+                    </span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowGenInfo(v => !v)}
+                    className="w-8 h-8 shrink-0 rounded-full bg-slate-800 border border-slate-700 text-sky-300 flex items-center justify-center"
+                  >
+                    <Info className="w-4 h-4" />
                   </button>
                 </div>
-              </div>
+              </>
             )}
 
             {/* Mục thu gọn: Danh sách Dự bị */}
             {reserveGenerals.length > 0 && (
-              <div className="border-t border-slate-800/80 bg-slate-900/70 px-2.5 py-1">
+              <div className="border-t border-slate-800/80 bg-slate-900/70 px-2.5 py-1 rounded-b-xl">
                 <button
                   type="button"
                   onClick={() => setShowReserves(prev => !prev)}
@@ -865,7 +839,7 @@ export const GameHud: React.FC<GameHudProps> = ({
           {/* Nút 1: Tấn Công */}
           <button
             onClick={() => setIsMissileOpen(true)}
-            className="flex flex-col items-center justify-center py-2 px-1 bg-red-950/60 hover:bg-red-900/80 active:scale-95 border border-red-500/50 rounded-xl text-red-200 transition-all min-h-[44px]"
+            className="flex flex-col items-center justify-center py-1.5 px-1 bg-red-950/60 hover:bg-red-900/80 active:scale-95 border border-red-500/50 rounded-xl text-red-200 transition-all min-h-[44px]"
           >
             <Rocket className="w-4 h-4 text-red-400 mb-0.5" />
             <span className="text-[10px] font-bold leading-tight">Tấn Công</span>
@@ -883,7 +857,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               }
               setIsBuildOpen(true);
             }}
-            className="flex flex-col items-center justify-center py-2 px-1 bg-amber-950/60 hover:bg-amber-900/80 active:scale-95 border border-amber-500/50 rounded-xl text-amber-200 transition-all min-h-[44px]"
+            className="flex flex-col items-center justify-center py-1.5 px-1 bg-amber-950/60 hover:bg-amber-900/80 active:scale-95 border border-amber-500/50 rounded-xl text-amber-200 transition-all min-h-[44px]"
           >
             <Building2 className="w-4 h-4 text-amber-400 mb-0.5" />
             <span className="text-[10px] font-bold leading-tight">Xây Dựng</span>
@@ -893,7 +867,7 @@ export const GameHud: React.FC<GameHudProps> = ({
           <button
             disabled={!canTech}
             onClick={() => setIsTechOpen(true)}
-            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all min-h-[44px] border ${
+            className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all min-h-[44px] border ${
               canTech ? 'bg-blue-950/60 hover:bg-blue-900/80 border-blue-500/50 text-blue-200 active:scale-95' : 'bg-slate-900/40 border-slate-800 text-slate-600 cursor-not-allowed'
             }`}
           >
@@ -907,7 +881,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               soundManager.playClick();
               setIsLeaderboardOpen(true);
             }}
-            className="flex flex-col items-center justify-center py-2 px-1 bg-amber-950/60 hover:bg-amber-900/80 active:scale-95 border border-amber-500/50 rounded-xl text-amber-200 transition-all min-h-[44px]"
+            className="flex flex-col items-center justify-center py-1.5 px-1 bg-amber-950/60 hover:bg-amber-900/80 active:scale-95 border border-amber-500/50 rounded-xl text-amber-200 transition-all min-h-[44px]"
           >
             <Trophy className="w-4 h-4 text-amber-400 mb-0.5" />
             <span className="text-[10px] font-bold leading-tight">Xếp Hạng</span>
@@ -920,7 +894,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 soundManager.playClick();
                 setIsCreativeOpen(true);
               }}
-              className="flex flex-col items-center justify-center py-2 px-1 bg-purple-950/80 hover:bg-purple-900/90 active:scale-95 border border-purple-500/70 rounded-xl text-purple-200 transition-all min-h-[44px] shadow-md animate-pulse"
+              className="flex flex-col items-center justify-center py-1.5 px-1 bg-purple-950/80 hover:bg-purple-900/90 active:scale-95 border border-purple-500/70 rounded-xl text-purple-200 transition-all min-h-[44px] shadow-md animate-pulse"
               title="Mở Bảng Sáng Tạo"
             >
               <Wand2 className="w-4 h-4 text-purple-400 mb-0.5" />
@@ -931,7 +905,7 @@ export const GameHud: React.FC<GameHudProps> = ({
           {/* Nút 5: Tự Động */}
           <button
             onClick={() => setAutoExpand(!autoExpand)}
-            className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all min-h-[44px] border ${
+            className={`flex flex-col items-center justify-center py-1.5 px-1 rounded-xl transition-all min-h-[44px] border ${
               autoExpand ? 'bg-emerald-700 border-emerald-500 text-white' : 'bg-slate-800 border-slate-700 text-slate-400'
             }`}
           >

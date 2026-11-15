@@ -60,6 +60,7 @@ import {
   deployInitialBorderBunkers,
   upgradeAdvancedExtractor,
 } from './utils/supremeTech';
+import { hasBuildingNearby, isSpacingExempt } from './utils/buildingSpacing';
 import { 
   loadPlayerProfile, savePlayerProfile, calculateVictoryReward, calculateDefeatReward,
   getRequiredExpForNextLevel, MAX_PLAYER_LEVEL,
@@ -136,7 +137,7 @@ import {
   Shield, Castle, Coins, Users, Play, Pause, FastForward, 
   RotateCcw, ZoomIn, ZoomOut, Swords, Building2, Award, 
   TrendingUp, AlertTriangle, Volume2, VolumeX, HelpCircle, 
-  Sparkles, Flag, Crown, Check, Lock, ChevronRight, X, Anchor, Edit3, Settings,
+  Flag, Crown, Check, Lock, ChevronRight, X, Anchor, Edit3, Settings,
   Cloud, CloudRain, Sun, Wand2, Handshake, Crosshair, Rocket, ShieldAlert, Star
 } from 'lucide-react';
 
@@ -276,6 +277,7 @@ export default function App() {
   // Nhiệm vụ trong game
   const [currentQuest, setCurrentQuest] = useState<QuestStep>(1);
   const [questDismissed, setQuestDismissed] = useState<boolean>(false);
+  const [questExpanded, setQuestExpanded] = useState(false);
 
   // Trạng thái mở khóa ngoại giao
   const [hasMetBot, setHasMetBot] = useState<boolean>(false);
@@ -1957,9 +1959,14 @@ export default function App() {
         const earlyGameBonus = (n.isPlayer && data.gameTimeSeconds < 300) ? 0.12 : 0.0;
         const supremeGoldMult = getSupremeGoldIncomeMult(n);
         const radGoldMult = hasRadiation ? (1 - SUPREME_TECH_CONFIG.EFFECTS.MILITARY_2_RADIATION_GOLD_PENALTY) : 1.0;
-        const playerEcoMult = (ecoMult * (skillBonuses ? skillBonuses.goldMult : 1.0) + earlyGameBonus) * supremeGoldMult;
-        const baseGold = n.population * 0.03 + n.territoryCount * 0.03 + cityGold + hybridBarracksGold;
-        n.goldIncome = Math.max(1, Math.floor(baseGold * (n.id > 1 ? botEconArmyMult * supremeGoldMult : playerEcoMult) * titanBuff * seasonMult * radGoldMult));
+        // Buff vàng của người chơi được CỘNG DỒN (không nhân chồng), tối đa +60%
+        const playerGoldBonus = (ecoMult - 1) + (skillBonuses ? (skillBonuses.goldMult - 1) : 0) + earlyGameBonus + (supremeGoldMult - 1);
+        const playerEcoMult = 1 + Math.min(0.6, Math.max(0, playerGoldBonus));
+        // Đất: 60 ô đầu đủ giá trị, từ ô thứ 61 trở đi chỉ tính 40%
+        const territoryEff = n.territoryCount <= 60 ? n.territoryCount : 60 + (n.territoryCount - 60) * 0.4;
+        const baseGold = n.population * 0.03 + territoryEff * 0.03 + cityGold + hybridBarracksGold;
+        const botGoldMult = botEconArmyMult * supremeGoldMult;
+        n.goldIncome = Math.max(1, Math.floor(baseGold * (n.id > 1 ? botGoldMult : playerEcoMult) * titanBuff * seasonMult * radGoldMult));
         n.gold += n.goldIncome;
 
         // Quản lý Đại Tướng quốc gia: Kỹ năng, Hồi phục sinh tồn v1.1
@@ -2190,9 +2197,7 @@ export default function App() {
             const mult = diminishingFactors[idx] ?? 0.25;
             rawTrade += val * mult;
           });
-          const softTradeCap = data.gameTimeSeconds < 300
-            ? Math.max(2, Math.floor(playerNation.goldIncome * 0.40 + 2))
-            : Math.max(4, Math.floor(playerNation.goldIncome * 0.65 + 4));
+          const softTradeCap = Math.max(2, Math.floor(playerNation.goldIncome * 0.25 + 2));
           const tradeIncome = Math.min(softTradeCap, Math.max(1, Math.floor(rawTrade)));
           if (tradeIncome > 0) {
             playerNation.gold += tradeIncome;
@@ -2398,7 +2403,7 @@ export default function App() {
               const defNat = nations[tgt.owner];
               const hasTech3B = defNat?.techLevels?.defense === 3 && defNat?.techChoices?.defense === 'B';
               const samR = hasTech3B ? 6 : 5;
-              const samChance = hasTech3B ? 0.80 : 0.65;
+              const samChance = hasTech3B ? 0.75 : 0.60;
               for (let dy = -samR; dy <= samR && !shotDown; dy++) {
                 for (let dx = -samR; dx <= samR; dx++) {
                   const sx = tgt.x + dx;
@@ -3177,6 +3182,8 @@ export default function App() {
       }
       if (nation.gold < FIGHTER_PLANE_CONFIG.goldCost || (nation.oil || 0) < FIGHTER_PLANE_CONFIG.oilCost) {
         showMissileToast(`Cần ${FIGHTER_PLANE_CONFIG.goldCost} Vàng và ${FIGHTER_PLANE_CONFIG.oilCost} Dầu để xuất kích!`);
+        setFighterAimingMode(false);
+        fighterAimingModeRef.current = false;
         return;
       }
       nation.gold -= FIGHTER_PLANE_CONFIG.goldCost;
@@ -3191,10 +3198,16 @@ export default function App() {
         progress: 0,
         speed: FIGHTER_PLANE_CONFIG.speed,
       });
-      setFighterAimingMode(false);
-      fighterAimingModeRef.current = false;
       soundManager.playAttack();
-      showMissileToast(`✈️ Máy Bay Chiến Đấu đã cất cánh tới (${targetTile.x}, ${targetTile.y})!`);
+      const activeNow = countActiveFighterPlanes(data.fighterPlanes, myNation);
+      const canAffordNext = nation.gold >= FIGHTER_PLANE_CONFIG.goldCost && (nation.oil || 0) >= FIGHTER_PLANE_CONFIG.oilCost;
+      if (activeNow >= MAX_FIGHTERS_PER_NATION || !canAffordNext) {
+        setFighterAimingMode(false);
+        fighterAimingModeRef.current = false;
+        showMissileToast(`✈️ Máy Bay Chiến Đấu đã cất cánh tới (${targetTile.x}, ${targetTile.y})!`);
+      } else {
+        showMissileToast(`✈️ Đã phóng tới (${targetTile.x}, ${targetTile.y}). Chạm mục tiêu tiếp theo để phóng tiếp (${activeNow}/${MAX_FIGHTERS_PER_NATION}).`);
+      }
       return;
     }
 
@@ -3942,13 +3955,22 @@ export default function App() {
       // Thu hoạch tài nguyên & dân số đặc thù từng loại Thuộc địa khi chiếm đóng
       if (defender && prevOwner > 0) {
         if (defender.colonyCategory === 'FOREST') {
-          attacker.gold += 100;
+          if (!(defender as any).rewardPaid) {
+            attacker.gold += 40;
+            (defender as any).rewardPaid = true;
+          }
           attacker.population += 15;
         } else if (defender.colonyCategory === 'TRIBE') {
-          attacker.gold += 50;
+          if (!(defender as any).rewardPaid) {
+            attacker.gold += 20;
+            (defender as any).rewardPaid = true;
+          }
           attacker.population += 10;
         } else if (defender.colonyCategory === 'ETHNIC') {
-          attacker.gold += 80;
+          if (!(defender as any).rewardPaid) {
+            attacker.gold += 30;
+            (defender as any).rewardPaid = true;
+          }
           attacker.population += 20;
         }
       }
@@ -4330,21 +4352,25 @@ export default function App() {
     const size = data.tiles.length;
     const eligibleTiles: Tile[] = [];
 
-    // 1. Ưu tiên ô đang chọn nếu thuộc sở hữu người chơi
-    if (targetTile && targetTile.owner === myNation) {
-      if (!isPort || targetTile.hasHarborAccess) {
-        eligibleTiles.push(targetTile);
-      }
-    }
+    const canPlaceOn = (t: Tile): boolean => {
+      if (t.owner !== myNation) return false;
+      if (isPort && !t.hasHarborAccess) return false;
+      // Chỉ cho phép: ô cùng loại (nâng cấp chồng) hoặc ô trống
+      if (t.building === buildingType) return true;
+      if (t.building !== 'NONE') return false;
+      // Ô trống: phải cách công trình thường khác ít nhất 1 ô (trừ Cảng)
+      if (!isPort && !isSpacingExempt(buildingType) && hasBuildingNearby(data.tiles, t.x, t.y)) return false;
+      return true;
+    };
 
-    // 2. Quét các ô đất thuộc sở hữu người chơi
+    if (targetTile && canPlaceOn(targetTile)) {
+      eligibleTiles.push(targetTile);
+    }
     for (let y = 0; y < size; y++) {
       for (let x = 0; x < size; x++) {
         const t = data.tiles[y][x];
-        if (t.owner === myNation && t !== targetTile) {
-          if (!isPort || t.hasHarborAccess) {
-            eligibleTiles.push(t);
-          }
+        if (t !== targetTile && canPlaceOn(t)) {
+          eligibleTiles.push(t);
         }
       }
     }
@@ -4354,7 +4380,7 @@ export default function App() {
         x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
         y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
         color: '#ef4444', size: 0, life: 30, maxLife: 30, vx: 0, vy: -0.6,
-        type: 'FLOAT_TEXT', text: isPort ? 'Không có ô giáp biển thuộc sở hữu!' : 'Không có ô đất thuộc sở hữu!'
+        type: 'FLOAT_TEXT', text: isPort ? 'Không có ô giáp biển thuộc sở hữu!' : 'Không có chỗ xây: cần ô trống cách công trình khác ít nhất 1 ô!'
       });
       return;
     }
@@ -4528,10 +4554,9 @@ export default function App() {
             const ev = gameDataRef.current.activeSeasonEvent;
             if (!ev) return null;
             return (
-              <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-b border-indigo-500/50 px-3 py-1.5 flex items-center justify-between text-xs text-white z-30 shrink-0 shadow-lg animate-pulse">
+              <div className="absolute top-12 right-2 z-30 max-w-[36%] flex items-center gap-1.5 px-2.5 py-1 bg-indigo-950/90 border border-indigo-500/50 rounded-full shadow-md backdrop-blur-md text-[11px] text-white">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-extrabold text-amber-300 shrink-0">{ev.name}</span>
-                  <span className="text-[11px] text-slate-300 truncate hidden xs:inline">{ev.desc}</span>
+                  <span className="font-extrabold text-amber-300 truncate">{ev.name}</span>
                 </div>
                 <div className="flex items-center gap-1.5 font-mono text-cyan-300 font-bold shrink-0 ml-2">
                   <span>⏳ {ev.remainingTime}s</span>
@@ -4615,11 +4640,14 @@ export default function App() {
 
           {/* THANH NHIỆM VỤ THU GỌN - CHỐNG TRÀN MÀN HÌNH DI ĐỘNG */}
           {!questDismissed && currentQuest <= 5 && (
-            <div className="absolute top-12 left-2 right-2 sm:left-3 sm:right-3 z-30 flex items-center justify-between px-3 py-1.5 bg-blue-950/90 border border-blue-500/40 rounded-xl shadow-lg backdrop-blur-md">
-              <div className="flex items-center gap-1.5 text-xs text-blue-100 min-w-0 flex-1">
-                <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-spin shrink-0" />
-                <span className="font-bold text-amber-300 text-[11px] shrink-0">Nhiệm vụ {currentQuest}/5:</span>
-                <span className="text-[11px] text-slate-200 truncate">
+            <div className="absolute top-12 left-2 z-30 max-w-[60%] flex items-start justify-between pl-2.5 pr-1 py-1 bg-blue-950/85 border border-blue-500/40 rounded-2xl shadow-md backdrop-blur-md">
+              <div
+                className="flex items-start gap-1 text-xs text-blue-100 min-w-0 flex-1 cursor-pointer"
+                onClick={() => setQuestExpanded(v => !v)}
+              >
+                <span className="text-sm leading-none shrink-0">🎯</span>
+                <span className="font-bold text-amber-300 text-[11px] shrink-0">{currentQuest}/5</span>
+                <span className={`text-[11px] text-slate-200 ${questExpanded ? '' : 'truncate'}`}>
                   {currentQuest === 1 && 'Khởi đầu: Chiếm 12 ô đất xung quanh Việt Nam'}
                   {currentQuest === 2 && 'Phát triển: Xây dựng 1 Doanh Trại (Barracks)'}
                   {currentQuest === 3 && 'Mở rộng: Chinh phục 25 ô đất thế giới'}

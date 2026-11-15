@@ -277,13 +277,13 @@ export const MAX_FIGHTERS_PER_NATION = SUPREME_TECH_CONFIG.EFFECTS.MILITARY_3_MA
 export const FIGHTER_PLANE_CONFIG = {
   goldCost: SUPREME_TECH_CONFIG.EFFECTS.MILITARY_3_FIGHTER_GOLD_COST,
   oilCost: SUPREME_TECH_CONFIG.EFFECTS.MILITARY_3_FIGHTER_OIL_COST,
-  speed: 0.16,
-  aoeRadius: 2.4,
-  tileTroopDamage: 220,
-  waveDamageRatio: 0.35,
+  speed: 0.20,
+  aoeRadius: 2.8,
+  tileTroopDamage: 300,
+  waveDamageRatio: 0.40,
   minWaveDamage: 25,
-  superBuildingDamage: 35,
-  scorchSeconds: 10,
+  superBuildingDamage: 45,
+  scorchSeconds: 12,
 };
 
 export function canLaunchFighterPlane(nation?: Nation | null): boolean {
