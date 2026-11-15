@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Tile, Nation, PlayerProfile, GeneralStyle, DiplomacyStatus } from '../types';
-import { formatPopulation, BUILDING_INFO, GENERAL_ROSTER } from '../utils/constants';
+import { Tile, Nation, PlayerProfile, GeneralStyle, DiplomacyStatus, AirUnitType } from '../types';
+import { formatPopulation, BUILDING_INFO, GENERAL_ROSTER, AIR_SYSTEM_CONFIG, AIR_UNIT_SPECS } from '../utils/constants';
 import { canDeployGeneral, getLoyaltyState, appointReserveGeneral, calculateGeneralStats } from '../utils/generalCombat';
 import { GENERAL_STYLE_INFO } from '../utils/generalEvolution';
 import { areResourcesEnabled, formatResource, getRepairCost, repairExtractor, isExtractor, depositName } from '../utils/resources';
@@ -10,16 +10,21 @@ import {
   getSuperBuildingStateLabel,
   getSuperRepairInfo,
   startSuperRepair,
+  SUPER_BUILDING_CONFIG,
 } from '../utils/superBuildings';
 import {
   ADVANCED_EXTRACTOR_MINERAL_COST,
-  FIGHTER_PLANE_CONFIG,
-  MAX_FIGHTERS_PER_NATION,
-  canLaunchFighterPlane,
-  countActiveFighterPlanes,
   countAdvancedExtractors,
   getMaxAdvancedExtractors,
 } from '../utils/supremeTech';
+import {
+  canProduceAirUnit,
+  canUseAirType1,
+  canUseAirType23,
+  getAirProduceCost,
+  getNationAirSummary,
+  hasAnyAirUnlocked,
+} from '../utils/aircraftSystem';
 import { GeneralModel } from './GeneralModel';
 import { 
   Coins, Users, Building2, Swords, Play, Pause, Settings, X, Shield, Handshake, Crown, Rocket, Cpu, Trophy, Wand2, Plane, Info
@@ -70,9 +75,11 @@ interface GameHudProps {
   gameMode?: string;
   setIsCreativeOpen?: (open: boolean) => void;
   setIsMarketOpen?: (open: boolean) => void;
-  fighterAimingMode?: boolean;
-  onToggleFighterAiming?: () => void;
-  onLaunchFighterAtTile?: (tile: Tile) => void;
+  playerNationId?: number;
+  airAimingMode?: 'FIGHTER' | 'SQUADRON' | 'BOMBER_START' | 'BOMBER_END' | null;
+  onToggleAirAiming?: (type: AirUnitType) => void;
+  onProduceAirUnit?: (type: AirUnitType) => void;
+  onLaunchAirAtTile?: (tile: Tile, type: 'FIGHTER' | 'SQUADRON') => void;
   onUpgradeAdvancedExtractor?: (tile: Tile) => void;
 }
 
@@ -113,9 +120,11 @@ export const GameHud: React.FC<GameHudProps> = ({
   gameMode,
   setIsCreativeOpen,
   setIsMarketOpen,
-  fighterAimingMode,
-  onToggleFighterAiming,
-  onLaunchFighterAtTile,
+  playerNationId = 1,
+  airAimingMode,
+  onToggleAirAiming,
+  onProduceAirUnit,
+  onLaunchAirAtTile,
   onUpgradeAdvancedExtractor,
 }) => {
   const [showReserves, setShowReserves] = useState(false);
@@ -144,7 +153,7 @@ export const GameHud: React.FC<GameHudProps> = ({
     return () => clearTimeout(timer);
   }, [selectedTile?.x, selectedTile?.y, selectedTile?.owner, setSelectedTile]);
 
-  const playerNation: Nation | undefined = gameDataRef.current?.nations?.[1];
+  const playerNation: Nation | undefined = gameDataRef.current?.nations?.[playerNationId];
   const pGen = playerNation?.general;
   const reserveGenerals = playerNation?.reserveGenerals || [];
   const loyaltyState = pGen ? getLoyaltyState(pGen) : 'TRUNG_THANH';
@@ -158,10 +167,17 @@ export const GameHud: React.FC<GameHudProps> = ({
   const isSkillActive = (pGen?.skillActiveTimer || 0) > 0;
   const isSkillOnCooldown = (pGen?.skillCooldown || 0) > 0;
   const canUseSkill = pGen && !isInjured && !isSkillOnCooldown;
-  const fighterUnlocked = canLaunchFighterPlane(playerNation);
-  const activeFightersCount = playerNation
-    ? countActiveFighterPlanes(gameDataRef.current?.fighterPlanes, playerNation.id)
-    : 0;
+  const airType1Unlocked = canUseAirType1(playerNation);
+  const airType23Unlocked = canUseAirType23(playerNation);
+  const anyAirUnlocked = hasAnyAirUnlocked(playerNation);
+  const airSummary = getNationAirSummary(gameDataRef.current?.airUnits, playerNationId);
+  const airSorties = playerNation?.airSorties ?? AIR_SYSTEM_CONFIG.MAX_SORTIES;
+  const airSortieCountdown =
+    airSorties < AIR_SYSTEM_CONFIG.MAX_SORTIES
+      ? Math.max(1, AIR_SYSTEM_CONFIG.SORTIE_RECHARGE_SECONDS - Math.floor(playerNation?.airSortieRegenTimer || 0))
+      : 0;
+  const grandArsenalProgress = playerNation?.grandArsenalTimer || 0;
+  const resOn = areResourcesEnabled();
   const maxAdvancedExtractors = getMaxAdvancedExtractors(playerNation);
   const currentAdvancedExtractors = playerNation && gameDataRef.current?.tiles
     ? countAdvancedExtractors(gameDataRef.current.tiles, playerNation.id)
@@ -400,7 +416,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 </span>
               ) : null}
               {isSuperBuilding(selectedTile.building) && (getSuperBuildingState(selectedTile) === 'BUILDING' || getSuperBuildingState(selectedTile) === 'REPAIRING') && (() => {
-                const total = Math.max(1, selectedTile.superBuildTotal || 60);
+                const total = Math.max(1, selectedTile.superBuildTotal || SUPER_BUILDING_CONFIG.BUILD_TIME_SECONDS);
                 const left = Math.max(0, selectedTile.superBuildTimeLeft || 0);
                 const pct = Math.min(100, Math.max(0, ((total - left) / total) * 100));
                 const isRep = getSuperBuildingState(selectedTile) === 'REPAIRING';
@@ -518,14 +534,24 @@ export const GameHud: React.FC<GameHudProps> = ({
                         <Swords className="w-3.5 h-3.5" />
                         <span>Tấn Công ({actualAttackTroops}q)</span>
                       </button>
-                      {fighterUnlocked && onLaunchFighterAtTile && (
+                      {airType1Unlocked && airSummary.fighterReady > 0 && onLaunchAirAtTile && (
                         <button
-                          onClick={() => onLaunchFighterAtTile(selectedTile)}
+                          onClick={() => onLaunchAirAtTile(selectedTile, 'FIGHTER')}
                           className="px-2.5 py-1 font-bold rounded-xl text-xs text-sky-200 bg-sky-700/80 hover:bg-sky-600 border border-sky-400/50 flex items-center gap-1 shadow"
-                          title={`Xuất kích Máy Bay Chiến Đấu (${FIGHTER_PLANE_CONFIG.goldCost} Vàng, ${FIGHTER_PLANE_CONFIG.oilCost} Dầu)`}
+                          title="Xuất kích Máy Bay Chiến Đấu (L1) tới mục tiêu này (0 Dầu, 1 lượt xuất kích)"
                         >
                           <Plane className="w-3.5 h-3.5" />
-                          <span>Không Kích</span>
+                          <span>Không Kích L1</span>
+                        </button>
+                      )}
+                      {airType23Unlocked && airSummary.squadronReady > 0 && onLaunchAirAtTile && (
+                        <button
+                          onClick={() => onLaunchAirAtTile(selectedTile, 'SQUADRON')}
+                          className="px-2.5 py-1 font-bold rounded-xl text-xs text-amber-200 bg-amber-700/80 hover:bg-amber-600 border border-amber-400/50 flex items-center gap-1 shadow"
+                          title="Xuất kích Tiểu Đội 3 chiếc (L2) tới mục tiêu này (0 Dầu, 1 lượt xuất kích)"
+                        >
+                          <Plane className="w-3.5 h-3.5" />
+                          <span>Tiểu Đội L2</span>
                         </button>
                       )}
                       <button
@@ -627,30 +653,7 @@ export const GameHud: React.FC<GameHudProps> = ({
           </span>
         </div>
 
-        {/* NÚT KHÔNG KÍCH MÁY BAY CHIẾN ĐẤU (MỞ KHI ĐẠT QUÂN SỰ TỐI THƯỢNG 3) */}
-        {fighterUnlocked && onToggleFighterAiming && (
-          <div className="flex items-center justify-between gap-2 bg-sky-950/50 px-2.5 py-1.5 rounded-xl border border-sky-500/40 text-xs">
-            <div className="flex items-center gap-2 text-sky-200 font-bold truncate">
-              <Plane className="w-4 h-4 text-sky-400 shrink-0" />
-              <span className="truncate">
-                Máy Bay Chiến Đấu: <span className="font-mono text-white">{activeFightersCount}/{MAX_FIGHTERS_PER_NATION}</span>
-              </span>
-              <span className="text-[10px] font-mono text-amber-300 shrink-0 hidden sm:inline">
-                ({FIGHTER_PLANE_CONFIG.goldCost}💰 {FIGHTER_PLANE_CONFIG.oilCost}🛢️)
-              </span>
-            </div>
-            <button
-              onClick={onToggleFighterAiming}
-              className={`px-3 py-1 rounded-lg font-black text-[11px] border transition-all active:scale-95 shrink-0 ${
-                fighterAimingMode
-                  ? 'bg-amber-500 text-slate-950 border-amber-300 animate-pulse'
-                  : 'bg-sky-600 hover:bg-sky-500 text-white border-sky-400'
-              }`}
-            >
-              {fighterAimingMode ? '🎯 Đang Chọn Mục Tiêu...' : '✈️ Xuất Kích'}
-            </button>
-          </div>
-        )}
+
 
         {/* TƯỚNG VÀ KỸ NĂNG */}
         {(pGen || reserveGenerals.length > 0) && (

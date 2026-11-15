@@ -8,11 +8,11 @@ import {
   BuildingType, MapDimension, GameDifficulty, GameMode, Tile, Nation, 
   AttackWave, GameParticle, GameEvent, ResearchingTech, TechNode, QuestStep, General, GeneralSkillId,
   WeatherType, WeatherParticle, WeatherCloudPuff, DarkTitan, PendingTitanSpawn, MissileType, FlyingMissile,
-  FighterPlane, SeaTradeRoute, SeaTradeShip, PlayerProfile, VictoryReward, MarketState, DepositType, TradeOffer
+  AirUnit, AirUnitType, SeaTradeRoute, SeaTradeShip, PlayerProfile, VictoryReward, MarketState, DepositType, TradeOffer
 } from './types';
 import { generateWorldMap } from './utils/mapGenerator';
 import { 
-  setResourcesEnabled, createMarket, tickResources, getBuildingMineralCost,
+  setResourcesEnabled, areResourcesEnabled, createMarket, tickResources, getBuildingMineralCost,
   buildOrUpgradeExtractor, isExtractor, canAffordMissileResources, payMissileResources,
   getMissileResourceCost, getTechResourceCost, ensureNationResources,
   tradeWithAI, getAITradePrices
@@ -20,7 +20,7 @@ import {
 import { soundManager } from './utils/audio';
 import { 
   TILE_PIXEL_SIZE, BUILDING_INFO, TECH_TREE, formatPopulation, DARK_TITAN_CONFIG, formatGameTime,
-  MISSILE_CONFIG, MISSILE_SETTINGS, GENERAL_ROSTER, getSkillPower
+  MISSILE_CONFIG, MISSILE_SETTINGS, GENERAL_ROSTER, getSkillPower, AIR_SYSTEM_CONFIG, AIR_UNIT_SPECS
 } from './utils/constants';
 import { SUPREME_TECH_CONFIG } from './data/gameData';
 import {
@@ -49,10 +49,6 @@ import {
   getMissileEffectiveCost,
   BURN_ZONE_DURATION_SECONDS,
   getAtomEffectiveStats,
-  canLaunchFighterPlane,
-  countActiveFighterPlanes,
-  MAX_FIGHTERS_PER_NATION,
-  FIGHTER_PLANE_CONFIG,
   getSupremeBorderDefenseMult,
   canBuildBunker,
   countNationBunkers,
@@ -60,7 +56,23 @@ import {
   deployInitialBorderBunkers,
   upgradeAdvancedExtractor,
 } from './utils/supremeTech';
+import {
+  AirBaseLocation,
+  AirSamLocation,
+  CachedAirContext,
+  LaunchAirParams,
+  isValidAirBaseTile,
+  canProduceAirUnit,
+  produceAirUnit,
+  launchAirUnit,
+  tickAirUnits,
+  clampBomberCorridor,
+  isEnemyTradeShipForNation,
+  ensureNationAirFields,
+  getSavedBomberRoute,
+} from './utils/aircraftSystem';
 import { hasBuildingNearby, isSpacingExempt } from './utils/buildingSpacing';
+import { damageDarkTitan } from './utils/titanCombat';
 import { 
   loadPlayerProfile, savePlayerProfile, calculateVictoryReward, calculateDefeatReward,
   getRequiredExpForNextLevel, MAX_PLAYER_LEVEL,
@@ -257,9 +269,10 @@ export default function App() {
   const [missileAimingMode, setMissileAimingMode] = useState<MissileType | null>(null);
   const missileAimingModeRef = useRef<MissileType | null>(null);
   missileAimingModeRef.current = missileAimingMode;
-  const [fighterAimingMode, setFighterAimingMode] = useState<boolean>(false);
-  const fighterAimingModeRef = useRef<boolean>(false);
-  fighterAimingModeRef.current = fighterAimingMode;
+  const [airAimingMode, setAirAimingMode] = useState<'FIGHTER' | 'SQUADRON' | 'BOMBER_START' | 'BOMBER_END' | null>(null);
+  const airAimingModeRef = useRef<'FIGHTER' | 'SQUADRON' | 'BOMBER_START' | 'BOMBER_END' | null>(null);
+  airAimingModeRef.current = airAimingMode;
+  const bomberAimStartRef = useRef<{ x: number; y: number } | null>(null);
   const [missileFeedbackToast, setMissileFeedbackToast] = useState<string | null>(null);
   const flyingMissilesRef = useRef<FlyingMissile[]>([]);
 
@@ -382,7 +395,8 @@ export default function App() {
     pendingTitanSpawn?: PendingTitanSpawn | null;
     nextTitanSpawnAt?: number;
     flyingMissiles: FlyingMissile[];
-    fighterPlanes?: FighterPlane[];
+    fighterPlanes?: any[];
+    airUnits?: AirUnit[];
     tradeRoutes: SeaTradeRoute[];
     tradeShips: SeaTradeShip[];
     activeSeasonEvent: {
@@ -414,6 +428,7 @@ export default function App() {
     nextTitanSpawnAt: DARK_TITAN_CONFIG.SPAWN_TIME_SECONDS,
     flyingMissiles: [],
     fighterPlanes: [],
+    airUnits: [],
     tradeRoutes: [],
     tradeShips: [],
     activeSeasonEvent: null,
@@ -512,6 +527,7 @@ export default function App() {
     isMultiplayerRef,
     myNationIdRef,
     gameDataRef,
+    bomberAimStartRef,
     clampCamera,
   });
 
@@ -977,6 +993,7 @@ export default function App() {
       nextTitanSpawnAt: DARK_TITAN_CONFIG.SPAWN_TIME_SECONDS,
       flyingMissiles: [],
       fighterPlanes: [],
+      airUnits: [],
       tradeRoutes: [],
       tradeShips: [],
       activeSeasonEvent: null,
@@ -1095,6 +1112,10 @@ export default function App() {
       techLevels: n.techLevels,
       supremeTechUnlocked: Boolean(n.supremeTechUnlocked),
       supremeTechLevels: n.supremeTechLevels,
+      airSorties: n.airSorties,
+      airSortieRegenTimer: n.airSortieRegenTimer,
+      grandArsenalTimer: n.grandArsenalTimer,
+      airAdvancedUnlocked: Boolean(n.airAdvancedUnlocked),
     }));
     const superCountsMap: Record<number, Record<string, number>> = {};
     if (Array.isArray(data.tiles)) {
@@ -1116,9 +1137,93 @@ export default function App() {
       data.gameTimeSeconds,
       data.pendingTitanSpawn || null,
       data.nextTitanSpawnAt,
-      superCountsMap
+      superCountsMap,
+      data.airUnits || []
     );
   }, []);
+
+  const collectAirBasesMap = useCallback((tiles: Tile[][]) => {
+    const map = new Map<number, AirBaseLocation[]>();
+    if (!Array.isArray(tiles)) return map;
+    for (let y = 0; y < tiles.length; y++) {
+      const row = tiles[y];
+      if (!row) continue;
+      for (let x = 0; x < row.length; x++) {
+        const t = row[x];
+        if (t && t.owner > 0 && isValidAirBaseTile(t, t.owner)) {
+          let list = map.get(t.owner);
+          if (!list) {
+            list = [];
+            map.set(t.owner, list);
+          }
+          list.push({ x, y });
+        }
+      }
+    }
+    return map;
+  }, []);
+
+  const handleProduceAirUnit = useCallback((type: AirUnitType) => {
+    const data = gameDataRef.current;
+    if (!data || !data.nations) return;
+    const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
+    const nation = data.nations[myNation];
+    if (!nation) return;
+    data.airUnits = data.airUnits || [];
+
+    if (isMultiplayerRef.current && myNation !== 1) {
+      const chk = canProduceAirUnit(nation, data.airUnits, type, areResourcesEnabled());
+      if (!chk.ok) {
+        showMissileToast(chk.reason || 'Không thể sản xuất máy bay.');
+        return;
+      }
+      multiplayerClient.sendAirAction({ action: 'PRODUCE', unitType: type });
+      soundManager.playBuild();
+      showMissileToast(`✈️ Đang gửi lệnh sản xuất ${AIR_UNIT_SPECS[type].name}...`);
+      return;
+    }
+
+    const res = produceAirUnit(nation, data.airUnits, type, collectAirBasesMap(data.tiles), areResourcesEnabled());
+    showMissileToast(res.message);
+    if (res.ok) {
+      soundManager.playBuild();
+      if (isMultiplayerRef.current && myNation === 1) syncTitanStateNow();
+    }
+  }, [collectAirBasesMap, showMissileToast, syncTitanStateNow]);
+
+  const handleLaunchAirMission = useCallback((type: AirUnitType, params: LaunchAirParams = {}) => {
+    const data = gameDataRef.current;
+    if (!data || !data.nations) return;
+    const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
+    const nation = data.nations[myNation];
+    if (!nation) return;
+    data.airUnits = data.airUnits || [];
+
+    if (isMultiplayerRef.current && myNation !== 1) {
+      multiplayerClient.sendAirAction({
+        action: 'LAUNCH',
+        unitType: type,
+        targetX: params.targetX,
+        targetY: params.targetY,
+        targetKind: params.targetKind,
+        targetId: params.targetId,
+        bomberStartX: params.bomberStartX,
+        bomberStartY: params.bomberStartY,
+        bomberEndX: params.bomberEndX,
+        bomberEndY: params.bomberEndY,
+      });
+      soundManager.playAttack();
+      showMissileToast(`✈️ Đang xuất kích ${AIR_UNIT_SPECS[type].name}...`);
+      return;
+    }
+
+    const res = launchAirUnit(nation, data.airUnits, type, collectAirBasesMap(data.tiles), params);
+    showMissileToast(res.message);
+    if (res.ok) {
+      soundManager.playAttack();
+      if (isMultiplayerRef.current && myNation === 1) syncTitanStateNow();
+    }
+  }, [collectAirBasesMap, showMissileToast, syncTitanStateNow]);
   const { updateDarkTitans } = useDarkTitanAI({
     gameDataRef,
     offscreenTerritoryDirtyRef,
@@ -1689,6 +1794,10 @@ export default function App() {
       const arsenalStates: Record<number, 'ACTIVE' | 'DAMAGED'> = {};
       const burnTilesByNation: Record<number, number> = {};
       const radTilesByNation: Record<number, number> = {};
+      const airBasesByNation = new Map<number, AirBaseLocation[]>();
+      const airSams: AirSamLocation[] = [];
+      const arsenalReadyByNation = new Map<number, boolean>();
+      const arsenalExistsByNation = new Map<number, boolean>();
 
       for (let y = 0; y < size; y++) {
         for (let x = 0; x < size; x++) {
@@ -1811,8 +1920,27 @@ export default function App() {
 
               if (t.building === 'GRAND_ARSENAL') {
                 const st = getSuperBuildingState(t);
-                if (st === 'ACTIVE') arsenalStates[t.owner] = 'ACTIVE';
-                else if (st === 'DAMAGED' && arsenalStates[t.owner] !== 'ACTIVE') arsenalStates[t.owner] = 'DAMAGED';
+                if (st === 'ACTIVE' || st === 'DAMAGED') {
+                  arsenalExistsByNation.set(t.owner, true);
+                }
+                if (st === 'ACTIVE') {
+                  arsenalStates[t.owner] = 'ACTIVE';
+                  arsenalReadyByNation.set(t.owner, true);
+                } else if (st === 'DAMAGED' && arsenalStates[t.owner] !== 'ACTIVE') {
+                  arsenalStates[t.owner] = 'DAMAGED';
+                }
+              }
+
+              if (isValidAirBaseTile(t, t.owner)) {
+                let list = airBasesByNation.get(t.owner);
+                if (!list) {
+                  list = [];
+                  airBasesByNation.set(t.owner, list);
+                }
+                list.push({ x, y });
+              }
+              if (t.building === 'AIR_DEFENSE') {
+                airSams.push({ x, y, nationId: t.owner });
               }
 
               if (t.building === 'PORT' && isEightSec && nations[t.owner] && !nations[t.owner].isEliminated) {
@@ -2049,8 +2177,11 @@ export default function App() {
         offscreenTerritoryDirtyRef.current = true;
       }
 
-      // 2.5. ĐỒNG BỘ TRẠNG THÁI PHÒNG CHƠI MULTIPLAYER (HOST phát sóng cho các máy khác mỗi 3 giây)
-      if (isMultiplayerRef.current && myNationIdRef.current === 1 && data.gameTimeSeconds % 3 === 0) {
+      // 2.5. ĐỒNG BỘ TRẠNG THÁI PHÒNG CHƠI MULTIPLAYER (HOST phát sóng 1s/lần khi có máy bay đang bay, còn lại 3s/lần)
+      const hasFlyingAirSync = Array.isArray(data.airUnits) && data.airUnits.some(
+        (u: AirUnit) => u && (u.state === 'EN_ROUTE' || u.state === 'COMBAT' || u.state === 'PATROL' || u.state === 'RETURNING')
+      );
+      if (isMultiplayerRef.current && myNationIdRef.current === 1 && (hasFlyingAirSync || data.gameTimeSeconds % 3 === 0)) {
         const syncNations = nations.map(n => ({
           id: n.id,
           gold: n.gold,
@@ -2065,6 +2196,10 @@ export default function App() {
           techLevels: n.techLevels,
           supremeTechUnlocked: Boolean(n.supremeTechUnlocked),
           supremeTechLevels: n.supremeTechLevels,
+          airSorties: n.airSorties,
+          airSortieRegenTimer: n.airSortieRegenTimer,
+          grandArsenalTimer: n.grandArsenalTimer,
+          airAdvancedUnlocked: Boolean(n.airAdvancedUnlocked),
         }));
         const superCountsMap: Record<number, Record<string, number>> = {};
         nations.forEach(n => {
@@ -2085,7 +2220,8 @@ export default function App() {
           data.gameTimeSeconds,
           data.pendingTitanSpawn || null,
           data.nextTitanSpawnAt,
-          superCountsMap
+          superCountsMap,
+          data.airUnits || []
         );
       }
 
@@ -2387,110 +2523,28 @@ export default function App() {
         data.attackWaves = data.attackWaves.filter((w: AttackWave) => w.troops > 0);
       }
 
-      // Cập nhật Máy Bay Chiến Đấu (Fighter Planes - Quân Sự Tối Thượng 3)
-      data.fighterPlanes = data.fighterPlanes || [];
-      if (data.fighterPlanes.length > 0) {
-        const finishedPlanes: number[] = [];
-        data.fighterPlanes.forEach((p: FighterPlane, idx: number) => {
-          if (p.progress >= 1.0) {
-            finishedPlanes.push(idx);
-            const tgt = tiles[p.targetY]?.[p.targetX];
-            if (!tgt || tgt.terrain === 'WATER') return;
-
-            // Phòng không (SAM) có thể bắn hạ Máy Bay Chiến Đấu
-            let shotDown = false;
-            if (tgt.owner > 0 && tgt.owner !== p.nationId) {
-              const defNat = nations[tgt.owner];
-              const hasTech3B = defNat?.techLevels?.defense === 3 && defNat?.techChoices?.defense === 'B';
-              const samR = hasTech3B ? 6 : 5;
-              const samChance = hasTech3B ? 0.75 : 0.60;
-              for (let dy = -samR; dy <= samR && !shotDown; dy++) {
-                for (let dx = -samR; dx <= samR; dx++) {
-                  const sx = tgt.x + dx;
-                  const sy = tgt.y + dy;
-                  const adTile = tiles[sy]?.[sx];
-                  if (adTile && adTile.owner === tgt.owner && adTile.building === 'AIR_DEFENSE' && !(adTile.inactiveTimer && adTile.inactiveTimer > 0)) {
-                    if (Math.random() < samChance) {
-                      shotDown = true;
-                      break;
-                    }
-                  }
-                }
-              }
-            }
-
-            if (shotDown) {
-              soundManager.playThunder();
-              data.particles.push({
-                x: tgt.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                y: tgt.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                color: '#10b981', size: 0, life: 45, maxLife: 45, vx: 0, vy: -0.8,
-                type: 'FLOAT_TEXT',
-                text: '🛡️ Máy bay bị Phòng Không (SAM) bắn hạ!'
-              });
-              return;
-            }
-
-            soundManager.playAttack();
-            const strikeR = FIGHTER_PLANE_CONFIG.aoeRadius;
-            (data as any).blasts = (data as any).blasts || [];
-            (data as any).blasts.push({
-              x: tgt.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              y: tgt.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              radiusPx: strikeR * TILE_PIXEL_SIZE,
-              kind: 'FIGHTER',
-              start: performance.now(),
-              duration: 900,
-            });
-
-            // Đánh trúng các đợt quân địch gần mục tiêu
-            (data.attackWaves || []).forEach((w: AttackWave) => {
-              if (w.fromNation === p.nationId) return;
-              const wx = w.sourceX + (w.targetX - w.sourceX) * w.progress;
-              const wy = w.sourceY + (w.targetY - w.sourceY) * w.progress;
-              if (Math.hypot(wx - tgt.x, wy - tgt.y) <= strikeR + 1.2) {
-                const waveLoss = Math.max(FIGHTER_PLANE_CONFIG.minWaveDamage, Math.floor(w.troops * FIGHTER_PLANE_CONFIG.waveDamageRatio));
-                w.troops = Math.max(0, w.troops - waveLoss);
-                applyCasualties(nations[w.fromNation], waveLoss);
-              }
-            });
-            data.attackWaves = (data.attackWaves || []).filter((w: AttackWave) => w.troops > 0);
-
-            const hitEnemyIds = new Set<number>();
-            for (let dy = -Math.ceil(strikeR); dy <= Math.ceil(strikeR); dy++) {
-              for (let dx = -Math.ceil(strikeR); dx <= Math.ceil(strikeR); dx++) {
-                if (dx * dx + dy * dy > strikeR * strikeR) continue;
-                const ht = tiles[tgt.y + dy]?.[tgt.x + dx];
-                if (!ht || ht.terrain === 'WATER') continue;
-                if (ht.owner > 0 && ht.owner !== p.nationId) {
-                  hitEnemyIds.add(ht.owner);
-                  ht.scorchedTimer = Math.max(ht.scorchedTimer || 0, FIGHTER_PLANE_CONFIG.scorchSeconds);
-                  if (isSuperBuilding(ht.building)) {
-                    damageSuperBuilding(ht, FIGHTER_PLANE_CONFIG.superBuildingDamage);
-                  }
-                }
-              }
-            }
-            hitEnemyIds.forEach((eid) => {
-              const en = nations[eid];
-              if (en && !en.isEliminated) {
-                en.troops = Math.max(0, en.troops - FIGHTER_PLANE_CONFIG.tileTroopDamage);
-                applyCasualties(en, FIGHTER_PLANE_CONFIG.tileTroopDamage);
-              }
-            });
+      // Cập nhật Hệ thống Không Quân 3 Loại (Singleplayer hoặc Host Multiplayer)
+      if (!isMultiplayerRef.current || myNationIdRef.current === 1) {
+        const localId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+        const wasAdvUnlocked = Boolean(nations[localId]?.airAdvancedUnlocked);
+        const airCtx: CachedAirContext = {
+          basesByNation: airBasesByNation,
+          sams: airSams,
+          arsenalReadyByNation,
+          arsenalExistsByNation,
+        };
+        tickAirUnits(data, airCtx, {
+          applyCasualties,
+          markTerritoryDirty: () => {
             offscreenTerritoryDirtyRef.current = true;
-            data.particles.push({
-              x: tgt.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              y: tgt.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              color: '#38bdf8', size: 0, life: 45, maxLife: 45, vx: 0, vy: -0.8,
-              type: 'FLOAT_TEXT',
-              text: '✈️ Không kích trúng mục tiêu!'
-            });
-          }
+            fogBaseDirtyRef.current = true;
+          },
+          playAttackSound: () => soundManager.playAttack(),
+          playExplosionSound: () => soundManager.playThunder(),
+          localHudNationId: localId,
         });
-        if (finishedPlanes.length > 0) {
-          const donePlaneSet = new Set(finishedPlanes);
-          data.fighterPlanes = data.fighterPlanes.filter((_: FighterPlane, idx: number) => !donePlaneSet.has(idx));
+        if (!wasAdvUnlocked && nations[localId]?.airAdvancedUnlocked) {
+          showMissileToast('✈️ Đã mở khóa Loại 2 & Loại 3!');
         }
       }
 
@@ -2553,6 +2607,31 @@ export default function App() {
           // Hàm nổ vụ nổ hạt nhân chuẩn 4 bước: (1) Lưu chủ đất -> (2) Trừ quân -> (3) Xóa/Cập nhật chủ đất -> (4) Kích hoạt vẽ lại bản đồ
           const triggerExplosion = (cx: number, cy: number, radius: number, isMirvSub: boolean = false) => {
             soundManager.playThunder();
+
+            // Gây sát thương lên Tà Thần nằm trong vùng nổ tên lửa (mỗi đầu đạn tính đúng 1 lần)
+            const activeTitans = data.darkTitans && data.darkTitans.length > 0
+              ? data.darkTitans
+              : (data.darkTitan && data.darkTitan.isActive ? [data.darkTitan] : []);
+            
+            const damagedTitanIds = new Set<string>();
+            activeTitans.forEach((titan: any) => {
+              if (!titan.isActive) return;
+              const titanKey = titan.id || `${titan.x}_${titan.y}`;
+              if (damagedTitanIds.has(titanKey)) return;
+
+              const distToTitan = Math.hypot(titan.x - cx, titan.y - cy);
+              if (distToTitan <= radius) {
+                damagedTitanIds.add(titanKey);
+                const missileTitanDmg = m.type === 'HYDRO'
+                  ? 1000
+                  : m.type === 'MIRV'
+                  ? 250
+                  : atomEffective?.isUpgraded
+                  ? 1200
+                  : 600;
+                damageDarkTitan(titan, missileTitanDmg, firingNation, data);
+              }
+            });
 
             // Bước 1: Lưu thông tin các ô và chủ đất (owner) của các ô bị ảnh hưởng TRƯỚC KHI bị xóa
             const affectedTiles: { tile: Tile; oldOwner: number; dist: number }[] = [];
@@ -3144,7 +3223,7 @@ export default function App() {
     const now = Date.now();
     const last = lastTapRef.current;
     const isDouble = (now - last.time < 500) && Math.max(Math.abs(last.x - mapX), Math.abs(last.y - mapY)) <= 2;
-    if (isDouble && targetTile.owner !== 1 && targetTile.terrain !== 'WATER' && !missileAimingModeRef.current && !fighterAimingModeRef.current) {
+    if (isDouble && targetTile.owner !== 1 && targetTile.terrain !== 'WATER' && !missileAimingModeRef.current && !airAimingModeRef.current) {
       if (smartAttackTile(targetTile)) {
         setSelectedTile(null);
         selectedTileRef.current = null;
@@ -3154,60 +3233,106 @@ export default function App() {
     }
     lastTapRef.current = { x: mapX, y: mapY, time: now };
 
-    // Kiểm tra cướp bóc Tàu Buôn Hải Cảng nếu chạm vào vị trí tàu đang giăng buồm trên biển
-    if (lootTradeShip(mapX, mapY)) {
+    // Nếu đang ở chế độ điều khiển Không Quân (Kiểm tra TRƯỚC cướp tàu buôn để người chơi có thể ngắm đánh tàu địch/Tà Thần)
+    const airMode = airAimingModeRef.current;
+    if (airMode) {
+      const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
+      const attacker = nations[myNation];
+      if (!attacker) {
+        setAirAimingMode(null);
+        airAimingModeRef.current = null;
+        bomberAimStartRef.current = null;
+        return;
+      }
+
+      if (airMode === 'BOMBER_START') {
+        bomberAimStartRef.current = { x: mapX, y: mapY };
+        setAirAimingMode('BOMBER_END');
+        airAimingModeRef.current = 'BOMBER_END';
+        soundManager.playClick();
+        showMissileToast(`📍 Điểm đầu (${mapX}, ${mapY}). Hãy chạm điểm kết thúc đường bay (tối đa ${AIR_SYSTEM_CONFIG.BOMBER_MAX_CORRIDOR_TILES} ô)!`);
+        return;
+      }
+
+      if (airMode === 'BOMBER_END') {
+        const startPt = bomberAimStartRef.current || { x: mapX, y: mapY };
+        const corridor = clampBomberCorridor(startPt.x, startPt.y, mapX, mapY);
+        bomberAimStartRef.current = null;
+        setAirAimingMode(null);
+        airAimingModeRef.current = null;
+        handleLaunchAirMission('BOMBER', {
+          bomberStartX: corridor.startX,
+          bomberStartY: corridor.startY,
+          bomberEndX: corridor.endX,
+          bomberEndY: corridor.endY,
+        });
+        return;
+      }
+
+      // FIGHTER hoặc SQUADRON: dò Tà Thần / Tàu địch / Đất địch tại điểm chạm
+      let targetParams: LaunchAirParams | null = null;
+      const activeTitans: DarkTitan[] =
+        Array.isArray(data.darkTitans) && data.darkTitans.length > 0
+          ? data.darkTitans
+          : data.darkTitan && data.darkTitan.isActive
+            ? [data.darkTitan]
+            : [];
+      let clickedTitan: DarkTitan | null = null;
+      let clickedTitanDist = Infinity;
+      for (const t of activeTitans) {
+        if (!t || !t.isActive) continue;
+        const d = Math.hypot(t.x - mapX, t.y - mapY);
+        if (d <= 2.5 && d < clickedTitanDist) {
+          clickedTitanDist = d;
+          clickedTitan = t;
+        }
+      }
+      if (clickedTitan) {
+        targetParams = {
+          targetX: clickedTitan.x,
+          targetY: clickedTitan.y,
+          targetKind: 'TITAN',
+          targetId: clickedTitan.id,
+        };
+      } else if (Array.isArray(data.tradeShips)) {
+        const clickedShip = data.tradeShips.find((s: SeaTradeShip) => {
+          if (!s || !isEnemyTradeShipForNation(attacker, s)) return false;
+          const sx = s.sourceX + (s.targetX - s.sourceX) * s.progress;
+          const sy = s.sourceY + (s.targetY - s.sourceY) * s.progress;
+          return Math.hypot(sx - mapX, sy - mapY) <= 1.8;
+        });
+        if (clickedShip) {
+          const sx = clickedShip.sourceX + (clickedShip.targetX - clickedShip.sourceX) * clickedShip.progress;
+          const sy = clickedShip.sourceY + (clickedShip.targetY - clickedShip.sourceY) * clickedShip.progress;
+          targetParams = {
+            targetX: sx,
+            targetY: sy,
+            targetKind: 'SHIP',
+            targetId: clickedShip.id,
+          };
+        }
+      }
+
+      if (!targetParams) {
+        if (targetTile.terrain === 'WATER' || targetTile.owner === myNation) {
+          showMissileToast('Hãy chạm vào đất địch, công trình địch, tàu địch hoặc Tà Thần!');
+          return;
+        }
+        targetParams = {
+          targetX: targetTile.x,
+          targetY: targetTile.y,
+          targetKind: 'TILE',
+        };
+      }
+
+      setAirAimingMode(null);
+      airAimingModeRef.current = null;
+      handleLaunchAirMission(airMode, targetParams);
       return;
     }
 
-    // Nếu đang ở chế độ ngắm không kích Máy Bay Chiến Đấu (Quân Sự Tối Thượng 3)
-    if (fighterAimingModeRef.current) {
-      const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
-      const nation = nations[myNation];
-      if (!nation || !canLaunchFighterPlane(nation)) {
-        setFighterAimingMode(false);
-        fighterAimingModeRef.current = false;
-        showMissileToast('Cần Quân Sự Tối Thượng Cấp 3 để xuất kích Máy Bay Chiến Đấu!');
-        return;
-      }
-      if (targetTile.terrain === 'WATER' || targetTile.owner === myNation) {
-        showMissileToast('Hãy chạm vào đất liền ngoài lãnh thổ của bạn!');
-        return;
-      }
-      data.fighterPlanes = data.fighterPlanes || [];
-      if (countActiveFighterPlanes(data.fighterPlanes, myNation) >= MAX_FIGHTERS_PER_NATION) {
-        showMissileToast(`Đã đạt tối đa ${MAX_FIGHTERS_PER_NATION} Máy Bay Chiến Đấu đang bay!`);
-        setFighterAimingMode(false);
-        fighterAimingModeRef.current = false;
-        return;
-      }
-      if (nation.gold < FIGHTER_PLANE_CONFIG.goldCost || (nation.oil || 0) < FIGHTER_PLANE_CONFIG.oilCost) {
-        showMissileToast(`Cần ${FIGHTER_PLANE_CONFIG.goldCost} Vàng và ${FIGHTER_PLANE_CONFIG.oilCost} Dầu để xuất kích!`);
-        setFighterAimingMode(false);
-        fighterAimingModeRef.current = false;
-        return;
-      }
-      nation.gold -= FIGHTER_PLANE_CONFIG.goldCost;
-      nation.oil = Math.max(0, (nation.oil || 0) - FIGHTER_PLANE_CONFIG.oilCost);
-      data.fighterPlanes.push({
-        id: Math.random().toString(),
-        nationId: myNation,
-        sourceX: nation.capitalX,
-        sourceY: nation.capitalY,
-        targetX: targetTile.x,
-        targetY: targetTile.y,
-        progress: 0,
-        speed: FIGHTER_PLANE_CONFIG.speed,
-      });
-      soundManager.playAttack();
-      const activeNow = countActiveFighterPlanes(data.fighterPlanes, myNation);
-      const canAffordNext = nation.gold >= FIGHTER_PLANE_CONFIG.goldCost && (nation.oil || 0) >= FIGHTER_PLANE_CONFIG.oilCost;
-      if (activeNow >= MAX_FIGHTERS_PER_NATION || !canAffordNext) {
-        setFighterAimingMode(false);
-        fighterAimingModeRef.current = false;
-        showMissileToast(`✈️ Máy Bay Chiến Đấu đã cất cánh tới (${targetTile.x}, ${targetTile.y})!`);
-      } else {
-        showMissileToast(`✈️ Đã phóng tới (${targetTile.x}, ${targetTile.y}). Chạm mục tiêu tiếp theo để phóng tiếp (${activeNow}/${MAX_FIGHTERS_PER_NATION}).`);
-      }
+    // Kiểm tra cướp bóc Tàu Buôn Hải Cảng nếu chạm vào vị trí tàu đang giăng buồm trên biển
+    if (lootTradeShip(mapX, mapY)) {
       return;
     }
 
@@ -3481,6 +3606,30 @@ export default function App() {
       }
     };
 
+    multiplayerClient.onActionAir = (action) => {
+      if (myNationIdRef.current !== 1) return; // Chỉ Host thực thi authoritative
+      const data = gameDataRef.current;
+      const nat = data?.nations?.[action.nationId];
+      if (!data || !nat) return;
+      data.airUnits = data.airUnits || [];
+      const basesMap = collectAirBasesMap(data.tiles);
+      if (action.action === 'PRODUCE') {
+        produceAirUnit(nat, data.airUnits, action.unitType, basesMap, areResourcesEnabled());
+      } else if (action.action === 'LAUNCH') {
+        launchAirUnit(nat, data.airUnits, action.unitType, basesMap, {
+          targetX: action.targetX,
+          targetY: action.targetY,
+          targetKind: action.targetKind,
+          targetId: action.targetId,
+          bomberStartX: action.bomberStartX,
+          bomberStartY: action.bomberStartY,
+          bomberEndX: action.bomberEndX,
+          bomberEndY: action.bomberEndY,
+        });
+      }
+      syncTitanStateNow();
+    };
+
     multiplayerClient.onStateSync = (syncData) => {
       if (myNationIdRef.current === 1) return; // Host has authoritative state
       const data = gameDataRef.current;
@@ -3515,6 +3664,24 @@ export default function App() {
               defense: Math.max(n.supremeTechLevels?.defense || 0, nSync.supremeTechLevels.defense || 0),
             };
           }
+          ensureNationAirFields(n);
+          const prevArsenalTimer = n.grandArsenalTimer || 0;
+          const prevAdvUnlocked = Boolean(n.airAdvancedUnlocked);
+          if (typeof nSync.airSorties === 'number') n.airSorties = nSync.airSorties;
+          if (typeof nSync.airSortieRegenTimer === 'number') n.airSortieRegenTimer = nSync.airSortieRegenTimer;
+          if (typeof nSync.grandArsenalTimer === 'number') n.grandArsenalTimer = nSync.grandArsenalTimer;
+          if (typeof nSync.airAdvancedUnlocked === 'boolean') n.airAdvancedUnlocked = nSync.airAdvancedUnlocked;
+          if (n.airAdvancedUnlocked) {
+            n.grandArsenalDestroyed = false;
+            if (!prevAdvUnlocked && n.id === myNationIdRef.current) {
+              showMissileToast('✈️ Đã mở khóa Loại 2 & Loại 3!');
+            }
+          } else if ((n.grandArsenalTimer || 0) > 0) {
+            n.grandArsenalDestroyed = false;
+          } else if (prevArsenalTimer > 0 && (n.grandArsenalTimer || 0) === 0) {
+            n.grandArsenalDestroyed = true;
+          }
+
           const wasElim = n.isEliminated;
           n.isEliminated = nSync.isEliminated;
           if (!wasElim && n.isEliminated) {
@@ -3522,6 +3689,17 @@ export default function App() {
           }
         }
       });
+
+      if (Array.isArray(syncData.airUnits)) {
+        const prevById = new Map<string, AirUnit>();
+        (data.airUnits || []).forEach((u: AirUnit) => {
+          if (u && u.id) prevById.set(u.id, u);
+        });
+        data.airUnits = syncData.airUnits.map((incoming: AirUnit) => {
+          const prev = prevById.get(incoming.id);
+          return prev ? { ...incoming, _rx: prev._rx ?? prev.x, _ry: prev._ry ?? prev.y } : incoming;
+        });
+      }
 
       if (syncData.pendingTitanSpawn !== undefined) {
         const prevPendingId = data.pendingTitanSpawn?.id;
@@ -3599,6 +3777,7 @@ export default function App() {
       multiplayerClient.onActionBuild = null;
       multiplayerClient.onActionTech = null;
       multiplayerClient.onActionSupremeTech = null;
+      multiplayerClient.onActionAir = null;
       multiplayerClient.onStateSync = null;
       multiplayerClient.onRoomUpdated = null;
       multiplayerClient.onConnectionChange = null;
@@ -3714,8 +3893,13 @@ export default function App() {
       const size = data.tiles.length;
       const fortressRadius = 4.0;
 
-      for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
+      const scanR = Math.ceil(fortressRadius);
+      const yStart = Math.max(0, tgt.y - scanR);
+      const yEnd = Math.min(size - 1, tgt.y + scanR);
+      const xStart = Math.max(0, tgt.x - scanR);
+      const xEnd = Math.min(size - 1, tgt.x + scanR);
+      for (let y = yStart; y <= yEnd; y++) {
+        for (let x = xStart; x <= xEnd; x++) {
           const ft = data.tiles[y][x];
           if (ft && ft.owner === tgt.owner && !(ft.inactiveTimer && ft.inactiveTimer > 0)) {
             if (ft.building === 'FORTRESS') {
@@ -4305,6 +4489,9 @@ export default function App() {
       }
       const superCost = BUILDING_INFO[buildingType].baseCost;
       player.gold -= superCost;
+      if (buildingType === 'GRAND_ARSENAL') {
+        player.grandArsenalDestroyed = false;
+      }
       initSuperBuildingOnTile(chosenTile, buildingType);
       data.stats.buildingsCount += 1;
       soundManager.playBuild();
@@ -4766,47 +4953,62 @@ export default function App() {
             gameMode={gameMode}
             setIsCreativeOpen={setIsCreativeOpen}
             setIsMarketOpen={setIsMarketOpen}
-            fighterAimingMode={fighterAimingMode}
-            onToggleFighterAiming={() => {
-              const next = !fighterAimingMode;
-              if (next) {
-                setMissileAimingMode(null);
-                missileAimingModeRef.current = null;
+            playerNationId={isMultiplayer ? myPlayerNationId : 1}
+            airAimingMode={airAimingMode}
+            onToggleAirAiming={(type) => {
+              const isSameBomber = type === 'BOMBER' && (airAimingMode === 'BOMBER_START' || airAimingMode === 'BOMBER_END');
+              if (airAimingMode === type || isSameBomber) {
+                setAirAimingMode(null);
+                airAimingModeRef.current = null;
+                bomberAimStartRef.current = null;
+                showMissileToast('Đã hủy lệnh xuất kích Không Quân.');
+                return;
               }
-              setFighterAimingMode(next);
-              fighterAimingModeRef.current = next;
-              if (next) {
-                showMissileToast('✈️ Hãy chạm vào mục tiêu địch trên bản đồ để xuất kích Máy Bay Chiến Đấu!');
+              setMissileAimingMode(null);
+              missileAimingModeRef.current = null;
+              bomberAimStartRef.current = null;
+              const nextMode = type === 'BOMBER' ? 'BOMBER_START' : type;
+              setAirAimingMode(nextMode);
+              airAimingModeRef.current = nextMode;
+              if (nextMode === 'BOMBER_START') {
+                showMissileToast('💣 Chạm ĐIỂM ĐẦU đường ném bom trên bản đồ!');
+              } else {
+                showMissileToast(`✈️ Chạm mục tiêu (đất địch, tàu địch, hoặc Tà Thần) để xuất kích ${AIR_UNIT_SPECS[type].name}!`);
               }
             }}
-            onLaunchFighterAtTile={(tile) => {
+            onProduceAirUnit={(type) => handleProduceAirUnit(type)}
+            onLaunchAirAtTile={(tile, type) => {
               const data = gameDataRef.current;
-              const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
-              const nation = data.nations?.[myNation];
-              if (!nation || !canLaunchFighterPlane(nation)) return;
-              data.fighterPlanes = data.fighterPlanes || [];
-              if (countActiveFighterPlanes(data.fighterPlanes, myNation) >= MAX_FIGHTERS_PER_NATION) {
-                showMissileToast(`Đã đạt tối đa ${MAX_FIGHTERS_PER_NATION} Máy Bay Chiến Đấu đang bay!`);
+              const activeTitans: DarkTitan[] =
+                Array.isArray(data?.darkTitans) && data.darkTitans.length > 0
+                  ? data.darkTitans
+                  : data?.darkTitan && data.darkTitan.isActive
+                    ? [data.darkTitan]
+                    : [];
+              let nearTitan: DarkTitan | null = null;
+              let nearDist = Infinity;
+              for (const t of activeTitans) {
+                if (!t || !t.isActive) continue;
+                const d = Math.hypot(t.x - tile.x, t.y - tile.y);
+                if (d <= 2.5 && d < nearDist) {
+                  nearDist = d;
+                  nearTitan = t;
+                }
+              }
+              if (nearTitan) {
+                handleLaunchAirMission(type, {
+                  targetX: nearTitan.x,
+                  targetY: nearTitan.y,
+                  targetKind: 'TITAN',
+                  targetId: nearTitan.id,
+                });
                 return;
               }
-              if (nation.gold < FIGHTER_PLANE_CONFIG.goldCost || (nation.oil || 0) < FIGHTER_PLANE_CONFIG.oilCost) {
-                showMissileToast(`Cần ${FIGHTER_PLANE_CONFIG.goldCost} Vàng và ${FIGHTER_PLANE_CONFIG.oilCost} Dầu để xuất kích!`);
-                return;
-              }
-              nation.gold -= FIGHTER_PLANE_CONFIG.goldCost;
-              nation.oil = Math.max(0, (nation.oil || 0) - FIGHTER_PLANE_CONFIG.oilCost);
-              data.fighterPlanes.push({
-                id: Math.random().toString(),
-                nationId: myNation,
-                sourceX: nation.capitalX,
-                sourceY: nation.capitalY,
+              handleLaunchAirMission(type, {
                 targetX: tile.x,
                 targetY: tile.y,
-                progress: 0,
-                speed: FIGHTER_PLANE_CONFIG.speed,
+                targetKind: 'TILE',
               });
-              soundManager.playAttack();
-              showMissileToast(`✈️ Máy Bay Chiến Đấu đã cất cánh tới (${tile.x}, ${tile.y})!`);
             }}
             onUpgradeAdvancedExtractor={(tile) => {
               const data = gameDataRef.current;
@@ -5093,7 +5295,8 @@ export default function App() {
                 p.gold -= actualCost;
                 p.oil = (p.oil || 0) - rc.oil;
                 p.minerals = (p.minerals || 0) - rc.minerals;
-                data.researching = { techId: tech.id, remainingTime: tech.researchTime, totalTime: tech.researchTime };
+                const effectiveTime = Math.max(1, Math.round(tech.researchTime * 0.9));
+                data.researching = { techId: tech.id, remainingTime: effectiveTime, totalTime: effectiveTime };
                 soundManager.playClick();
               }
             }}
@@ -5463,22 +5666,31 @@ export default function App() {
         </div>
       )}
 
-      {/* BANNER HƯỚNG DẪN KHI ĐANG Ở CHẾ ĐỘ NGẮM KHÔNG KÍCH MÁY BAY CHIẾN ĐẤU */}
-      {fighterAimingMode && (
+      {/* BANNER HƯỚNG DẪN KHI ĐANG Ở CHẾ ĐỘ XUẤT KÍCH KHÔNG QUÂN */}
+      {airAimingMode && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-gradient-to-r from-sky-950/90 via-slate-900/95 to-amber-950/90 border border-sky-400/80 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 backdrop-blur-md animate-in slide-in-from-top">
           <div className="text-left">
             <div className="text-xs font-black text-sky-300">
-              ✈️ Đang chọn mục tiêu Không Kích ({FIGHTER_PLANE_CONFIG.goldCost}💰 {FIGHTER_PLANE_CONFIG.oilCost}🛢️)
+              {airAimingMode === 'BOMBER_START'
+                ? '💣 Ném Bom (Loại 3) — Bước 1/2: Chọn ĐIỂM ĐẦU'
+                : airAimingMode === 'BOMBER_END'
+                  ? '💣 Ném Bom (Loại 3) — Bước 2/2: Chọn ĐIỂM CUỐI'
+                  : `✈️ Xuất kích ${airAimingMode === 'FIGHTER' ? 'Tiêm Kích (Loại 1)' : 'Tiểu Đội 3 chiếc (Loại 2)'}`}
             </div>
             <div className="text-[11px] text-slate-300">
-              Chạm vào vùng đất địch trên bản đồ để phóng Máy Bay Chiến Đấu!
+              {airAimingMode === 'BOMBER_START'
+                ? 'Chạm điểm bắt đầu hành lang rải bom trên bản đồ.'
+                : airAimingMode === 'BOMBER_END'
+                  ? `Chạm điểm cuối để thả bom hạng nặng (tối đa ${AIR_SYSTEM_CONFIG.BOMBER_MAX_CORRIDOR_TILES} ô).`
+                  : 'Chạm vào mục tiêu ưu tiên (đất địch, công trình, tàu địch hoặc Tà Thần)!'}
             </div>
           </div>
           <button
             onClick={() => {
-              setFighterAimingMode(false);
-              fighterAimingModeRef.current = false;
-              showMissileToast('Đã hủy lệnh không kích.');
+              setAirAimingMode(null);
+              airAimingModeRef.current = null;
+              bomberAimStartRef.current = null;
+              showMissileToast('Đã hủy lệnh xuất kích Không Quân.');
             }}
             className="ml-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 active:scale-95"
           >
@@ -5512,33 +5724,90 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL CHỌN TÊN LỬA */}
-      <MissileModal
-        isOpen={isMissileOpen}
-        onClose={() => setIsMissileOpen(false)}
-        playerNation={gameDataRef.current.nations[1] || {}}
-        silos={(() => {
-          const list: Tile[] = [];
-          const tiles = gameDataRef.current.tiles;
-          if (tiles) {
-            for (let y = 0; y < tiles.length; y++) {
-              for (let x = 0; x < tiles.length; x++) {
-                const t = tiles[y][x];
-                if (t.owner === 1 && t.building === 'MISSILE_SILO') {
-                  list.push(t);
-                }
+      {/* MODAL CHỌN TÊN LỬA & KHÔNG QUÂN */}
+      {(() => {
+        const myId = isMultiplayer ? myPlayerNationId : 1;
+        const silos: Tile[] = [];
+        let hasArsenalReady = false;
+        const tiles = gameDataRef.current.tiles;
+        if (tiles) {
+          for (let y = 0; y < tiles.length; y++) {
+            const row = tiles[y];
+            if (!row) continue;
+            for (let x = 0; x < row.length; x++) {
+              const t = row[x];
+              if (!t || t.owner !== myId) continue;
+              if (t.building === 'MISSILE_SILO') {
+                silos.push(t);
+              } else if (t.building === 'GRAND_ARSENAL' && !(t.inactiveTimer && t.inactiveTimer > 0)) {
+                const st = getSuperBuildingState(t);
+                if (st === 'ACTIVE' || st === 'DAMAGED') hasArsenalReady = true;
               }
             }
           }
-          return list;
-        })()}
-        onSelectMissile={(type) => {
-          setMissileAimingMode(type);
-          missileAimingModeRef.current = type;
-          showMissileToast(`Đã chọn ${MISSILE_CONFIG[type].name}. Hãy chạm vào vùng đất kẻ thù trên bản đồ!`);
-        }}
-        onOpenBuildModal={() => setIsBuildOpen(true)}
-      />
+        }
+        return (
+          <MissileModal
+            isOpen={isMissileOpen}
+            onClose={() => setIsMissileOpen(false)}
+            playerNation={gameDataRef.current.nations[myId] || {}}
+            silos={silos}
+            hasArsenalReady={hasArsenalReady}
+            onSelectMissile={(type) => {
+              setAirAimingMode(null);
+              airAimingModeRef.current = null;
+              bomberAimStartRef.current = null;
+              setMissileAimingMode(type);
+              missileAimingModeRef.current = type;
+              showMissileToast(`Đã chọn ${MISSILE_CONFIG[type].name}. Hãy chạm vào vùng đất kẻ thù trên bản đồ!`);
+            }}
+            onOpenBuildModal={() => setIsBuildOpen(true)}
+            airUnits={gameDataRef.current?.airUnits}
+            airAimingMode={airAimingMode}
+            onToggleAirAiming={(type) => {
+              const isSameBomber = type === 'BOMBER' && (airAimingMode === 'BOMBER_START' || airAimingMode === 'BOMBER_END');
+              if (airAimingMode === type || isSameBomber) {
+                setAirAimingMode(null);
+                airAimingModeRef.current = null;
+                bomberAimStartRef.current = null;
+                showMissileToast('Đã hủy lệnh xuất kích Không Quân.');
+                return;
+              }
+              setMissileAimingMode(null);
+              missileAimingModeRef.current = null;
+              bomberAimStartRef.current = null;
+              const nextMode = type === 'BOMBER' ? 'BOMBER_START' : type;
+              setAirAimingMode(nextMode);
+              airAimingModeRef.current = nextMode;
+              if (nextMode === 'BOMBER_START') {
+                showMissileToast('💣 Chạm ĐIỂM ĐẦU đường ném bom trên bản đồ!');
+              } else {
+                showMissileToast(`✈️ Chạm mục tiêu (đất địch, tàu địch, hoặc Tà Thần) để xuất kích ${AIR_UNIT_SPECS[type].name}!`);
+              }
+            }}
+            onProduceAirUnit={(type) => handleProduceAirUnit(type)}
+            onReplayBomberRoute={() => {
+              const data = gameDataRef.current;
+              const nation = data?.nations?.[myId];
+              if (!data || !nation) return;
+              const saved = getSavedBomberRoute(data.airUnits, nation);
+              if (!saved) {
+                showMissileToast('Chưa có tuyến bay cũ để bay lại!');
+                return;
+              }
+              setAirAimingMode(null);
+              airAimingModeRef.current = null;
+              bomberAimStartRef.current = null;
+              handleLaunchAirMission('BOMBER', {
+                bomberStartX: saved.startX,
+                bomberStartY: saved.startY,
+                bomberEndX: saved.endX,
+                bomberEndY: saved.endY,
+              });
+            }}
+          />
+        );
+      })()}
 
       {/* MODAL CHỌN TƯỚNG SẢNH CHÍNH */}
       <GeneralSelectModal

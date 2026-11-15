@@ -152,7 +152,8 @@ export function useSaveGame({
           pendingTitanSpawn: data.pendingTitanSpawn || null,
           nextTitanSpawnAt: typeof data.nextTitanSpawnAt === 'number' ? data.nextTitanSpawnAt : undefined,
           flyingMissiles: data.flyingMissiles || [],
-          fighterPlanes: data.fighterPlanes || [],
+          fighterPlanes: [],
+          airUnits: data.airUnits || [],
           tradeRoutes: data.tradeRoutes || [],
           tradeShips: data.tradeShips || [],
           activeSeasonEvent: data.activeSeasonEvent || null,
@@ -247,6 +248,11 @@ export function useSaveGame({
             if (n.techLevels?.military === 3 && !n.techChoices.military) n.techChoices.military = 'A';
             if (n.techLevels?.defense === 3 && !n.techChoices.defense) n.techChoices.defense = 'A';
             ensureNationSupremeTech(n);
+            if (typeof n.airSorties !== 'number') n.airSorties = 5;
+            if (typeof n.airSortieRegenTimer !== 'number') n.airSortieRegenTimer = 0;
+            if (typeof n.grandArsenalTimer !== 'number') n.grandArsenalTimer = 0;
+            if (typeof n.grandArsenalDestroyed !== 'boolean') n.grandArsenalDestroyed = false;
+            if (typeof n.airAdvancedUnlocked !== 'boolean') n.airAdvancedUnlocked = false;
 
             if (n.general) {
               // Di chuyển và khôi phục dữ liệu Đại Tướng an toàn
@@ -299,7 +305,8 @@ export function useSaveGame({
         pendingTitanSpawn: gameData.pendingTitanSpawn || null,
         nextTitanSpawnAt: typeof gameData.nextTitanSpawnAt === 'number' ? gameData.nextTitanSpawnAt : undefined,
         flyingMissiles: gameData.flyingMissiles || [],
-        fighterPlanes: gameData.fighterPlanes || [],
+        fighterPlanes: [],
+        airUnits: Array.isArray(gameData.airUnits) ? gameData.airUnits : [],
         tradeRoutes: gameData.tradeRoutes || [],
         tradeShips: gameData.tradeShips || [],
         activeSeasonEvent: gameData.activeSeasonEvent || null,

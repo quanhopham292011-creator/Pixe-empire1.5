@@ -99,13 +99,14 @@ export function startSupremeResearchForNation(
   nation.gold -= tech.cost;
   nation.oil = Math.max(0, (nation.oil || 0) - tech.oilCost);
   nation.minerals = Math.max(0, (nation.minerals || 0) - tech.mineralCost);
+  const effectiveTime = Math.max(1, Math.round(tech.researchTime * 0.9));
   return {
     ok: true,
     tech,
     researching: {
       techId: tech.id,
-      remainingTime: tech.researchTime,
-      totalTime: tech.researchTime,
+      remainingTime: effectiveTime,
+      totalTime: effectiveTime,
     },
   };
 }

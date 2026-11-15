@@ -59,6 +59,7 @@ interface UseGameRendererParams {
   isMultiplayerRef: React.MutableRefObject<boolean>;
   myNationIdRef: React.MutableRefObject<number>;
   gameDataRef: React.MutableRefObject<any>;
+  bomberAimStartRef?: React.MutableRefObject<{ x: number; y: number } | null>;
   clampCamera: (camX: number, camY: number, zoom: number) => { x: number; y: number };
 }
 
@@ -94,6 +95,7 @@ export function useGameRenderer({
   isMultiplayerRef,
   myNationIdRef,
   gameDataRef,
+  bomberAimStartRef,
   clampCamera,
 }: UseGameRendererParams) {
   // Khởi tạo các hạt thời tiết (Mây trôi bồng bềnh, Mưa lất phất)
@@ -236,6 +238,23 @@ export function useGameRenderer({
           gameDataRef.current.fighterPlanes.forEach((p: any) => {
             const spd = p.speed || 0.16;
             p.progress = Math.min(1.0, (p.progress || 0) + spd * deltaSec * gameSpeed);
+          });
+        }
+        if (gameDataRef.current.airUnits) {
+          const lerpAlpha = Math.min(1.0, deltaSec * 5.0 * gameSpeed);
+          gameDataRef.current.airUnits.forEach((u: any) => {
+            if (!u || u.state === 'HANGAR' || u.state === 'RECOVERING') {
+              u._rx = u.x;
+              u._ry = u.y;
+              return;
+            }
+            if (typeof u._rx !== 'number' || typeof u._ry !== 'number' || Math.hypot(u.x - u._rx, u.y - u._ry) > 18) {
+              u._rx = u.x;
+              u._ry = u.y;
+            } else {
+              u._rx += (u.x - u._rx) * lerpAlpha;
+              u._ry += (u.y - u._ry) * lerpAlpha;
+            }
           });
         }
 
@@ -524,7 +543,8 @@ export function useGameRenderer({
           }
 
           // 4.2. Vẽ Công Trình (Icon tròn nhỏ, nền màu phe, viền sáng, icon trắng ở giữa)
-          if (t.building !== 'NONE' && (zoom >= 0.6 || t.owner === 1 || isSuperBuilding(t.building))) {
+          const isKeyBuilding = t.building === 'CITY' || t.building === 'MISSILE_SILO' || t.building === 'AIR_DEFENSE' || t.building === 'LASER';
+          if (t.building !== 'NONE' && (zoom >= 1.0 || (zoom >= 0.6 && isKeyBuilding) || t.owner === 1 || isSuperBuilding(t.building))) {
             const cx = px + TILE_PIXEL_SIZE / 2;
             const cy = py + TILE_PIXEL_SIZE / 2;
             const nationColor = (t.owner > 0 && nations[t.owner]) ? getNationColor(nations[t.owner]) : '#1e293b';
@@ -955,57 +975,164 @@ export function useGameRenderer({
         });
       }
 
-      // 6.3b. Vẽ Máy Bay Chiến Đấu (Fighter Planes)
-      if (gameDataRef.current.fighterPlanes && gameDataRef.current.fighterPlanes.length > 0) {
-        gameDataRef.current.fighterPlanes.forEach((p: any) => {
-          const sx = p.sourceX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const sy = p.sourceY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const ex = p.targetX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const ey = p.targetY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const prog = Math.min(1.0, Math.max(0.0, p.progress || 0));
-          const cx = sx + (ex - sx) * prog;
-          const cy = sy + (ey - sy) * prog;
-          const ang = Math.atan2(ey - sy, ex - sx);
-          const nColor = nations[p.nationId] ? getNationColor(nations[p.nationId]) : '#38bdf8';
+      // 6.3b. Vẽ Hệ Thống Không Quân Mới (3 loại: Chiến Đấu, Tiểu Đội, Ném Bom) & Điểm Chọn Đường Ném Bom
+      if (bomberAimStartRef?.current) {
+        const bsx = bomberAimStartRef.current.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+        const bsy = bomberAimStartRef.current.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+        ctx.save();
+        ctx.strokeStyle = '#f97316';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(bsx, bsy, 10 + Math.sin(timestamp * 0.01) * 2, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.arc(bsx, bsy, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.font = 'bold 9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#fef08a';
+        ctx.fillText('🛫 Điểm 1', bsx, bsy - 13);
+        ctx.restore();
+      }
+
+      if (gameDataRef.current.airUnits && gameDataRef.current.airUnits.length > 0) {
+        gameDataRef.current.airUnits.forEach((u: any) => {
+          if (!u || u.state === 'HANGAR' || u.state === 'RECOVERING') return;
+          const rx = typeof u._rx === 'number' ? u._rx : u.x;
+          const ry = typeof u._ry === 'number' ? u._ry : u.y;
+          const cx = rx * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const cy = ry * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const ang = typeof u.angle === 'number' ? u.angle : 0;
+          const nColor = nations[u.nationId] ? getNationColor(nations[u.nationId]) : '#38bdf8';
 
           ctx.save();
-          // Đường bay mờ
-          ctx.strokeStyle = 'rgba(56, 189, 248, 0.45)';
-          ctx.lineWidth = 1.4;
-          ctx.setLineDash([4, 4]);
-          ctx.beginPath();
-          ctx.moveTo(cx, cy);
-          ctx.lineTo(ex, ey);
-          ctx.stroke();
-          ctx.setLineDash([]);
 
-          // Bóng máy bay
+          // Đường bay thẳng & điểm nổ cuối của Oanh Tạc Cơ (Loại 3)
+          if (u.type === 'BOMBER' && typeof u.bomberStartX === 'number' && typeof u.bomberEndX === 'number' && u.state !== 'RETURNING') {
+            const bsx = u.bomberStartX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+            const bsy = u.bomberStartY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+            const bex = u.bomberEndX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+            const bey = u.bomberEndY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+            ctx.strokeStyle = 'rgba(249, 115, 22, 0.55)';
+            ctx.lineWidth = 1.6;
+            ctx.setLineDash([5, 4]);
+            ctx.beginPath();
+            ctx.moveTo(bsx, bsy);
+            ctx.lineTo(bex, bey);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.75)';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(bex, bey, 8, 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (typeof u.targetX === 'number' && typeof u.targetY === 'number') {
+            let liveTx = u.targetX;
+            let liveTy = u.targetY;
+            const isTitanLock = u.state !== 'RETURNING' && u.priorityTargetKind === 'TITAN';
+            if (isTitanLock) {
+              const activeTitans =
+                Array.isArray(gameDataRef.current.darkTitans) && gameDataRef.current.darkTitans.length > 0
+                  ? gameDataRef.current.darkTitans
+                  : gameDataRef.current.darkTitan
+                    ? [gameDataRef.current.darkTitan]
+                    : [];
+              const liveTitan = activeTitans.find(
+                (t: any) => t && t.isActive && (!u.priorityTargetId || t.id === u.priorityTargetId)
+              );
+              if (liveTitan) {
+                liveTx = liveTitan.x;
+                liveTy = liveTitan.y;
+              }
+            }
+            const tx = liveTx * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+            const ty = liveTy * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+            ctx.strokeStyle =
+              u.state === 'RETURNING'
+                ? 'rgba(16, 185, 129, 0.35)'
+                : isTitanLock
+                  ? 'rgba(244, 63, 94, 0.5)'
+                  : 'rgba(56, 189, 248, 0.35)';
+            ctx.lineWidth = isTitanLock ? 1.4 : 1.1;
+            ctx.setLineDash([3, 4]);
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(tx, ty);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+
+          // Bóng máy bay dưới mặt đất
           ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
           ctx.beginPath();
-          ctx.ellipse(cx + 4, cy + 7, 6, 3, ang, 0, Math.PI * 2);
+          ctx.ellipse(cx + 4, cy + 7, u.type === 'BOMBER' ? 9 : 6, u.type === 'BOMBER' ? 4 : 2.8, ang, 0, Math.PI * 2);
           ctx.fill();
 
-          // Thân tiêm kích (Delta Wing)
           ctx.translate(cx, cy);
           ctx.rotate(ang);
-          ctx.fillStyle = nColor;
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.4;
-          ctx.beginPath();
-          ctx.moveTo(9, 0);
-          ctx.lineTo(-6, -6.5);
-          ctx.lineTo(-3, 0);
-          ctx.lineTo(-6, 6.5);
-          ctx.closePath();
-          ctx.fill();
-          ctx.stroke();
 
-          // Đuôi lửa phản lực
-          ctx.fillStyle = '#fbbf24';
-          ctx.beginPath();
-          ctx.arc(-5, 0, 2, 0, Math.PI * 2);
-          ctx.fill();
+          if (u.type === 'BOMBER') {
+            // Loại 3: Oanh Tạc Cơ thân lớn, cánh xuôi 2 động cơ
+            ctx.fillStyle = nColor;
+            ctx.strokeStyle = '#f97316';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.moveTo(12, 0);
+            ctx.lineTo(2, -3.5);
+            ctx.lineTo(-4, -12);
+            ctx.lineTo(-7, -11);
+            ctx.lineTo(-5, -3);
+            ctx.lineTo(-10, -4);
+            ctx.lineTo(-10, 4);
+            ctx.lineTo(-5, 3);
+            ctx.lineTo(-7, 11);
+            ctx.lineTo(-4, 12);
+            ctx.lineTo(2, 3.5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#fb923c';
+            ctx.beginPath();
+            ctx.arc(-6, -5, 1.8, 0, Math.PI * 2);
+            ctx.arc(-6, 5, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            // Loại 1 (Chiến đấu) & Loại 2 (Tiểu đội)
+            const scale = u.type === 'SQUADRON' ? 0.92 : 1.05;
+            ctx.scale(scale, scale);
+            ctx.fillStyle = nColor;
+            ctx.strokeStyle = u.type === 'SQUADRON' ? '#fde047' : '#ffffff';
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(9, 0);
+            ctx.lineTo(-6, -6.5);
+            ctx.lineTo(-3, 0);
+            ctx.lineTo(-6, 6.5);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#fbbf24';
+            ctx.beginPath();
+            ctx.arc(-5, 0, 1.9, 0, Math.PI * 2);
+            ctx.fill();
+          }
           ctx.restore();
+
+          // Thanh HP nhỏ khi máy bay bị thương
+          if (typeof u.hp === 'number' && typeof u.maxHp === 'number' && u.hp < u.maxHp) {
+            const barW = u.type === 'BOMBER' ? 20 : 14;
+            const ratio = Math.max(0, Math.min(1, u.hp / Math.max(1, u.maxHp)));
+            ctx.save();
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+            ctx.fillRect(cx - barW / 2, cy - 14, barW, 3);
+            ctx.fillStyle = ratio < 0.3 ? '#ef4444' : ratio < 0.65 ? '#f59e0b' : '#22c55e';
+            ctx.fillRect(cx - barW / 2, cy - 14, barW * ratio, 3);
+            ctx.restore();
+          }
         });
       }
 
@@ -1429,6 +1556,15 @@ export function useGameRenderer({
 
           ctx.fillStyle = ship.isIntercontinental ? '#7dd3fc' : '#fef08a';
           ctx.fillText(cargoLabel, curX, curY - 12);
+
+          if (typeof ship.hp === 'number' && typeof ship.maxHp === 'number' && ship.hp < ship.maxHp) {
+            const barW = 16;
+            const ratio = Math.max(0, Math.min(1, ship.hp / Math.max(1, ship.maxHp)));
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            ctx.fillRect(curX - barW / 2, curY + 11, barW, 3);
+            ctx.fillStyle = ratio < 0.3 ? '#ef4444' : '#38bdf8';
+            ctx.fillRect(curX - barW / 2, curY + 11, barW * ratio, 3);
+          }
           ctx.restore();
         });
       }
@@ -1480,17 +1616,33 @@ export function useGameRenderer({
             ctx.beginPath();
             ctx.arc(b.x, b.y, R * (0.2 + t * 0.9), 0, Math.PI * 2);
             ctx.stroke();
-          } else if (b.kind === 'FIGHTER') {
+          } else if (b.kind === 'FIGHTER' || b.kind === 'BOMB_SMALL') {
             ctx.globalAlpha = (1 - t) * 0.82;
-            ctx.fillStyle = '#38bdf8';
+            ctx.fillStyle = b.kind === 'BOMB_SMALL' ? '#fb923c' : '#38bdf8';
             ctx.beginPath();
             ctx.arc(b.x, b.y, R * (0.3 + t * 0.55), 0, Math.PI * 2);
             ctx.fill();
             ctx.globalAlpha = 1 - t;
-            ctx.strokeStyle = '#fbbf24';
+            ctx.strokeStyle = b.kind === 'BOMB_SMALL' ? '#ef4444' : '#fbbf24';
             ctx.lineWidth = 2.4;
             ctx.beginPath();
             ctx.arc(b.x, b.y, R * (0.25 + t * 1.05), 0, Math.PI * 2);
+            ctx.stroke();
+          } else if (b.kind === 'BOMB_LARGE') {
+            ctx.globalAlpha = (1 - t) * 0.88;
+            ctx.fillStyle = '#ea580c';
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.35 + t * 0.65), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#fde047';
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.2 + t * 0.35), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1 - t;
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 3.2;
+            ctx.beginPath();
+            ctx.arc(b.x, b.y, R * (0.3 + t * 1.2), 0, Math.PI * 2);
             ctx.stroke();
           } else {
             // MIRV: chớp hồng nhỏ + vòng sóng hồng (mỗi đầu đạn con)

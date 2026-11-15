@@ -18,23 +18,32 @@ import {
   getAcademyResearchSpeedMult,
 } from '../utils/superBuildings';
 import { SUPREME_TECH_CONFIG } from '../data/gameData';
-import { isExtractor } from '../utils/resources';
+import { areResourcesEnabled, isExtractor } from '../utils/resources';
 import {
   applySupremeResearchCompletion,
   canBuildBunker,
-  canLaunchFighterPlane,
-  countActiveFighterPlanes,
   countAdvancedExtractors,
   countNationBunkers,
   deployInitialBorderBunkers,
-  FIGHTER_PLANE_CONFIG,
   getMaxAdvancedExtractors,
   getSupremeBranchLevel,
   MAX_BUNKERS_PER_NATION,
-  MAX_FIGHTERS_PER_NATION,
   startSupremeResearchForNation,
   upgradeAdvancedExtractor,
 } from '../utils/supremeTech';
+import {
+  AirBaseLocation,
+  canProduceAirUnit,
+  canUseAirType1,
+  canUseAirType23,
+  getNationAirSummary,
+  hasAnyAirUnlocked,
+  isEnemyTradeShipForNation,
+  isValidAirBaseTile,
+  launchAirUnit,
+  produceAirUnit,
+} from '../utils/aircraftSystem';
+import { AIR_SYSTEM_CONFIG } from '../data/gameData';
 
 const DX = [1, -1, 0, 0];
 const DY = [0, 0, 1, -1];
@@ -753,6 +762,24 @@ export function useBotAI({
         }
       }
 
+      // 6a2. AI xây 1 Cảng ở ô ven biển để có thể đổ bộ
+      if (!bot.hasPort && gameTime >= 120 && ownedList.length >= 12 && (bot.id + gameTime) % 7 === 0 &&
+          bot.gold >= BUILDING_INFO.PORT.baseCost + 300) {
+        const portSpot = ownedList.find(t =>
+          t.terrain !== 'WATER' && t.hasHarborAccess && t.building === 'NONE' &&
+          !(t.x === bot.capitalX && t.y === bot.capitalY)
+        );
+        if (portSpot) {
+          bot.gold -= BUILDING_INFO.PORT.baseCost;
+          portSpot.building = 'PORT';
+          portSpot.buildingLevel = 1;
+          bot.hasPort = true;
+          offscreenTerritoryDirtyRef.current = true;
+          fogBaseDirtyRef.current = true;
+          dirtyTerritoryTilesRef.current.push({ x: portSpot.x, y: portSpot.y });
+        }
+      }
+
       // 6b. Xây Siêu Công Trình nếu đã mở khóa đủ 3 nhánh công nghệ cấp 3 và đủ vàng
       if (hasUnlockedSuperBuildings(bot) && bot.gold >= 25000 && (bot.id + gameTime) % 3 === 0) {
         const botCounts = createEmptyBuildingCounts();
@@ -824,30 +851,103 @@ export function useBotAI({
         }
       }
 
-      // 6e. Bot xuất kích Máy Bay Chiến Đấu (Quân Sự Tối Thượng 3, tối đa MAX_FIGHTERS_PER_NATION chiếc)
-      if (
-        canLaunchFighterPlane(bot) &&
-        (bot.id + gameTime) % 8 === 0 &&
-        bot.gold >= FIGHTER_PLANE_CONFIG.goldCost + 300 &&
-        (bot.oil || 0) >= FIGHTER_PLANE_CONFIG.oilCost
-      ) {
-        data.fighterPlanes = data.fighterPlanes || [];
-        if (countActiveFighterPlanes(data.fighterPlanes, bot.id) < MAX_FIGHTERS_PER_NATION) {
+      // 6e. Bot sản xuất & xuất kích Không Quân mới (Loại 1: Chiến Đấu, Loại 2: Tiểu Đội, Loại 3: Ném Bom)
+      if (hasAnyAirUnlocked(bot) && (bot.id + gameTime) % 5 === 0) {
+        data.airUnits = data.airUnits || [];
+        const resOn = areResourcesEnabled();
+        const botBases: AirBaseLocation[] = [];
+        for (let oi = 0; oi < ownedList.length; oi++) {
+          const ot = ownedList[oi];
+          if (isValidAirBaseTile(ot, bot.id)) botBases.push({ x: ot.x, y: ot.y });
+        }
+        const baseMap = new Map<number, AirBaseLocation[]>([[bot.id, botBases]]);
+        const summary = getNationAirSummary(data.airUnits, bot.id);
+
+        // Sản xuất máy bay khi đủ Vàng, Dầu và Quân số (tránh spam vô hạn)
+        if (bot.gold >= 3800) {
+          const prodOrder: ('SQUADRON' | 'BOMBER' | 'FIGHTER')[] =
+            canUseAirType23(bot) && canUseAirType1(bot)
+              ? summary.fighterReady + summary.fighterFlying < 1
+                ? ['FIGHTER', 'SQUADRON', 'BOMBER']
+                : bot.personality === 'AGGRESSIVE' || isBoss
+                  ? ['BOMBER', 'SQUADRON', 'FIGHTER']
+                  : ['SQUADRON', 'FIGHTER', 'BOMBER']
+              : canUseAirType23(bot)
+                ? summary.squadronReady + summary.squadronFlying < 1
+                  ? ['SQUADRON', 'BOMBER']
+                  : ['BOMBER', 'SQUADRON']
+                : ['FIGHTER'];
+
+          for (const uType of prodOrder) {
+            if (canProduceAirUnit(bot, data.airUnits, uType, resOn).ok) {
+              produceAirUnit(bot, data.airUnits, uType, baseMap, resOn);
+              break;
+            }
+          }
+        }
+
+        // Xuất kích nếu có lượt xuất kích (>= 1), máy bay sẵn sàng và bầu trời chưa đầy 12 chiếc
+        if ((bot.airSorties || 0) >= 1 && summary.flyingGlobal < AIR_SYSTEM_CONFIG.MAX_FLYING_GLOBAL) {
           const enemyThreat = borderThreats.find((b) => b.enemySource && b.enemySource.owner > 0);
-          const airTarget = enemyThreat?.enemySource;
-          if (airTarget) {
-            bot.gold -= FIGHTER_PLANE_CONFIG.goldCost;
-            bot.oil = Math.max(0, (bot.oil || 0) - FIGHTER_PLANE_CONFIG.oilCost);
-            data.fighterPlanes.push({
-              id: Math.random().toString(),
-              nationId: bot.id,
-              sourceX: bot.capitalX,
-              sourceY: bot.capitalY,
-              targetX: airTarget.x,
-              targetY: airTarget.y,
-              progress: 0,
-              speed: FIGHTER_PLANE_CONFIG.speed,
-            });
+          const airTileTgt = enemyThreat?.enemySource;
+          const activeTitans =
+            Array.isArray(data.darkTitans) && data.darkTitans.length > 0
+              ? data.darkTitans
+              : data.darkTitan && data.darkTitan.isActive
+                ? [data.darkTitan]
+                : [];
+          const titanTgt = activeTitans.find((tt: any) => tt && tt.isActive);
+          const shipTgt = (data.tradeShips || []).find((s: any) => isEnemyTradeShipForNation(bot, s));
+
+          let tgtX: number | undefined;
+          let tgtY: number | undefined;
+          let tgtKind: 'TILE' | 'TITAN' | 'SHIP' = 'TILE';
+          let tgtId: string | undefined;
+
+          if (airTileTgt) {
+            tgtX = airTileTgt.x;
+            tgtY = airTileTgt.y;
+            tgtKind = 'TILE';
+          } else if (titanTgt) {
+            tgtX = Math.round(titanTgt.x);
+            tgtY = Math.round(titanTgt.y);
+            tgtKind = 'TITAN';
+            tgtId = titanTgt.id;
+          } else if (shipTgt) {
+            tgtX = Math.round(shipTgt.sourceX + (shipTgt.targetX - shipTgt.sourceX) * shipTgt.progress);
+            tgtY = Math.round(shipTgt.sourceY + (shipTgt.targetY - shipTgt.sourceY) * shipTgt.progress);
+            tgtKind = 'SHIP';
+            tgtId = shipTgt.id;
+          }
+
+          if (typeof tgtX === 'number' && typeof tgtY === 'number') {
+            if (summary.squadronReady > 0 && summary.flyingGlobal + 3 <= AIR_SYSTEM_CONFIG.MAX_FLYING_GLOBAL) {
+              launchAirUnit(bot, data.airUnits, 'SQUADRON', baseMap, {
+                targetX: tgtX,
+                targetY: tgtY,
+                targetKind: tgtKind,
+                targetId: tgtId,
+              });
+            } else if (summary.bomberReady > 0 && summary.flyingGlobal + 1 <= AIR_SYSTEM_CONFIG.MAX_FLYING_GLOBAL) {
+              const ang = Math.atan2(tgtY - bot.capitalY, tgtX - bot.capitalX);
+              const bsx = Math.max(0, Math.min(size - 1, Math.round(tgtX - Math.cos(ang) * 5)));
+              const bsy = Math.max(0, Math.min(size - 1, Math.round(tgtY - Math.sin(ang) * 5)));
+              const bex = Math.max(0, Math.min(size - 1, Math.round(tgtX + Math.cos(ang) * 5)));
+              const bey = Math.max(0, Math.min(size - 1, Math.round(tgtY + Math.sin(ang) * 5)));
+              launchAirUnit(bot, data.airUnits, 'BOMBER', baseMap, {
+                bomberStartX: bsx,
+                bomberStartY: bsy,
+                bomberEndX: bex,
+                bomberEndY: bey,
+              });
+            } else if (summary.fighterReady > 0 && summary.flyingGlobal + 1 <= AIR_SYSTEM_CONFIG.MAX_FLYING_GLOBAL) {
+              launchAirUnit(bot, data.airUnits, 'FIGHTER', baseMap, {
+                targetX: tgtX,
+                targetY: tgtY,
+                targetKind: tgtKind,
+                targetId: tgtId,
+              });
+            }
           }
         }
       }
@@ -1025,6 +1125,43 @@ export function useBotAI({
             if (send > bot.troops) break;
             launchAttackWave(bot.id, 0, pick.source, pick.target, send, undefined, false);
             launched++;
+          }
+        }
+      }
+
+      // 8b. Đổ bộ qua biển: chiếm đảo / vùng xa biển bằng Cảng
+      if (bot.hasPort && (bot.id + gameTime) % 6 === 0 && (data.attackWaves?.length || 0) < waveBudgetBase) {
+        const seaProb = difficulty === 'EXTREME' ? 0.8 : difficulty === 'HARD' ? 0.6 : difficulty === 'NORMAL' ? 0.4 : 0.25;
+        const seaKeep = bot.maxTroops * 0.2;
+        if (Math.random() < seaProb && bot.troops - seaKeep >= 12) {
+          let seaTarget: Tile | null = null;
+          for (let k = 0; k < 60 && !seaTarget; k++) {
+            const rx = Math.floor(Math.random() * size);
+            const ry = Math.floor(Math.random() * size);
+            const ct = tiles[ry][rx];
+            if (ct.owner !== 0 || ct.terrain === 'WATER' || !ct.hasHarborAccess) continue;
+            let nearOwn = false;
+            for (let ni = 0; ni < 4; ni++) {
+              const nt = tiles[ry + DY[ni]]?.[rx + DX[ni]];
+              if (nt && nt.owner === bot.id) { nearOwn = true; break; }
+            }
+            if (!nearOwn) seaTarget = ct;
+          }
+          if (seaTarget) {
+            let seaSource: Tile | null = null;
+            let seaBest = Infinity;
+            for (let oi = 0; oi < ownedList.length; oi++) {
+              const ot = ownedList[oi];
+              if (ot.terrain === 'WATER' || !ot.hasHarborAccess) continue;
+              const d = Math.hypot(ot.x - seaTarget.x, ot.y - seaTarget.y);
+              if (d < seaBest) { seaBest = d; seaSource = ot; }
+            }
+            if (seaSource) {
+              const seaSend = Math.max(8, Math.floor((bot.troops - seaKeep) * 0.18));
+              if (seaSend <= bot.troops) {
+                launchAttackWave(bot.id, 0, seaSource, seaTarget, seaSend, undefined, false);
+              }
+            }
           }
         }
       }

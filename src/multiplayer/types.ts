@@ -1,4 +1,4 @@
-import { GameDifficulty, MapDimension, BuildingType, PendingTitanSpawn, SupremeTechLevels } from '../types';
+import { GameDifficulty, MapDimension, BuildingType, PendingTitanSpawn, SupremeTechLevels, AirUnit, AirUnitType } from '../types';
 export type { BuildingType };
 
 export interface RoomPlayer {
@@ -68,6 +68,19 @@ export type ClientMessage =
       supremeTechLevels: SupremeTechLevels;
     }
   | {
+      type: 'PLAYER_AIR_ACTION';
+      action: 'PRODUCE' | 'LAUNCH';
+      unitType: AirUnitType;
+      targetX?: number;
+      targetY?: number;
+      targetKind?: 'TILE' | 'TITAN' | 'SHIP' | 'WAVE';
+      targetId?: string;
+      bomberStartX?: number;
+      bomberStartY?: number;
+      bomberEndX?: number;
+      bomberEndY?: number;
+    }
+  | {
       type: 'STATE_SYNC';
       nations: Array<{
         id: number;
@@ -83,11 +96,16 @@ export type ClientMessage =
         techLevels?: { economy: number; military: number; defense: number };
         supremeTechUnlocked?: boolean;
         supremeTechLevels?: SupremeTechLevels;
+        airSorties?: number;
+        airSortieRegenTimer?: number;
+        grandArsenalTimer?: number;
+        airAdvancedUnlocked?: boolean;
       }>;
       superBuildingCounts?: Record<number, Record<string, number>>;
       darkTitans?: any[];
       pendingTitanSpawn?: PendingTitanSpawn | null;
       nextTitanSpawnAt?: number;
+      airUnits?: AirUnit[];
       gameTimeSeconds?: number;
     }
   | { type: 'CHAT'; text: string };
@@ -128,6 +146,20 @@ export type ServerMessage =
       researchingTechId?: string;
     }
   | {
+      type: 'ACTION_AIR';
+      nationId: number;
+      action: 'PRODUCE' | 'LAUNCH';
+      unitType: AirUnitType;
+      targetX?: number;
+      targetY?: number;
+      targetKind?: 'TILE' | 'TITAN' | 'SHIP' | 'WAVE';
+      targetId?: string;
+      bomberStartX?: number;
+      bomberStartY?: number;
+      bomberEndX?: number;
+      bomberEndY?: number;
+    }
+  | {
       type: 'STATE_SYNC';
       nations: Array<{
         id: number;
@@ -143,11 +175,16 @@ export type ServerMessage =
         techLevels?: { economy: number; military: number; defense: number };
         supremeTechUnlocked?: boolean;
         supremeTechLevels?: SupremeTechLevels;
+        airSorties?: number;
+        airSortieRegenTimer?: number;
+        grandArsenalTimer?: number;
+        airAdvancedUnlocked?: boolean;
       }>;
       superBuildingCounts?: Record<number, Record<string, number>>;
       darkTitans?: any[];
       pendingTitanSpawn?: PendingTitanSpawn | null;
       nextTitanSpawnAt?: number;
+      airUnits?: AirUnit[];
       gameTimeSeconds?: number;
     }
   | { type: 'PLAYER_DISCONNECTED'; playerId: string; nationId: number; message: string }

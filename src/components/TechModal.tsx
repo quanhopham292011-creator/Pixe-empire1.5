@@ -187,7 +187,10 @@ export const TechModal: React.FC<TechModalProps> = ({
     const rc = getTechResourceCost(techId);
     return oilStock >= rc.oil && mineralStock >= rc.minerals;
   };
-  const timeText = (t: number) => (academySpeedMult > 1 ? `${Math.ceil(t / academySpeedMult)}s` : `${t}s`);
+  const timeText = (t: number) => {
+    const reduced = Math.max(1, Math.round(t * 0.9));
+    return academySpeedMult > 1 ? `${Math.ceil(reduced / academySpeedMult)}s` : `${reduced}s`;
+  };
 
   const isSupremeTab = activeTab === 'SUPREME';
   const activeBranch: TechBranch = isSupremeTab ? 'ECONOMY' : activeTab;

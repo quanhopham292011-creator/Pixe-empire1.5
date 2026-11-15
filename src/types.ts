@@ -66,6 +66,7 @@ export interface Tile {
   burnZoneOwner?: number;
   radiationTimer?: number;
   radiationOwner?: number;
+  buildingHp?: number; // Máu công trình thường (mặc định 100 khi bị không kích)
 }
 
 export type DepositType = 'OIL' | 'MINERAL';
@@ -176,6 +177,12 @@ export interface Nation {
   supremeTechUnlocked?: boolean;
   supremeTechLevels?: SupremeTechLevels;
   supremeResearching?: ResearchingTech | null;
+  airSorties?: number; // Số lượt xuất kích Không Quân hiện có (tối đa 5)
+  airSortieRegenTimer?: number; // Đếm giây hồi 1 lượt (mỗi 25s)
+  grandArsenalTimer?: number; // Số giây Đại Công Xưởng tồn tại (đạt 60s mở Loại 2 & 3)
+  grandArsenalDestroyed?: boolean; // Đại Công Xưởng bị phá trước khi mở khóa Loại 2 & 3
+  airAdvancedUnlocked?: boolean; // Đã mở khóa vĩnh viễn Loại 2 & 3 (kể cả khi Đại Công Xưởng bị phá)
+  lastBomberRoute?: { startX: number; startY: number; endX: number; endY: number }; // Tuyến bay gần nhất của Ném Bom (L3)
   diplomacy: {
     [targetId: number]: {
       status: DiplomacyStatus;
@@ -229,6 +236,58 @@ export interface FlyingMissile {
   isGeneralBarrage?: boolean;
 }
 
+export type AirUnitType = 'FIGHTER' | 'SQUADRON' | 'BOMBER';
+
+export type AirUnitState =
+  | 'HANGAR'
+  | 'RECOVERING'
+  | 'EN_ROUTE'
+  | 'COMBAT'
+  | 'PATROL'
+  | 'RETURNING';
+
+export interface AirUnit {
+  id: string;
+  nationId: number;
+  type: AirUnitType;
+  state: AirUnitState;
+  squadronId?: string;
+  memberIndex?: number;
+  x: number;
+  y: number;
+  vx?: number;
+  vy?: number;
+  angle?: number;
+  hp: number;
+  maxHp: number;
+  troopCost: number;
+  salvosLeft: number;
+  maxSalvos: number;
+  attackCooldown?: number;
+  targetX?: number;
+  targetY?: number;
+  priorityTargetX?: number;
+  priorityTargetY?: number;
+  priorityTargetKind?: 'TILE' | 'TITAN' | 'SHIP' | 'WAVE';
+  priorityTargetId?: string;
+  bomberStartX?: number;
+  bomberStartY?: number;
+  bomberEndX?: number;
+  bomberEndY?: number;
+  bomberStartedRun?: boolean;
+  bomberDroppedTerminal?: boolean;
+  bomberNextDropDist?: number;
+  baseX?: number;
+  baseY?: number;
+  recoveryTimer?: number;
+  patrolAnchorX?: number;
+  patrolAnchorY?: number;
+  patrolAngle?: number;
+  sortieActiveSeconds?: number;
+  _rx?: number;
+  _ry?: number;
+}
+
 export interface FighterPlane {
   id: string;
   nationId: number;
@@ -270,6 +329,8 @@ export interface SeaTradeShip {
   toCargoGold?: number;
   lastPayoutAt?: number;
   isIntercontinental: boolean;
+  hp?: number;
+  maxHp?: number;
 }
 
 export interface GameParticle {

@@ -72,12 +72,26 @@ type ClientMessage =
       supremeTechLevels: { economy: number; military: number; defense: number };
     }
   | {
+      type: 'PLAYER_AIR_ACTION';
+      action: 'PRODUCE' | 'LAUNCH';
+      unitType: 'FIGHTER' | 'SQUADRON' | 'BOMBER';
+      targetX?: number;
+      targetY?: number;
+      targetKind?: 'TILE' | 'TITAN' | 'SHIP' | 'WAVE';
+      targetId?: string;
+      bomberStartX?: number;
+      bomberStartY?: number;
+      bomberEndX?: number;
+      bomberEndY?: number;
+    }
+  | {
       type: 'STATE_SYNC';
       nations: any[];
       superBuildingCounts?: Record<number, Record<string, number>>;
       darkTitans?: any[];
       pendingTitanSpawn?: any;
       nextTitanSpawnAt?: number;
+      airUnits?: any[];
       gameTimeSeconds?: number;
     }
   | { type: 'CHAT'; text: string };
@@ -118,12 +132,27 @@ type ServerMessage =
       researchingTechId?: string;
     }
   | {
+      type: 'ACTION_AIR';
+      nationId: number;
+      action: 'PRODUCE' | 'LAUNCH';
+      unitType: 'FIGHTER' | 'SQUADRON' | 'BOMBER';
+      targetX?: number;
+      targetY?: number;
+      targetKind?: 'TILE' | 'TITAN' | 'SHIP' | 'WAVE';
+      targetId?: string;
+      bomberStartX?: number;
+      bomberStartY?: number;
+      bomberEndX?: number;
+      bomberEndY?: number;
+    }
+  | {
       type: 'STATE_SYNC';
       nations: any[];
       superBuildingCounts?: Record<number, Record<string, number>>;
       darkTitans?: any[];
       pendingTitanSpawn?: any;
       nextTitanSpawnAt?: number;
+      airUnits?: any[];
       gameTimeSeconds?: number;
     }
   | { type: 'PLAYER_DISCONNECTED'; playerId: string; nationId: number; message: string }
@@ -623,6 +652,33 @@ class RoomManager {
         break;
       }
 
+      case 'PLAYER_AIR_ACTION': {
+        if (!client.roomCode) return;
+        const room = this.rooms.get(client.roomCode);
+        if (!room || room.status !== 'PLAYING') return;
+        const player = room.players.find(p => p.id === client.playerId);
+        if (!player) return;
+        if (msg.action !== 'PRODUCE' && msg.action !== 'LAUNCH') return;
+        if (msg.unitType !== 'FIGHTER' && msg.unitType !== 'SQUADRON' && msg.unitType !== 'BOMBER') return;
+
+        // Chuyển tiếp cho Host xử lý có thẩm quyền và phát STATE_SYNC lại toàn phòng
+        this.broadcastToRoom(client.roomCode, {
+          type: 'ACTION_AIR',
+          nationId: player.nationId,
+          action: msg.action,
+          unitType: msg.unitType,
+          targetX: msg.targetX,
+          targetY: msg.targetY,
+          targetKind: msg.targetKind,
+          targetId: msg.targetId,
+          bomberStartX: msg.bomberStartX,
+          bomberStartY: msg.bomberStartY,
+          bomberEndX: msg.bomberEndX,
+          bomberEndY: msg.bomberEndY,
+        }, ws);
+        break;
+      }
+
       case 'STATE_SYNC': {
         if (!client.roomCode) return;
         const room = this.rooms.get(client.roomCode);
@@ -684,6 +740,7 @@ class RoomManager {
           darkTitans: msg.darkTitans,
           pendingTitanSpawn: msg.pendingTitanSpawn,
           nextTitanSpawnAt: msg.nextTitanSpawnAt,
+          airUnits: msg.airUnits,
           gameTimeSeconds: msg.gameTimeSeconds,
         }, ws);
         break;

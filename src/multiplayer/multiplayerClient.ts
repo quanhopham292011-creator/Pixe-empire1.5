@@ -1,5 +1,5 @@
 import { ClientMessage, ServerMessage, RoomState, RoomSettings, BuildingType } from './types';
-import { PendingTitanSpawn, SupremeTechLevels } from '../types';
+import { PendingTitanSpawn, SupremeTechLevels, AirUnit, AirUnitType } from '../types';
 
 type Listener<T> = (data: T) => void;
 
@@ -39,6 +39,19 @@ class MultiplayerClient {
     supremeTechLevels: SupremeTechLevels;
     researchingTechId?: string;
   }> | null = null;
+  public onActionAir: Listener<{
+    nationId: number;
+    action: 'PRODUCE' | 'LAUNCH';
+    unitType: AirUnitType;
+    targetX?: number;
+    targetY?: number;
+    targetKind?: 'TILE' | 'TITAN' | 'SHIP' | 'WAVE';
+    targetId?: string;
+    bomberStartX?: number;
+    bomberStartY?: number;
+    bomberEndX?: number;
+    bomberEndY?: number;
+  }> | null = null;
   public onStateSync: Listener<{
     nations: Array<{
       id: number;
@@ -54,11 +67,16 @@ class MultiplayerClient {
       techLevels?: { economy: number; military: number; defense: number };
       supremeTechUnlocked?: boolean;
       supremeTechLevels?: SupremeTechLevels;
+      airSorties?: number;
+      airSortieRegenTimer?: number;
+      grandArsenalTimer?: number;
+      airAdvancedUnlocked?: boolean;
     }>;
     superBuildingCounts?: Record<number, Record<string, number>>;
     darkTitans?: any[];
     pendingTitanSpawn?: PendingTitanSpawn | null;
     nextTitanSpawnAt?: number;
+    airUnits?: AirUnit[];
     gameTimeSeconds?: number;
   }> | null = null;
   public onPlayerDisconnected: Listener<{ playerId: string; nationId: number; message: string }> | null = null;
@@ -180,6 +198,9 @@ class MultiplayerClient {
       case 'ACTION_SUPREME_TECH':
         if (this.onActionSupremeTech) this.onActionSupremeTech(msg);
         break;
+      case 'ACTION_AIR':
+        if (this.onActionAir) this.onActionAir(msg);
+        break;
       case 'STATE_SYNC':
         if (this.onStateSync) this.onStateSync(msg);
         break;
@@ -258,6 +279,24 @@ class MultiplayerClient {
     });
   }
 
+  public sendAirAction(payload: {
+    action: 'PRODUCE' | 'LAUNCH';
+    unitType: AirUnitType;
+    targetX?: number;
+    targetY?: number;
+    targetKind?: 'TILE' | 'TITAN' | 'SHIP' | 'WAVE';
+    targetId?: string;
+    bomberStartX?: number;
+    bomberStartY?: number;
+    bomberEndX?: number;
+    bomberEndY?: number;
+  }) {
+    this.send({
+      type: 'PLAYER_AIR_ACTION',
+      ...payload,
+    });
+  }
+
   public sendStateSync(
     nations: Array<{
       id: number;
@@ -273,12 +312,17 @@ class MultiplayerClient {
       techLevels?: { economy: number; military: number; defense: number };
       supremeTechUnlocked?: boolean;
       supremeTechLevels?: SupremeTechLevels;
+      airSorties?: number;
+      airSortieRegenTimer?: number;
+      grandArsenalTimer?: number;
+      airAdvancedUnlocked?: boolean;
     }>,
     darkTitans?: any[],
     gameTimeSeconds?: number,
     pendingTitanSpawn?: PendingTitanSpawn | null,
     nextTitanSpawnAt?: number,
-    superBuildingCounts?: Record<number, Record<string, number>>
+    superBuildingCounts?: Record<number, Record<string, number>>,
+    airUnits?: AirUnit[]
   ) {
     this.send({
       type: 'STATE_SYNC',
@@ -287,6 +331,7 @@ class MultiplayerClient {
       darkTitans,
       pendingTitanSpawn,
       nextTitanSpawnAt,
+      airUnits,
       gameTimeSeconds,
     });
   }
