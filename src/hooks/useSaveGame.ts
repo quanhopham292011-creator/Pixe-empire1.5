@@ -6,8 +6,10 @@ import {
 import { soundManager } from '../utils/audio';
 import { formatGameTime } from '../utils/constants';
 import { migrateGeneralData, calculateGeneralStats } from '../utils/generalCombat';
-import { setResourcesEnabled, ensureNationResources, hasAnyDeposit, generateDeposits, createMarket } from '../utils/resources';
+import { setResourcesEnabled, ensureNationResources, hasAnyDeposit, generateDeposits, createMarket, hasAnySeaOilDeposit, generateSeaOilDeposits } from '../utils/resources';
 import { ensureNationSupremeTech } from '../utils/supremeTech';
+import { collectPortList, syncBalancedTradeRoutes } from './useTradeRoutes';
+import { invalidateWaterMapCache } from '../utils/seaPathfinding';
 
 export interface SavedGameInfo {
   timestamp: string;
@@ -156,6 +158,9 @@ export function useSaveGame({
           airUnits: data.airUnits || [],
           tradeRoutes: data.tradeRoutes || [],
           tradeShips: data.tradeShips || [],
+          navalShips: data.navalShips || [],
+          portBuildQueues: data.portBuildQueues || [],
+          seaControlGrid: data.seaControlGrid || undefined,
           activeSeasonEvent: data.activeSeasonEvent || null,
           stats: data.stats || { battlesCount: 0, buildingsCount: 0 },
           market: data.market || null,
@@ -289,6 +294,8 @@ export function useSaveGame({
       }
       if (!hasAnyDeposit(gameData.tiles)) {
         generateDeposits(gameData.tiles, gameData.nations || []);
+      } else if (!hasAnySeaOilDeposit(gameData.tiles)) {
+        generateSeaOilDeposits(gameData.tiles);
       }
 
       gameDataRef.current = {
@@ -309,12 +316,21 @@ export function useSaveGame({
         airUnits: Array.isArray(gameData.airUnits) ? gameData.airUnits : [],
         tradeRoutes: gameData.tradeRoutes || [],
         tradeShips: gameData.tradeShips || [],
+        navalShips: Array.isArray(gameData.navalShips) ? gameData.navalShips : [],
+        portBuildQueues: Array.isArray(gameData.portBuildQueues) ? gameData.portBuildQueues : [],
+        seaControlGrid: gameData.seaControlGrid || undefined,
         activeSeasonEvent: gameData.activeSeasonEvent || null,
         stats: gameData.stats || { battlesCount: 0, buildingsCount: 0 },
         market: gameData.market || createMarket(),
         pendingTradeOffer: gameData.pendingTradeOffer || null,
         nextTradeOfferTimer: typeof gameData.nextTradeOfferTimer === 'number' ? gameData.nextTradeOfferTimer : 90 + Math.floor(Math.random() * 31)
       };
+
+      invalidateWaterMapCache(gameDataRef.current.tiles);
+      syncBalancedTradeRoutes(
+        gameDataRef.current,
+        collectPortList(gameDataRef.current.tiles, gameDataRef.current.nations)
+      );
 
       totalLandCountRef.current = gameData.tiles.flat().filter((t: Tile) => t.terrain !== 'WATER').length;
       offscreenTerrainDirtyRef.current = true;

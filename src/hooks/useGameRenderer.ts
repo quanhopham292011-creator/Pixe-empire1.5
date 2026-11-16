@@ -1,10 +1,10 @@
 import { useEffect, useCallback } from 'react';
-import { 
-  MapDimension, WeatherType, WeatherParticle, Tile 
+import {
+  MapDimension, WeatherType, WeatherParticle, Tile, NavalShip, PortBuildQueueItem
 } from '../types';
-import { 
-  TILE_PIXEL_SIZE, MISSILE_SETTINGS, MISSILE_CONFIG, 
-  DARK_TITAN_CONFIG, GENERAL_ROSTER, formatPopulation 
+import {
+  TILE_PIXEL_SIZE, MISSILE_SETTINGS, MISSILE_CONFIG,
+  DARK_TITAN_CONFIG, GENERAL_ROSTER, formatPopulation
 } from '../utils/constants';
 import { soundManager } from '../utils/audio';
 import { generateWeatherParticles } from '../utils/weatherUtils';
@@ -12,6 +12,10 @@ import { drawTerrainBuffer, drawTerritoryBuffer } from '../utils/canvasRenderer'
 import { drawBuildingSprite, getNationColor } from '../utils/buildingSprites';
 import { isSuperBuilding, getSuperBuildingState, SUPER_BUILDING_CONFIG } from '../utils/superBuildings';
 import { getSupremeFortressStats } from '../utils/supremeTech';
+import { VN_ISLANDS } from '../utils/mapGenerator';
+import { lonLatToTile } from '../utils/earthMask';
+import { getTradeShipPosition } from '../utils/seaPathfinding';
+import { tickNavalFrame, getSeaControlOwner } from '../utils/navalSystem';
 
 function drawRoundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   if (typeof ctx.roundRect === 'function') {
@@ -60,6 +64,7 @@ interface UseGameRendererParams {
   myNationIdRef: React.MutableRefObject<number>;
   gameDataRef: React.MutableRefObject<any>;
   bomberAimStartRef?: React.MutableRefObject<{ x: number; y: number } | null>;
+  showSeaControlRef?: React.MutableRefObject<boolean>;
   clampCamera: (camX: number, camY: number, zoom: number) => { x: number; y: number };
 }
 
@@ -96,6 +101,7 @@ export function useGameRenderer({
   myNationIdRef,
   gameDataRef,
   bomberAimStartRef,
+  showSeaControlRef,
   clampCamera,
 }: UseGameRendererParams) {
   // Khởi tạo các hạt thời tiết (Mây trôi bồng bềnh, Mưa lất phất)
@@ -269,7 +275,15 @@ export function useGameRenderer({
         if (gameDataRef.current.tradeShips) {
           const data = gameDataRef.current;
           data.tradeShips.forEach((ship: any) => {
-            if (!ship || ship.fromNation === ship.toNation) return;
+            if (!ship) return;
+            if (ship.isEnclosedLocal) {
+              const ownerN = data.nations[ship.fromNation];
+              if (!ownerN || ownerN.isEliminated) return;
+              const spd = Math.min(0.25, Math.max(0.01, ship.speed || 0.08));
+              ship.progress = (ship.progress + spd * deltaSec * gameSpeed) % 1;
+              return;
+            }
+            if (ship.fromNation === ship.toNation) return;
             const fromN = data.nations[ship.fromNation];
             const toN = data.nations[ship.toNation];
             if (!fromN || !toN || fromN.isEliminated || toN.isEliminated) return;
@@ -277,7 +291,7 @@ export function useGameRenderer({
             const dip2 = toN.diplomacy?.[fromN.id]?.status || 'WAR';
             if (dip1 === 'WAR' || dip2 === 'WAR') return;
 
-            const spd = Math.min(0.25, Math.max(0.01, ship.speed || 0.05));
+            const spd = Math.min(0.25, Math.max(0.002, ship.speed || 0.04));
             ship.progress += spd * deltaSec * gameSpeed;
 
             if (ship.progress >= 1.0) {
@@ -288,6 +302,7 @@ export function useGameRenderer({
               ship.sourceY = ship.targetY;
               ship.targetX = tempX;
               ship.targetY = tempY;
+              ship.reverseDir = !ship.reverseDir;
 
               if (ship.lastPayoutAt && timestamp - ship.lastPayoutAt < 1500) {
                 return;
@@ -312,6 +327,10 @@ export function useGameRenderer({
               }
             }
           });
+        }
+
+        if (gameDataRef.current.navalShips) {
+          tickNavalFrame(gameDataRef.current, deltaSec * gameSpeed);
         }
       }
 
@@ -496,8 +515,72 @@ export function useGameRenderer({
             }
           }
         }
+
+        // e. Đánh dấu tầm nhìn động từ Tàu Hải Quân của người chơi
+        const navalShips: NavalShip[] = gameDataRef.current.navalShips || [];
+        for (let ni = 0; ni < navalShips.length; ni++) {
+          const ns = navalShips[ni];
+          if (!ns || ns.hp <= 0 || ns.nationId !== myNationId) continue;
+          const sx = Math.round(ns.x);
+          const sy = Math.round(ns.y);
+          const visRad = (ns.vision || (ns.type === 'WARSHIP' ? 9 : 5)) + (ns.fleetId ? 2 : 0);
+          const visSq = visRad * visRad;
+          const rCeil = Math.ceil(visRad);
+          for (let dy = -rCeil; dy <= rCeil; dy++) {
+            for (let dx = -rCeil; dx <= rCeil; dx++) {
+              if (dx * dx + dy * dy <= visSq) {
+                const vx = sx + dx;
+                const vy = sy + dy;
+                if (vx >= 0 && vx < size && vy >= 0 && vy < size) {
+                  vGrid[vy * size + vx] = 1;
+                }
+              }
+            }
+          }
+        }
       }
       dirtyTerritoryTilesRef.current = [];
+
+      // 3.5. Vẽ Vùng Kiểm Soát Biển nhẹ nhàng (khi người chơi bật overlay & tôn trọng Sương Mù)
+      const seaGrid = gameDataRef.current.seaControlGrid;
+      if (showSeaControlRef?.current && seaGrid && Array.isArray(seaGrid.owners) && seaGrid.owners.length > 0) {
+        ctx.save();
+        for (let y = minTileY; y <= maxTileY; y++) {
+          const row = tiles[y];
+          if (!row) continue;
+          for (let x = minTileX; x <= maxTileX; x++) {
+            const t = row[x];
+            if (!t || t.terrain !== 'WATER') continue;
+            if (visibleGrid && visibleGrid[y * size + x] === 0) continue;
+            const zoneOwner = getSeaControlOwner(seaGrid, x, y);
+            if (zoneOwner <= 0 || !nations[zoneOwner]) continue;
+
+            const zoneColor = getNationColor(nations[zoneOwner]);
+            const px = x * TILE_PIXEL_SIZE;
+            const py = y * TILE_PIXEL_SIZE;
+            ctx.globalAlpha = 0.16;
+            ctx.fillStyle = zoneColor;
+            ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
+
+            // Đường viền nhẹ ngăn cách giữa các vùng biển của các phe
+            ctx.globalAlpha = 0.52;
+            ctx.fillStyle = zoneColor;
+            if (y > 0 && tiles[y - 1]?.[x]?.terrain === 'WATER' && getSeaControlOwner(seaGrid, x, y - 1) !== zoneOwner) {
+              ctx.fillRect(px, py, TILE_PIXEL_SIZE, 1.5);
+            }
+            if (y < size - 1 && tiles[y + 1]?.[x]?.terrain === 'WATER' && getSeaControlOwner(seaGrid, x, y + 1) !== zoneOwner) {
+              ctx.fillRect(px, py + TILE_PIXEL_SIZE - 1.5, TILE_PIXEL_SIZE, 1.5);
+            }
+            if (x > 0 && tiles[y]?.[x - 1]?.terrain === 'WATER' && getSeaControlOwner(seaGrid, x - 1, y) !== zoneOwner) {
+              ctx.fillRect(px, py, 1.5, TILE_PIXEL_SIZE);
+            }
+            if (x < size - 1 && tiles[y]?.[x + 1]?.terrain === 'WATER' && getSeaControlOwner(seaGrid, x + 1, y) !== zoneOwner) {
+              ctx.fillRect(px + TILE_PIXEL_SIZE - 1.5, py, 1.5, TILE_PIXEL_SIZE);
+            }
+          }
+        }
+        ctx.restore();
+      }
 
       // 4. Vẽ Vùng Đất Cháy & Công Trình trong màn hình
       for (let y = minTileY; y <= maxTileY; y++) {
@@ -529,8 +612,50 @@ export function useGameRenderer({
             ctx.restore();
           }
 
-          // 4.1b. Vẽ Mỏ Dầu / Khoáng Sản đã phát hiện (khi chưa xây trạm khai thác)
-          if (t.building === 'NONE' && t.deposit && t.discovered && (t.reserve || 0) > 0 && zoom >= 0.6) {
+          // 4.1b. Vẽ Mỏ Dầu / Khoáng Sản đã phát hiện (gồm Mỏ Dầu Biển trên WATER)
+          if (t.terrain === 'WATER' && t.deposit === 'OIL' && t.discovered && zoom >= 0.3) {
+            const cx = px + TILE_PIXEL_SIZE / 2;
+            const cy = py + TILE_PIXEL_SIZE / 2;
+            const hasRes = (t.reserve || 0) > 0;
+            ctx.save();
+            if (hasRes) {
+              ctx.beginPath();
+              ctx.arc(cx, cy, TILE_PIXEL_SIZE * 0.38, 0, Math.PI * 2);
+              ctx.fillStyle = 'rgba(12, 74, 110, 0.9)';
+              ctx.fill();
+              ctx.lineWidth = 1.6;
+              ctx.strokeStyle = '#fbbf24';
+              ctx.stroke();
+
+              ctx.beginPath();
+              ctx.arc(cx, cy, TILE_PIXEL_SIZE * 0.2, 0, Math.PI * 2);
+              ctx.fillStyle = '#38bdf8';
+              ctx.fill();
+
+              if (zoom >= 0.75) {
+                ctx.fillStyle = '#fef08a';
+                ctx.font = 'bold 8px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🛢', cx, cy + 0.5);
+              }
+            } else {
+              ctx.setLineDash([2, 2]);
+              ctx.beginPath();
+              ctx.arc(cx, cy, TILE_PIXEL_SIZE * 0.34, 0, Math.PI * 2);
+              ctx.strokeStyle = 'rgba(148, 163, 184, 0.75)';
+              ctx.lineWidth = 1.2;
+              ctx.stroke();
+              if (zoom >= 0.8 && t.seaOilRegenTimer) {
+                ctx.fillStyle = 'rgba(203, 213, 225, 0.9)';
+                ctx.font = 'bold 7px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(`${Math.ceil(t.seaOilRegenTimer)}s`, cx, cy);
+              }
+            }
+            ctx.restore();
+          } else if (t.building === 'NONE' && t.deposit && t.discovered && (t.reserve || 0) > 0 && zoom >= 0.6) {
             const cx = px + TILE_PIXEL_SIZE / 2;
             const cy = py + TILE_PIXEL_SIZE / 2;
             ctx.save();
@@ -647,6 +772,33 @@ export function useGameRenderer({
               ctx.fillStyle = condRatio > 0.6 ? '#22c55e' : condRatio > 0.35 ? '#f59e0b' : '#ef4444';
               ctx.fillRect(px + 2, py + TILE_PIXEL_SIZE - 4, barW * condRatio, 3);
               ctx.restore();
+            }
+
+            // Hiển thị tiến trình đóng tàu trên ô Hải Cảng
+            if (t.building === 'PORT' && Array.isArray(gameDataRef.current.portBuildQueues) && gameDataRef.current.portBuildQueues.length > 0) {
+              const qItem = (gameDataRef.current.portBuildQueues as PortBuildQueueItem[]).find(
+                (q) => q && q.portX === x && q.portY === y && q.nationId === t.owner
+              );
+              if (qItem && (t.owner === 1 || !visibleGrid || visibleGrid[y * size + x] === 1)) {
+                const ratio = Math.max(0, Math.min(1, (qItem.totalTime - qItem.remainingTime) / Math.max(1, qItem.totalTime)));
+                const barW = TILE_PIXEL_SIZE - 4;
+                ctx.save();
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+                ctx.fillRect(px + 2, py + 1, barW, 4);
+                ctx.fillStyle = qItem.shipType === 'WARSHIP' ? '#f59e0b' : '#38bdf8';
+                ctx.fillRect(px + 2, py + 1, barW * ratio, 4);
+                if (zoom >= 0.9) {
+                  ctx.font = 'bold 7px sans-serif';
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'top';
+                  ctx.lineWidth = 2;
+                  ctx.strokeStyle = 'rgba(15, 23, 42, 0.95)';
+                  ctx.strokeText(`${Math.ceil(qItem.remainingTime)}s`, cx, py + 6);
+                  ctx.fillStyle = '#e0f2fe';
+                  ctx.fillText(`${Math.ceil(qItem.remainingTime)}s`, cx, py + 6);
+                }
+                ctx.restore();
+              }
             }
           }
         }
@@ -811,6 +963,34 @@ export function useGameRenderer({
             ctx.fillText('🤝', pos.px, badgeY + 0.5);
           }
         });
+      }
+
+      // Render tên Quần đảo Hoàng Sa và Trường Sa khi zoom gần
+      if (zoom >= 1.2) {
+        ctx.save();
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineJoin = 'round';
+        ctx.miterLimit = 2;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#000000';
+        ctx.fillStyle = '#ffffff';
+
+        VN_ISLANDS.forEach(group => {
+          let sumX = 0, sumY = 0;
+          group.points.forEach(([lon, lat]) => {
+            const tile = lonLatToTile(lon, lat, mapSize);
+            sumX += (tile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2);
+            sumY += (tile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2);
+          });
+          const cx = sumX / group.points.length;
+          const cy = sumY / group.points.length;
+
+          ctx.strokeText(group.name, cx, cy - 12);
+          ctx.fillText(group.name, cx, cy - 12);
+        });
+        ctx.restore();
       }
 
       // 6. Render Mô hình Tướng (CHỈ hiện khi Ra Trận / Gần chiến trường, KHÔNG hiện khi nhàn rỗi) & Đợt tiến công
@@ -1490,95 +1670,218 @@ export function useGameRenderer({
         }
       }
 
-      // 6.8. Render Tuyến Đường Giao Thương Biển (Sea Trade Routes) & Tàu Buôn Hải Cảng (Sea Trade Ships)
-      if (gameDataRef.current.tradeRoutes && gameDataRef.current.tradeRoutes.length > 0) {
-        ctx.save();
-        gameDataRef.current.tradeRoutes.forEach((route: any) => {
-          const p1x = route.fromPortX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const p1y = route.fromPortY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const p2x = route.toPortX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const p2y = route.toPortY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-
-          ctx.beginPath();
-          ctx.moveTo(p1x, p1y);
-          ctx.lineTo(p2x, p2y);
-          ctx.setLineDash(route.isIntercontinental ? [8, 5] : [5, 4]);
-          ctx.strokeStyle = route.isIntercontinental ? 'rgba(56, 189, 248, 0.55)' : 'rgba(251, 191, 36, 0.45)';
-          ctx.lineWidth = route.isIntercontinental ? 2.2 : 1.4;
-          ctx.stroke();
-
-          // Hạt hiệu ứng chuyển động lăn tăn dọc theo hải trình
-          const pulseOffset = ((timestamp * 0.002) + (route.distanceTiles % 5) * 0.2) % 1;
-          const dotX = p1x + (p2x - p1x) * pulseOffset;
-          const dotY = p1y + (p2y - p1y) * pulseOffset;
-          ctx.fillStyle = route.isIntercontinental ? '#38bdf8' : '#fbbf24';
-          ctx.beginPath();
-          ctx.arc(dotX, dotY, route.isIntercontinental ? 2.5 : 2.0, 0, Math.PI * 2);
-          ctx.fill();
-        });
-        ctx.restore();
-      }
-
+      // 6.8. Render Tàu Buôn Hải Cảng theo đường biển (không vẽ đường nối nét đứt trên bản đồ)
       if (gameDataRef.current.tradeShips && gameDataRef.current.tradeShips.length > 0) {
-        gameDataRef.current.tradeShips.forEach((ship: any) => {
-          const startX = ship.sourceX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const startY = ship.sourceY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const endX = ship.targetX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
-          const endY = ship.targetY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+        const routeMap = new Map<string, any>();
+        if (Array.isArray(gameDataRef.current.tradeRoutes)) {
+          gameDataRef.current.tradeRoutes.forEach((r: any) => {
+            if (r?.id) routeMap.set(r.id, r);
+          });
+        }
 
-          const prog = Math.min(1.0, Math.max(0.0, ship.progress));
-          const curX = startX + (endX - startX) * prog;
-          const curY = startY + (endY - startY) * prog;
+        const myNationId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+        gameDataRef.current.tradeShips.forEach((ship: any) => {
+          const pos = getTradeShipPosition(ship, routeMap);
+          const stx = Math.max(0, Math.min(size - 1, Math.round(pos.x)));
+          const sty = Math.max(0, Math.min(size - 1, Math.round(pos.y)));
+          if (visibleGrid && ship.fromNation !== myNationId && ship.toNation !== myNationId && visibleGrid[sty * size + stx] === 0) {
+            return;
+          }
+          const curX = pos.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const curY = pos.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const sizeScale = ship.isEnclosedLocal ? 0.78 : ship.scaleTier === 3 ? 1.18 : ship.scaleTier === 2 ? 1.09 : 1.0;
 
           ctx.save();
           // Bóng tàu lướt trên bọt sóng
           ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
           ctx.beginPath();
-          ctx.ellipse(curX, curY + 4, ship.isIntercontinental ? 10 : 8, 4, 0, 0, Math.PI * 2);
+          ctx.ellipse(curX, curY + 4 * sizeScale, (ship.isIntercontinental ? 10 : 8) * sizeScale, 4 * sizeScale, 0, 0, Math.PI * 2);
           ctx.fill();
 
-          // Hào quang quầng sáng Tàu Buôn Hải Cảng
-          ctx.fillStyle = ship.isIntercontinental ? 'rgba(14, 165, 233, 0.85)' : 'rgba(245, 158, 11, 0.85)';
+          // Hào quang Tàu Buôn Hải Cảng
+          ctx.fillStyle = ship.isEnclosedLocal
+            ? 'rgba(148, 163, 184, 0.75)'
+            : ship.isIntercontinental
+              ? 'rgba(14, 165, 233, 0.85)'
+              : 'rgba(245, 158, 11, 0.85)';
           ctx.beginPath();
-          ctx.arc(curX, curY, ship.isIntercontinental ? 9.5 : 7.5, 0, Math.PI * 2);
+          ctx.arc(curX, curY, (ship.isIntercontinental ? 9.5 : 7.5) * sizeScale, 0, Math.PI * 2);
           ctx.fill();
 
           ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1.5;
+          ctx.lineWidth = 1.4;
           ctx.stroke();
 
           // Icon Tàu Buôn ⛵
           ctx.fillStyle = '#ffffff';
-          ctx.font = ship.isIntercontinental ? 'bold 11px sans-serif' : 'bold 9px sans-serif';
+          ctx.font = ship.isIntercontinental ? `bold ${Math.round(11 * sizeScale)}px sans-serif` : `bold ${Math.round(9 * sizeScale)}px sans-serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText('⛵', curX, curY);
 
-          // Nhãn hiển thị lượng Vàng Hàng Hóa
-          const labelAmt = ship.fromNation === 1 ? (ship.fromCargoGold ?? ship.cargoGold) : ship.toNation === 1 ? (ship.toCargoGold ?? ship.cargoGold) : ship.cargoGold;
-          const cargoLabel = `💰${labelAmt}`;
-          const fontStr = 'bold 8px sans-serif';
-          const tagW = getCachedWidth(ctx, cargoLabel, fontStr) + 6;
+          // Nhãn hiển thị lượng Vàng Hàng Hóa (ẩn nếu là tàu địa phương hồ kín 0 vàng)
+          if (!ship.isEnclosedLocal) {
+            const labelAmt = ship.fromNation === 1 ? (ship.fromCargoGold ?? ship.cargoGold) : ship.toNation === 1 ? (ship.toCargoGold ?? ship.cargoGold) : ship.cargoGold;
+            const cargoLabel = `💰${labelAmt}`;
+            const fontStr = 'bold 8px sans-serif';
+            const tagW = getCachedWidth(ctx, cargoLabel, fontStr) + 6;
 
-          ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-          ctx.strokeStyle = ship.isIntercontinental ? '#38bdf8' : '#fbbf24';
-          ctx.lineWidth = 1.0;
-          ctx.fillRect(curX - tagW / 2, curY - 18, tagW, 11);
-          ctx.strokeRect(curX - tagW / 2, curY - 18, tagW, 11);
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            ctx.strokeStyle = ship.isIntercontinental ? '#38bdf8' : '#fbbf24';
+            ctx.lineWidth = 1.0;
+            ctx.fillRect(curX - tagW / 2, curY - 18 * sizeScale, tagW, 11);
+            ctx.strokeRect(curX - tagW / 2, curY - 18 * sizeScale, tagW, 11);
 
-          ctx.fillStyle = ship.isIntercontinental ? '#7dd3fc' : '#fef08a';
-          ctx.fillText(cargoLabel, curX, curY - 12);
+            ctx.fillStyle = ship.isIntercontinental ? '#7dd3fc' : '#fef08a';
+            ctx.fillText(cargoLabel, curX, curY - 12 * sizeScale);
+          }
 
-          if (typeof ship.hp === 'number' && typeof ship.maxHp === 'number' && ship.hp < ship.maxHp) {
+          if ((ship.fromNation === myNationId || ship.toNation === myNationId) && typeof ship.hp === 'number' && typeof ship.maxHp === 'number' && ship.hp < ship.maxHp) {
             const barW = 16;
             const ratio = Math.max(0, Math.min(1, ship.hp / Math.max(1, ship.maxHp)));
             ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-            ctx.fillRect(curX - barW / 2, curY + 11, barW, 3);
+            ctx.fillRect(curX - barW / 2, curY + 11 * sizeScale, barW, 3);
             ctx.fillStyle = ratio < 0.3 ? '#ef4444' : '#38bdf8';
-            ctx.fillRect(curX - barW / 2, curY + 11, barW * ratio, 3);
+            ctx.fillRect(curX - barW / 2, curY + 11 * sizeScale, barW * ratio, 3);
           }
           ctx.restore();
         });
+      }
+
+      // 6.8b. Render Tàu Khai Thác & Tàu Chiến Hải Quân
+      if (Array.isArray(gameDataRef.current.navalShips) && gameDataRef.current.navalShips.length > 0) {
+        const myNationId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+        const navalShips: NavalShip[] = gameDataRef.current.navalShips;
+        for (let ni = 0; ni < navalShips.length; ni++) {
+          const ns = navalShips[ni];
+          if (!ns || ns.hp <= 0) continue;
+          const tx = Math.max(0, Math.min(size - 1, Math.round(ns.x)));
+          const ty = Math.max(0, Math.min(size - 1, Math.round(ns.y)));
+          if (visibleGrid && ns.nationId !== myNationId && visibleGrid[ty * size + tx] === 0) {
+            continue;
+          }
+
+          const cx = ns.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const cy = ns.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const screenX = cx * zoom + currentCamera.x;
+          const screenY = cy * zoom + currentCamera.y;
+          if (screenX < -50 || screenX > vpW + 50 || screenY < -50 || screenY > vpH + 50) continue;
+
+          const sizeScale = ns.scaleTier === 3 ? 1.22 : ns.scaleTier === 2 ? 1.11 : 1.0;
+          const nationColor = ns.nationId > 0 && nations[ns.nationId] ? getNationColor(nations[ns.nationId]) : '#64748b';
+
+          ctx.save();
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.36)';
+          ctx.beginPath();
+          ctx.ellipse(cx, cy + 4 * sizeScale, 9 * sizeScale, 4 * sizeScale, 0, 0, Math.PI * 2);
+          ctx.fill();
+
+          if (ns.type === 'EXTRACTOR') {
+            const isExtracting = ns.state === 'EXTRACTING';
+            const drawX = isExtracting ? cx + 4 * sizeScale : cx;
+            const drawY = isExtracting ? cy - 4 * sizeScale : cy;
+
+            if (isExtracting) {
+              ctx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+              ctx.lineWidth = 1.4;
+              ctx.setLineDash([2, 2]);
+              ctx.beginPath();
+              ctx.moveTo(drawX, drawY);
+              ctx.lineTo(cx, cy);
+              ctx.stroke();
+              ctx.setLineDash([]);
+
+              const pulseR = (10 + 3 * Math.sin(timestamp * 0.008 + ni)) * sizeScale;
+              ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)';
+              ctx.lineWidth = 1.2;
+              ctx.beginPath();
+              ctx.arc(cx, cy, pulseR, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+
+            ctx.fillStyle = ns.nationId === 0 ? '#64748b' : '#0f172a';
+            ctx.strokeStyle = nationColor;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(drawX, drawY, 8.2 * sizeScale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = isExtracting ? '#38bdf8' : '#fbbf24';
+            ctx.font = `bold ${Math.round(10 * sizeScale)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('🛢️', drawX, drawY);
+          } else {
+            ctx.fillStyle = ns.nationId === 0 ? '#475569' : nationColor;
+            ctx.strokeStyle = ns.nationId === 0 ? '#cbd5e1' : '#ffffff';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 9.5 * sizeScale, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = `bold ${Math.round(11 * sizeScale)}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('⚓', cx, cy);
+
+            if (ns.nationId === 0) {
+              ctx.font = '8px sans-serif';
+              ctx.fillText('🏴', cx + 9 * sizeScale, cy - 7 * sizeScale);
+            }
+            if (ns.isRepairing || ns.state === 'REPAIRING') {
+              ctx.font = '9px sans-serif';
+              ctx.fillText('🔧', cx + 9 * sizeScale, cy + 7 * sizeScale);
+            }
+            if (ns.fleetId && ns.nationId > 0) {
+              ctx.strokeStyle = '#38bdf8';
+              ctx.lineWidth = 1.3;
+              ctx.setLineDash([3, 2]);
+              ctx.beginPath();
+              ctx.arc(cx, cy, 12.2 * sizeScale, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.setLineDash([]);
+            }
+            if (ns.nationId === myNationId && (ns.carriedTroops || 0) > 0) {
+              const troopLabel = `🪖${ns.carriedTroops}`;
+              ctx.font = 'bold 8px sans-serif';
+              const tw = getCachedWidth(ctx, troopLabel, 'bold 8px sans-serif') + 6;
+              ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+              ctx.fillRect(cx - tw / 2, cy - 20 * sizeScale, tw, 11);
+              ctx.strokeStyle = '#38bdf8';
+              ctx.lineWidth = 1;
+              ctx.strokeRect(cx - tw / 2, cy - 20 * sizeScale, tw, 11);
+              ctx.fillStyle = '#bae6fd';
+              ctx.fillText(troopLabel, cx, cy - 14.5 * sizeScale);
+            }
+          }
+
+          if (ns.nationId === 0 && ns.type === 'EXTRACTOR') {
+            ctx.font = '8px sans-serif';
+            ctx.fillText('🏴', cx + 8 * sizeScale, cy - 8 * sizeScale);
+          }
+
+          if (ns.nationId === 0 && (ns.captureProgress || 0) > 0) {
+            const capBarW = 18 * sizeScale;
+            const capRatio = Math.max(0, Math.min(1, (ns.captureProgress || 0) / 8));
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.92)';
+            ctx.fillRect(cx - capBarW / 2, cy + 11 * sizeScale, capBarW, 3.5);
+            ctx.fillStyle = '#10b981';
+            ctx.fillRect(cx - capBarW / 2, cy + 11 * sizeScale, capBarW * capRatio, 3.5);
+          }
+
+          if (ns.nationId === myNationId && ns.hp < ns.maxHp) {
+            const barW = 16 * sizeScale;
+            const ratio = Math.max(0, Math.min(1, ns.hp / Math.max(1, ns.maxHp)));
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            ctx.fillRect(cx - barW / 2, cy + 10.5 * sizeScale, barW, 3);
+            ctx.fillStyle = ratio < 0.3 ? '#ef4444' : '#22c55e';
+            ctx.fillRect(cx - barW / 2, cy + 10.5 * sizeScale, barW * ratio, 3);
+          }
+          ctx.restore();
+        }
       }
 
       // 6.9. Hiệu ứng nổ tên lửa (Atom / Hydro / MIRV)

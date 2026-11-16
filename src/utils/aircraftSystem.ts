@@ -6,7 +6,9 @@ import {
   DarkTitan,
   GameEvent,
   Nation,
+  SeaTradeRoute,
   SeaTradeShip,
+  NavalShip,
   Tile,
 } from '../types';
 import { AIR_SYSTEM_CONFIG, AIR_UNIT_SPECS, BUILDING_INFO } from '../data/gameData';
@@ -14,6 +16,8 @@ import { TILE_PIXEL_SIZE, formatGameTime } from './constants';
 import { damageSuperBuilding, isSuperBuilding } from './superBuildings';
 import { getSupremeBranchLevel } from './supremeTech';
 import { damageDarkTitan } from './titanCombat';
+import { getTradeShipPosition } from './seaPathfinding';
+import { damageNavalShip, isEnemyNavalShip } from './navalSystem';
 
 export interface AirBaseLocation {
   x: number;
@@ -751,7 +755,7 @@ function isAtWar(attacker: Nation | undefined, targetId: number): boolean {
 }
 
 export function isEnemyTradeShipForNation(attacker: Nation | undefined, ship: SeaTradeShip): boolean {
-  if (!attacker || !ship) return false;
+  if (!attacker || !ship || ship.isEnclosedLocal || ship.derelict) return false;
   if (ship.fromNation === attacker.id || ship.toNation === attacker.id) return false;
   const dipFrom = attacker.diplomacy?.[ship.fromNation]?.status || 'WAR';
   const dipTo = attacker.diplomacy?.[ship.toNation]?.status || 'WAR';
@@ -863,12 +867,19 @@ function applyAirStrikeImpact(
 
   // 2. Đánh trúng Tàu (SeaTradeShip của phe địch đang chiến tranh)
   if (Array.isArray(data.tradeShips) && data.tradeShips.length > 0) {
+    const routeMap = new Map<string, SeaTradeRoute>();
+    if (Array.isArray(data.tradeRoutes)) {
+      data.tradeRoutes.forEach((r: SeaTradeRoute) => {
+        if (r?.id) routeMap.set(r.id, r);
+      });
+    }
     const sunkIds = new Set<string>();
     for (let si = 0; si < data.tradeShips.length; si++) {
       const ship: SeaTradeShip = data.tradeShips[si];
       if (!ship || !isEnemyTradeShipForNation(attacker, ship)) continue;
-      const sx = ship.sourceX + (ship.targetX - ship.sourceX) * ship.progress;
-      const sy = ship.sourceY + (ship.targetY - ship.sourceY) * ship.progress;
+      const pos = getTradeShipPosition(ship, routeMap);
+      const sx = pos.x;
+      const sy = pos.y;
       if (Math.hypot(sx - cx, sy - cy) <= impact.aoeRadius + 1.2) {
         const maxHp = ship.maxHp ?? AIR_SYSTEM_CONFIG.SHIP_BASE_HP;
         const curHp = ship.hp ?? maxHp;
@@ -896,6 +907,20 @@ function applyAirStrikeImpact(
     }
     if (sunkIds.size > 0) {
       data.tradeShips = data.tradeShips.filter((s: SeaTradeShip) => !sunkIds.has(s.id));
+    }
+  }
+
+  // 2b. Đánh trúng Tàu Hải Quân (Tàu Khai Thác / Tàu Chiến địch)
+  if (Array.isArray(data.navalShips) && data.navalShips.length > 0) {
+    for (let ni = data.navalShips.length - 1; ni >= 0; ni--) {
+      const ns: NavalShip = data.navalShips[ni];
+      if (!ns || !isEnemyNavalShip(attacker, ns)) continue;
+      if (Math.hypot(ns.x - cx, ns.y - cy) <= impact.aoeRadius + 1.2) {
+        const sunk = damageNavalShip(ns, impact.shipDamage, attacker, data);
+        if (sunk) {
+          data.navalShips.splice(ni, 1);
+        }
+      }
     }
   }
 
@@ -1032,11 +1057,22 @@ function validatePriorityTarget(
   if (unit.priorityTargetKind === 'SHIP' && unit.priorityTargetId) {
     const foundShip = (data.tradeShips || []).find((s: SeaTradeShip) => s && s.id === unit.priorityTargetId);
     if (foundShip && isEnemyTradeShipForNation(attacker, foundShip)) {
-      const sx = foundShip.sourceX + (foundShip.targetX - foundShip.sourceX) * foundShip.progress;
-      const sy = foundShip.sourceY + (foundShip.targetY - foundShip.sourceY) * foundShip.progress;
-      unit.priorityTargetX = sx;
-      unit.priorityTargetY = sy;
-      return { x: sx, y: sy, stillValid: true };
+      const routeMap = new Map<string, SeaTradeRoute>();
+      if (Array.isArray(data.tradeRoutes)) {
+        data.tradeRoutes.forEach((r: SeaTradeRoute) => {
+          if (r?.id) routeMap.set(r.id, r);
+        });
+      }
+      const pos = getTradeShipPosition(foundShip, routeMap);
+      unit.priorityTargetX = pos.x;
+      unit.priorityTargetY = pos.y;
+      return { x: pos.x, y: pos.y, stillValid: true };
+    }
+    const foundNaval = (data.navalShips || []).find((s: NavalShip) => s && s.id === unit.priorityTargetId);
+    if (foundNaval && isEnemyNavalShip(attacker, foundNaval)) {
+      unit.priorityTargetX = foundNaval.x;
+      unit.priorityTargetY = foundNaval.y;
+      return { x: foundNaval.x, y: foundNaval.y, stillValid: true };
     }
     return { x: unit.priorityTargetX, y: unit.priorityTargetY, stillValid: false };
   }
@@ -1096,13 +1132,20 @@ function scanBestLocalTarget(
   }
 
   // 2. Tàu địch gần nhất đang chiến tranh trong tầm quét
-  if (Array.isArray(data.tradeShips)) {
+  if (Array.isArray(data.tradeShips) && data.tradeShips.length > 0) {
+    const routeMap = new Map<string, SeaTradeRoute>();
+    if (Array.isArray(data.tradeRoutes)) {
+      data.tradeRoutes.forEach((r: SeaTradeRoute) => {
+        if (r?.id) routeMap.set(r.id, r);
+      });
+    }
     let bestShip: { x: number; y: number; id: string; d: number } | null = null;
     for (let i = 0; i < data.tradeShips.length; i++) {
       const s: SeaTradeShip = data.tradeShips[i];
       if (!s || !isEnemyTradeShipForNation(attacker, s)) continue;
-      const sx = s.sourceX + (s.targetX - s.sourceX) * s.progress;
-      const sy = s.sourceY + (s.targetY - s.sourceY) * s.progress;
+      const pos = getTradeShipPosition(s, routeMap);
+      const sx = pos.x;
+      const sy = pos.y;
       const d = Math.hypot(sx - originX, sy - originY);
       if (d <= scanRadius && (!bestShip || d < bestShip.d)) {
         bestShip = { x: sx, y: sy, id: s.id, d };
@@ -1112,6 +1155,23 @@ function scanBestLocalTarget(
       candidates.push({
         target: { x: bestShip.x, y: bestShip.y, kind: 'SHIP', id: bestShip.id },
         dist: bestShip.d,
+      });
+    }
+  }
+  if (Array.isArray(data.navalShips) && data.navalShips.length > 0) {
+    let bestNav: { x: number; y: number; id: string; d: number } | null = null;
+    for (let i = 0; i < data.navalShips.length; i++) {
+      const ns: NavalShip = data.navalShips[i];
+      if (!ns || !isEnemyNavalShip(attacker, ns)) continue;
+      const d = Math.hypot(ns.x - originX, ns.y - originY);
+      if (d <= scanRadius && (!bestNav || d < bestNav.d)) {
+        bestNav = { x: ns.x, y: ns.y, id: ns.id, d };
+      }
+    }
+    if (bestNav) {
+      candidates.push({
+        target: { x: bestNav.x, y: bestNav.y, kind: 'SHIP', id: bestNav.id },
+        dist: bestNav.d,
       });
     }
   }

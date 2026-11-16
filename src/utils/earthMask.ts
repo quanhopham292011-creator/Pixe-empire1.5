@@ -11,8 +11,11 @@ const EARTH_MASK_LAND_COUNT = 11389;
 const MASK_N = 192;
 const LON_MIN = -170;
 const LON_MAX = 190;
-const LAT_TOP = 80;
-const LAT_BOTTOM = -60;
+const LAT_TOP = 88;
+const LAT_BOTTOM = -78;
+const MASK_LAT_TOP = 80;
+const MASK_LAT_BOTTOM = -60;
+const BLOCK_GRID = 67; // số khối thô, càng nhỏ bản đồ càng đơn giản
 
 let maskCache: Uint8Array | null = null;
 
@@ -70,21 +73,39 @@ function getMask(): Uint8Array {
   return maskCache;
 }
 
-/** Tỉ lệ đất liền (0 đến 1) của ô (x, y) trên bản đồ có kích thước size x size */
-export function earthLandRatio(x: number, y: number, size: number): number {
+function rawLand(lon: number, lat: number): number {
+  // Bắc Cực: cục băng hình bầu dục
+  if (lon >= -95 && lon <= 15) {
+    const t = 1 - Math.pow((lon + 40) / 55, 2);
+    if (t > 0 && lat > 85 - 6 * Math.sqrt(t)) return 1;
+  }
+  // Nam Cực: cục băng hình bầu dục
+  if (lon >= -50 && lon <= 130) {
+    const t = 1 - Math.pow((lon - 40) / 90, 2);
+    if (t > 0 && lat < -72 + 8 * Math.sqrt(t)) return 1;
+  }
+  // Ngoài vùng dữ liệu gốc thì là biển
+  if (lat > MASK_LAT_TOP || lat < MASK_LAT_BOTTOM) return 0;
   const mask = getMask();
-  const SUB = 3;
+  const mx = Math.max(0, Math.min(MASK_N - 1, Math.floor(((lon - LON_MIN) / (LON_MAX - LON_MIN)) * MASK_N)));
+  const my = Math.max(0, Math.min(MASK_N - 1, Math.floor(((MASK_LAT_TOP - lat) / (MASK_LAT_TOP - MASK_LAT_BOTTOM)) * MASK_N)));
+  return mask[my * MASK_N + mx];
+}
+
+/** Đất liền (1) hoặc biển (0) của ô (x, y). Gộp theo khối thô để bản đồ đơn giản. */
+export function earthLandRatio(x: number, y: number, size: number): number {
+  const bx = Math.floor(((x + 0.5) / size) * BLOCK_GRID);
+  const by = Math.floor(((y + 0.5) / size) * BLOCK_GRID);
+  const SUB = 4;
   let land = 0;
   for (let sy = 0; sy < SUB; sy++) {
     for (let sx = 0; sx < SUB; sx++) {
-      const u = (x + (sx + 0.5) / SUB) / size;
-      const v = (y + (sy + 0.5) / SUB) / size;
-      const mx = Math.min(MASK_N - 1, Math.floor(u * MASK_N));
-      const my = Math.min(MASK_N - 1, Math.floor(v * MASK_N));
-      land += mask[my * MASK_N + mx];
+      const uu = (bx + (sx + 0.5) / SUB) / BLOCK_GRID;
+      const vv = (by + (sy + 0.5) / SUB) / BLOCK_GRID;
+      land += rawLand(LON_MIN + uu * (LON_MAX - LON_MIN), LAT_TOP - vv * (LAT_TOP - LAT_BOTTOM));
     }
   }
-  return land / (SUB * SUB);
+  return land / (SUB * SUB) >= 0.4 ? 1 : 0;
 }
 
 /** Đổi kinh độ, vĩ độ thật sang toạ độ ô (x, y) */

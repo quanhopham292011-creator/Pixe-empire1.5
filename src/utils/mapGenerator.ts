@@ -9,6 +9,12 @@ import { earthLandRatio, lonLatToTile } from './earthMask';
 import { WORLD_COUNTRIES } from './worldCountries';
 import { generateDeposits, initNationResources } from './resources';
 
+// Quần đảo của Việt Nam: [kinh độ, vĩ độ]
+export const VN_ISLANDS: { name: string; points: [number, number][] }[] = [
+  { name: 'Hoàng Sa', points: [[111.5, 16.6], [112.3, 16.5], [112.0, 16.0]] },
+  { name: 'Trường Sa', points: [[113.7, 11.6], [114.3, 10.0], [115.8, 10.4], [114.5, 8.9], [112.9, 8.7], [116.7, 9.6]] },
+];
+
 function pseudoNoise(x: number, y: number, seed: number): number {
   const n = Math.sin(x * 12.9898 + y * 78.233 + seed * 43758.5453) * 43758.5453;
   return n - Math.floor(n);
@@ -226,6 +232,7 @@ export function generateWorldMap(
     guard++;
     const rx = 2 + Math.floor(Math.random() * (size - 4));
     const ry = 2 + Math.floor(Math.random() * (size - 4));
+    if (ry < size * 0.08 || ry > size * 0.91) continue; // không đặt bản làng trên băng Bắc/Nam Cực
     if (tiles[ry][rx].terrain === 'WATER' || !isFarEnough(rx, ry, 3.3)) continue;
     spawnLocations.push({ x: rx, y: ry });
     spawnInfo.push({ name: nextEthnicName(), dev: false, isCountry: false });
@@ -246,6 +253,21 @@ export function generateWorldMap(
   const bossNationId = bossPool.length > 0
     ? bossPool[Math.floor(Math.random() * bossPool.length)]
     : -1;
+
+  const vnIslandTiles: { x: number; y: number }[] = [];
+  for (const group of VN_ISLANDS) {
+    for (const [lon, lat] of group.points) {
+      const p = lonLatToTile(lon, lat, size);
+      const t = tiles[p.y][p.x];
+      if (t.terrain === 'WATER') {
+        t.terrain = 'LAND';
+        t.defenseBonus = 1.0;
+      }
+      if (!vnIslandTiles.some(q => q.x === p.x && q.y === p.y)) {
+        vnIslandTiles.push(p);
+      }
+    }
+  }
 
   // Cập nhật giáp biển
   for (let y = 0; y < size; y++) {
@@ -469,6 +491,14 @@ export function generateWorldMap(
           }
         }
       }
+    }
+  }
+
+  const vnNation = nations.find(n => n.name.trim().toLowerCase() === 'việt nam');
+  if (vnNation) {
+    for (const p of vnIslandTiles) {
+      const t = tiles[p.y][p.x];
+      if (t.building === 'NONE') t.owner = vnNation.id;
     }
   }
 

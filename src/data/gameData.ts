@@ -203,7 +203,7 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
   AIR_DEFENSE: {
     name: 'Phòng Không (SAM)',
     desc: 'Hệ thống tên lửa đất đối không: 75% cơ hội bắn hạ tên lửa Atom và Hydro của kẻ thù trong tầm bảo vệ!',
-    baseCost: 6_000,
+    baseCost: 4_000,
     icon: 'ShieldAlert',
   },
   OIL_RIG: {
@@ -405,6 +405,11 @@ export const GENERAL_ROSTER: GeneralRosterItem[] = [
 export const RESOURCE_CONFIG = {
   OIL_DENSITY: 0.0065,
   MINERAL_DENSITY: 0.0075,
+  SEA_OIL_RATIO_OF_LAND: 0.6,
+  SEA_OIL_RESERVE_SMALL: 1800,
+  SEA_OIL_RESERVE_MEDIUM: 4500,
+  SEA_OIL_RESERVE_LARGE: 10000,
+  SEA_OIL_REGEN_SECONDS: 180,
   HIDDEN_CHANCE: 0.4,
   DISCOVER_CHANCE_PER_SEC: 0.015,
   RESERVE_SMALL: 1200,
@@ -739,5 +744,56 @@ export const AIR_UNIT_SPECS = {
       scorchSeconds: 15,
     },
   },
+} as const;
+
+export const NAVAL_CONFIG = {
+  TRADE_SPEED_TILES_PER_SEC: 2.8,
+  EXTRACTOR: {
+    NAME: 'Tàu Khai Thác',
+    GOLD_COST: 350,
+    OIL_COST: 30,
+    MINERAL_COST: 25,
+    BUILD_TIME_SECONDS: 20,
+    CANCEL_REFUND_RATIO: 0.5,
+    MAX_PER_PORT: 2,
+    MAX_PER_NATION: 16,
+    BASE_HP: 220,
+    SPEED_TILES_PER_SEC: 2.2, // chậm hơn tàu thương (2.8)
+    OIL_RATE_PER_SEC: 1.5,
+    BASE_OIL_CAPACITY: 60,
+    VISION: 5,
+  },
+  WARSHIP: {
+    NAME: 'Tàu Chiến',
+    GOLD_COST: 900,
+    OIL_COST: 80,
+    MINERAL_COST: 60,
+    BUILD_TIME_SECONDS: 40,
+    CANCEL_REFUND_RATIO: 0.5,
+    MAX_PER_PORT: 3,
+    MAX_PER_NATION: 12,
+    BASE_HP: 600,
+    DPS: 30,
+    RANGE_TILES: 4,
+    VISION_TILES: 9,
+    SPEED_TILES_PER_SEC: 3.36, // nhanh hơn tàu thương ~20% (2.8 * 1.2)
+    RETREAT_HP_RATIO: 0.3,
+    REPAIR_PORT_PCT_PER_SEC: 0.03, // 3% HP/s tại cảng
+    REPAIR_SEA_PCT_PER_SEC: 0.005, // 0.5% HP/s trên biển
+    REPAIR_SEA_GOLD_PER_HP: 2,     // 2 Vàng/HP khi sửa trên biển
+    TROOP_CARRY_RATIO: 0.1,        // 10% quân hiện có (scale theo Part 8)
+    DERELICT_CAPTURE_SECONDS: 8,   // 8 giây chiếm tàu vô chủ
+    DERELICT_CAPTURE_RANGE: 2.2,
+  },
+  SEA_CONTROL: {
+    CELL_SIZE: 4,
+    RADIUS_TILES: 8,
+    UPDATE_INTERVAL_SEC: 2,
+  },
+  FLEET: {
+    MAX_SHIPS: 6,
+    VISION_BONUS: 2,
+  },
+  MAX_GLOBAL_NAVAL_SHIPS: 96, // chống lag toàn bản đồ
 } as const;
 

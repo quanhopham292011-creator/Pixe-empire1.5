@@ -8,7 +8,7 @@ import {
   BuildingType, MapDimension, GameDifficulty, GameMode, Tile, Nation, 
   AttackWave, GameParticle, GameEvent, ResearchingTech, TechNode, QuestStep, General, GeneralSkillId,
   WeatherType, WeatherParticle, WeatherCloudPuff, DarkTitan, PendingTitanSpawn, MissileType, FlyingMissile,
-  AirUnit, AirUnitType, SeaTradeRoute, SeaTradeShip, PlayerProfile, VictoryReward, MarketState, DepositType, TradeOffer
+  AirUnit, AirUnitType, SeaTradeRoute, SeaTradeShip, NavalShip, PortBuildQueueItem, SeaControlGrid, InspectedShipRef, NavalAimingState, PlayerProfile, VictoryReward, MarketState, DepositType, TradeOffer
 } from './types';
 import { generateWorldMap } from './utils/mapGenerator';
 import { 
@@ -56,6 +56,8 @@ import {
   deployInitialBorderBunkers,
   upgradeAdvancedExtractor,
 } from './utils/supremeTech';
+import { getTradeShipPosition } from './utils/seaPathfinding';
+import { tickNavalSystem, damageNavalShip, isEnemyNavalShip, issueWarshipOrder, orderAmphibiousLanding, issueFleetOrder, isEnemyTradeShipForWarship } from './utils/navalSystem';
 import {
   AirBaseLocation,
   AirSamLocation,
@@ -254,9 +256,13 @@ export default function App() {
   const [autoExpand, setAutoExpand] = useState<boolean>(true);
   const [playerGeneralDeployMode, setPlayerGeneralDeployMode] = useState<boolean>(true); // Tướng tham chiến theo đợt quân
 
-  // Ô đất đang được chọn để xem thông tin / chuẩn bị xây dựng (Tách biệt hoàn toàn việc chọn ô và xây dựng)
+  // Ô đất hoặc tàu đang được chọn để xem thông tin / chuẩn bị xây dựng
   const [selectedTile, setSelectedTile] = useState<Tile | null>(null);
   const selectedTileRef = useRef<Tile | null>(null);
+  const [inspectedShip, setInspectedShip] = useState<InspectedShipRef | null>(null);
+  const [showSeaControl, setShowSeaControl] = useState<boolean>(true);
+  const showSeaControlRef = useRef<boolean>(true);
+  showSeaControlRef.current = showSeaControl;
   const totalLandCountRef = useRef<number>(0);
 
   // Modals
@@ -265,6 +271,7 @@ export default function App() {
   const [isDiplomacyOpen, setIsDiplomacyOpen] = useState<boolean>(false);
   const [isEventLogOpen, setIsEventLogOpen] = useState<boolean>(false);
   const [isMissileOpen, setIsMissileOpen] = useState<boolean>(false);
+  const [missileModalInitialTab, setMissileModalInitialTab] = useState<'PLANES' | 'MISSILES' | 'NAVAL' | null>(null);
   const [isMarketOpen, setIsMarketOpen] = useState<boolean>(false);
   const [missileAimingMode, setMissileAimingMode] = useState<MissileType | null>(null);
   const missileAimingModeRef = useRef<MissileType | null>(null);
@@ -273,6 +280,9 @@ export default function App() {
   const airAimingModeRef = useRef<'FIGHTER' | 'SQUADRON' | 'BOMBER_START' | 'BOMBER_END' | null>(null);
   airAimingModeRef.current = airAimingMode;
   const bomberAimStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [navalAimingMode, setNavalAimingMode] = useState<NavalAimingState | null>(null);
+  const navalAimingModeRef = useRef<NavalAimingState | null>(null);
+  navalAimingModeRef.current = navalAimingMode;
   const [missileFeedbackToast, setMissileFeedbackToast] = useState<string | null>(null);
   const flyingMissilesRef = useRef<FlyingMissile[]>([]);
 
@@ -398,6 +408,9 @@ export default function App() {
     airUnits?: AirUnit[];
     tradeRoutes: SeaTradeRoute[];
     tradeShips: SeaTradeShip[];
+    navalShips?: NavalShip[];
+    portBuildQueues?: PortBuildQueueItem[];
+    seaControlGrid?: SeaControlGrid;
     activeSeasonEvent: {
       type: 'BLIZZARD' | 'PLAGUE' | 'GOLDEN_HARVEST' | 'DROUGHT';
       name: string;
@@ -430,6 +443,8 @@ export default function App() {
     airUnits: [],
     tradeRoutes: [],
     tradeShips: [],
+    navalShips: [],
+    portBuildQueues: [],
     activeSeasonEvent: null,
     stats: { battlesCount: 0, buildingsCount: 0 },
     market: createMarket(),
@@ -527,6 +542,7 @@ export default function App() {
     myNationIdRef,
     gameDataRef,
     bomberAimStartRef,
+    showSeaControlRef,
     clampCamera,
   });
 
@@ -995,6 +1011,8 @@ export default function App() {
       airUnits: [],
       tradeRoutes: [],
       tradeShips: [],
+      navalShips: [],
+      portBuildQueues: [],
       activeSeasonEvent: null,
       stats: { battlesCount: 0, buildingsCount: 0 },
       market: createMarket(),
@@ -1012,6 +1030,9 @@ export default function App() {
     setVictoryReward(null);
     setSelectedTile(null);
     selectedTileRef.current = null;
+    setInspectedShip(null);
+    setNavalAimingMode(null);
+    navalAimingModeRef.current = null;
     setCurrentQuest(1);
     setQuestDismissed(false);
     setHasMetBot(false);
@@ -2176,6 +2197,23 @@ export default function App() {
         offscreenTerritoryDirtyRef.current = true;
       }
 
+      // 2.4b. Cập nhật Hệ thống Hải Quân (Đóng tàu tại Cảng, Tàu Khai Thác...)
+      if (!isMultiplayerRef.current || myNationIdRef.current === 1) {
+        tickNavalSystem(data, difficulty, {
+          applyCasualties,
+          markTerritoryDirty: () => {
+            offscreenTerritoryDirtyRef.current = true;
+            fogBaseDirtyRef.current = true;
+          },
+          launchLandingWave: (fromN, toN, srcWater, tgtLand, troops) => {
+            return launchAttackWave(fromN, toN, srcWater, tgtLand, troops, undefined, false, true);
+          },
+          playExplosionSound: () => soundManager.playThunder(),
+          notifyPlayer: (msg: string) => showMissileToast(msg),
+          playerNationId: myNationIdRef.current,
+        });
+      }
+
       // 2.5. ĐỒNG BỘ TRẠNG THÁI PHÒNG CHƠI MULTIPLAYER (HOST phát sóng 1s/lần khi có máy bay đang bay, còn lại 3s/lần)
       const hasFlyingAirSync = Array.isArray(data.airUnits) && data.airUnits.some(
         (u: AirUnit) => u && (u.state === 'EN_ROUTE' || u.state === 'COMBAT' || u.state === 'PATROL' || u.state === 'RETURNING')
@@ -2631,6 +2669,19 @@ export default function App() {
                 damageDarkTitan(titan, missileTitanDmg, firingNation, data);
               }
             });
+
+            // Gây sát thương lên Tàu Hải Quân nằm trong vùng nổ tên lửa
+            if (Array.isArray(data.navalShips) && data.navalShips.length > 0) {
+              const missileShipDmg = m.type === 'HYDRO' ? 650 : m.type === 'MIRV' ? 220 : atomEffective?.isUpgraded ? 900 : 450;
+              for (let ni = data.navalShips.length - 1; ni >= 0; ni--) {
+                const ns = data.navalShips[ni];
+                if (!ns || ns.hp <= 0) continue;
+                if (Math.hypot(ns.x - cx, ns.y - cy) <= radius + 0.8) {
+                  const sunk = damageNavalShip(ns, missileShipDmg, firingNation, data);
+                  if (sunk) data.navalShips.splice(ni, 1);
+                }
+              }
+            }
 
             // Bước 1: Lưu thông tin các ô và chủ đất (owner) của các ô bị ảnh hưởng TRƯỚC KHI bị xóa
             const affectedTiles: { tile: Tile; oldOwner: number; dist: number }[] = [];
@@ -3222,7 +3273,7 @@ export default function App() {
     const now = Date.now();
     const last = lastTapRef.current;
     const isDouble = (now - last.time < 500) && Math.max(Math.abs(last.x - mapX), Math.abs(last.y - mapY)) <= 2;
-    if (isDouble && targetTile.owner !== 1 && targetTile.terrain !== 'WATER' && !missileAimingModeRef.current && !airAimingModeRef.current) {
+    if (isDouble && targetTile.owner !== 1 && targetTile.terrain !== 'WATER' && !missileAimingModeRef.current && !airAimingModeRef.current && !navalAimingModeRef.current) {
       if (smartAttackTile(targetTile)) {
         setSelectedTile(null);
         selectedTileRef.current = null;
@@ -3231,6 +3282,107 @@ export default function App() {
       }
     }
     lastTapRef.current = { x: mapX, y: mapY, time: now };
+
+    // Nếu đang ở chế độ điều khiển Hải Quân (Part 9)
+    const navalAim = navalAimingModeRef.current;
+    if (navalAim) {
+      const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
+      const attacker = nations[myNation];
+      if (!attacker) {
+        setNavalAimingMode(null);
+        navalAimingModeRef.current = null;
+        return;
+      }
+
+      if (navalAim.mode === 'FLEET_MOVE' || navalAim.mode === 'FLEET_PATROL' || navalAim.mode === 'FLEET_LANDING') {
+        const fid = navalAim.fleetId || '';
+        const orderType =
+          navalAim.mode === 'FLEET_MOVE' ? 'MOVE' :
+          navalAim.mode === 'FLEET_PATROL' ? 'PATROL' : 'LANDING';
+        if ((orderType === 'MOVE' || orderType === 'PATROL') && targetTile.terrain !== 'WATER') {
+          showMissileToast('Hãy chạm vào ô BIỂN để điều hạm đội!');
+          return;
+        }
+        if (orderType === 'LANDING' && targetTile.terrain === 'WATER') {
+          showMissileToast('🏖️ Hãy chạm vào ô ĐẤT ĐỊCH hoặc đất trống để Hạm đội Đổ Bộ!');
+          return;
+        }
+        const res = issueFleetOrder(data, myNation, fid, orderType, { x: mapX, y: mapY });
+        showMissileToast(res.reason);
+        setNavalAimingMode(null);
+        navalAimingModeRef.current = null;
+        soundManager.playClick();
+        return;
+      }
+
+      const ship = (data.navalShips || []).find((s: NavalShip) => s && s.id === navalAim.shipId && s.hp > 0 && s.nationId === myNation);
+      if (!ship) {
+        showMissileToast('Tàu Chiến không còn hoạt động.');
+        setNavalAimingMode(null);
+        navalAimingModeRef.current = null;
+        return;
+      }
+
+      if (navalAim.mode === 'LANDING') {
+        if (targetTile.terrain === 'WATER') {
+          showMissileToast('🏖️ Hãy chạm vào ô ĐẤT ĐỊCH hoặc đất trống để Đổ Bộ!');
+          return;
+        }
+        const res = orderAmphibiousLanding(data, ship, mapX, mapY, true);
+        showMissileToast(res.reason);
+        if (res.ok || (ship.carriedTroops || 0) <= 0) {
+          setNavalAimingMode(null);
+          navalAimingModeRef.current = null;
+        }
+        soundManager.playClick();
+        return;
+      }
+
+      if (navalAim.mode === 'MOVE' || navalAim.mode === 'PATROL') {
+        if (targetTile.terrain !== 'WATER') {
+          showMissileToast('Hãy chạm vào ô BIỂN!');
+          return;
+        }
+        const res = issueWarshipOrder(data, ship, navalAim.mode, { x: mapX, y: mapY });
+        showMissileToast(res.reason);
+        setNavalAimingMode(null);
+        navalAimingModeRef.current = null;
+        soundManager.playClick();
+        return;
+      }
+
+      if (navalAim.mode === 'ATTACK') {
+        let tgtNavId: string | undefined;
+        let tgtX = mapX;
+        let tgtY = mapY;
+        const hitEnemy = (data.navalShips || []).find(
+          (ns: NavalShip) => ns && isEnemyNavalShip(attacker, ns) && Math.hypot(ns.x - mapX, ns.y - mapY) <= 2.2
+        );
+        if (hitEnemy) {
+          tgtNavId = hitEnemy.id;
+          tgtX = hitEnemy.x;
+          tgtY = hitEnemy.y;
+        } else if (Array.isArray(data.tradeShips)) {
+          const routeMap = new Map<string, SeaTradeRoute>();
+          (data.tradeRoutes || []).forEach((r: SeaTradeRoute) => { if (r?.id) routeMap.set(r.id, r); });
+          for (const ts of data.tradeShips as SeaTradeShip[]) {
+            if (!isEnemyTradeShipForWarship(attacker, ts)) continue;
+            const pos = getTradeShipPosition(ts, routeMap);
+            if (Math.hypot(pos.x - mapX, pos.y - mapY) <= 2.2) {
+              tgtX = pos.x;
+              tgtY = pos.y;
+              break;
+            }
+          }
+        }
+        const res = issueWarshipOrder(data, ship, 'ATTACK', { targetShipId: tgtNavId, x: tgtX, y: tgtY });
+        showMissileToast(res.reason);
+        setNavalAimingMode(null);
+        navalAimingModeRef.current = null;
+        soundManager.playAttack();
+        return;
+      }
+    }
 
     // Nếu đang ở chế độ điều khiển Không Quân (Kiểm tra TRƯỚC cướp tàu buôn để người chơi có thể ngắm đánh tàu địch/Tà Thần)
     const airMode = airAimingModeRef.current;
@@ -3293,22 +3445,42 @@ export default function App() {
           targetKind: 'TITAN',
           targetId: clickedTitan.id,
         };
-      } else if (Array.isArray(data.tradeShips)) {
-        const clickedShip = data.tradeShips.find((s: SeaTradeShip) => {
+      } else if (Array.isArray(data.tradeShips) || Array.isArray(data.navalShips)) {
+        const routeMap = new Map<string, SeaTradeRoute>();
+        if (Array.isArray(data.tradeRoutes)) {
+          data.tradeRoutes.forEach((r: SeaTradeRoute) => {
+            if (r?.id) routeMap.set(r.id, r);
+          });
+        }
+        let clickedShipPos = { x: 0, y: 0 };
+        const clickedTradeShip = (data.tradeShips || []).find((s: SeaTradeShip) => {
           if (!s || !isEnemyTradeShipForNation(attacker, s)) return false;
-          const sx = s.sourceX + (s.targetX - s.sourceX) * s.progress;
-          const sy = s.sourceY + (s.targetY - s.sourceY) * s.progress;
-          return Math.hypot(sx - mapX, sy - mapY) <= 1.8;
+          const pos = getTradeShipPosition(s, routeMap);
+          if (Math.hypot(pos.x - mapX, pos.y - mapY) <= 1.8) {
+            clickedShipPos = pos;
+            return true;
+          }
+          return false;
         });
-        if (clickedShip) {
-          const sx = clickedShip.sourceX + (clickedShip.targetX - clickedShip.sourceX) * clickedShip.progress;
-          const sy = clickedShip.sourceY + (clickedShip.targetY - clickedShip.sourceY) * clickedShip.progress;
+        if (clickedTradeShip) {
           targetParams = {
-            targetX: sx,
-            targetY: sy,
+            targetX: clickedShipPos.x,
+            targetY: clickedShipPos.y,
             targetKind: 'SHIP',
-            targetId: clickedShip.id,
+            targetId: clickedTradeShip.id,
           };
+        } else if (Array.isArray(data.navalShips)) {
+          const clickedNaval = data.navalShips.find(
+            (ns: NavalShip) => ns && isEnemyNavalShip(attacker, ns) && Math.hypot(ns.x - mapX, ns.y - mapY) <= 1.8
+          );
+          if (clickedNaval) {
+            targetParams = {
+              targetX: clickedNaval.x,
+              targetY: clickedNaval.y,
+              targetKind: 'SHIP',
+              targetId: clickedNaval.id,
+            };
+          }
         }
       }
 
@@ -3330,9 +3502,68 @@ export default function App() {
       return;
     }
 
+    // Kiểm tra chạm vào Tàu Hải Quân (Warship / Extractor) để xem thông tin
+    if (Array.isArray(data.navalShips) && data.navalShips.length > 0) {
+      const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
+      const tSize = tiles.length;
+      const fGrid = fogOfWarEnabled && fogGridRef.current?.length === tSize * tSize ? fogGridRef.current : null;
+      let hitShip: NavalShip | null = null;
+      let hitDist = 1.8;
+      for (const ns of data.navalShips as NavalShip[]) {
+        if (!ns || ns.hp <= 0) continue;
+        if (fGrid && ns.nationId !== myNation) {
+          const sx = Math.max(0, Math.min(tSize - 1, Math.round(ns.x)));
+          const sy = Math.max(0, Math.min(tSize - 1, Math.round(ns.y)));
+          if (fGrid[sy * tSize + sx] === 0) continue;
+        }
+        const d = Math.hypot(ns.x - mapX, ns.y - mapY);
+        if (d <= hitDist) {
+          hitDist = d;
+          hitShip = ns;
+        }
+      }
+      if (hitShip) {
+        setSelectedTile(null);
+        selectedTileRef.current = null;
+        setInspectedShip({ kind: 'NAVAL', id: hitShip.id });
+        soundManager.playClick();
+        return;
+      }
+    }
+
     // Kiểm tra cướp bóc Tàu Buôn Hải Cảng nếu chạm vào vị trí tàu đang giăng buồm trên biển
     if (lootTradeShip(mapX, mapY)) {
+      setInspectedShip(null);
       return;
+    }
+
+    // Nếu chạm vào tàu thương không thể cướp (vd: tàu nội địa hồ kín), mở thẻ xem thông tin cơ bản
+    if (Array.isArray(data.tradeShips) && data.tradeShips.length > 0) {
+      const routeMap = new Map<string, SeaTradeRoute>();
+      if (Array.isArray(data.tradeRoutes)) {
+        data.tradeRoutes.forEach((r: SeaTradeRoute) => {
+          if (r?.id) routeMap.set(r.id, r);
+        });
+      }
+      const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
+      const tSize = tiles.length;
+      const fGrid = fogOfWarEnabled && fogGridRef.current?.length === tSize * tSize ? fogGridRef.current : null;
+      for (const ts of data.tradeShips as SeaTradeShip[]) {
+        if (!ts) continue;
+        const pos = getTradeShipPosition(ts, routeMap);
+        if (fGrid && ts.fromNation !== myNation && ts.toNation !== myNation) {
+          const sx = Math.max(0, Math.min(tSize - 1, Math.round(pos.x)));
+          const sy = Math.max(0, Math.min(tSize - 1, Math.round(pos.y)));
+          if (fGrid[sy * tSize + sx] === 0) continue;
+        }
+        if (Math.hypot(pos.x - mapX, pos.y - mapY) <= 1.8) {
+          setSelectedTile(null);
+          selectedTileRef.current = null;
+          setInspectedShip({ kind: 'TRADE', id: ts.id });
+          soundManager.playClick();
+          return;
+        }
+      }
     }
 
     // Nếu đang ở chế độ ngắm bắn tên lửa
@@ -3411,12 +3642,14 @@ export default function App() {
       return;
     }
 
-    if (targetTile.terrain === 'WATER') {
+    if (targetTile.terrain === 'WATER' && !(targetTile.deposit === 'OIL' && targetTile.discovered)) {
       setSelectedTile(null);
       selectedTileRef.current = null;
+      setInspectedShip(null);
       return;
     }
 
+    setInspectedShip(null);
     setSelectedTile(targetTile);
     selectedTileRef.current = targetTile;
     soundManager.playClick();
@@ -3430,11 +3663,13 @@ export default function App() {
     target: Tile, 
     troops: number,
     customQueue?: { x: number; y: number }[],
-    withGeneral?: boolean
-  ) => {
+    withGeneral?: boolean,
+    preDeducted?: boolean
+  ): boolean => {
     const data = gameDataRef.current;
     const attacker = data.nations[from];
-    if (attacker.troops < troops) return;
+    if (!attacker || troops <= 0 || !target || target.terrain === 'WATER') return false;
+    if (!preDeducted && attacker.troops < troops) return false;
 
     // Ngăn chặn hoàn toàn việc tấn công Đồng Minh Sắt Son hoặc nước đang Đình Chiến
     if (to > 0 && attacker.diplomacy) {
@@ -3448,7 +3683,7 @@ export default function App() {
             type: 'FLOAT_TEXT', text: '🤝 Không thể tấn công Đồng Minh Sắt Son!'
           });
         }
-        return;
+        return false;
       }
       if (dip === 'TRUCE') {
         if (from === 1) {
@@ -3460,11 +3695,13 @@ export default function App() {
             type: 'FLOAT_TEXT', text: `🕊️ Đang trong Hiệp Ước Đình Chiến (${rem}s)!`
           });
         }
-        return;
+        return false;
       }
     }
 
-    attacker.troops -= troops;
+    if (!preDeducted) {
+      attacker.troops -= troops;
+    }
     data.stats.battlesCount += 1;
 
     // Nếu đang trong phòng nhiều người và đợt quân do chính người chơi phát động hoặc do Host AI phát động -> gửi qua WebSocket
@@ -3539,6 +3776,7 @@ export default function App() {
     });
 
     if ((from === 1 || from === myNationIdRef.current) && !hasGeneral) soundManager.playAttack();
+    return true;
   };
 
   // Lắng nghe các sự kiện hành động nhiều người chơi theo thời gian thực
@@ -4636,6 +4874,9 @@ export default function App() {
         t.building = buildingType;
         t.buildingLevel = 1;
         t.isAdvancedExtractor = false;
+        if (buildingType === 'AIR_DEFENSE') {
+          t.inactiveTimer = 3;
+        }
         remainingToPlace--;
 
         if (remainingToPlace > 0 && t === targetTile) {
@@ -4811,6 +5052,8 @@ export default function App() {
               setSelectedTile(t);
               selectedTileRef.current = t;
             }}
+            inspectedShip={inspectedShip}
+            setInspectedShip={setInspectedShip}
             gameDataRef={gameDataRef}
             setIsBuildOpen={setIsBuildOpen}
             setIsTechOpen={setIsTechOpen}
@@ -4889,6 +5132,34 @@ export default function App() {
             onRespondTradeOffer={handleRespondTradeOffer}
             onOpenEventLog={() => setIsEventLogOpen(true)}
             showMinimap={showMinimap}
+            showSeaControl={showSeaControl}
+            onToggleSeaControl={() => setShowSeaControl(v => !v)}
+            navalAimingMode={navalAimingMode}
+            onCancelNavalAiming={() => {
+              setNavalAimingMode(null);
+              navalAimingModeRef.current = null;
+              showMissileToast('Đã hủy lệnh điều động Hải Quân.');
+            }}
+            onOpenNavalManager={() => {
+              setMissileModalInitialTab('NAVAL');
+              setIsMissileOpen(true);
+            }}
+            onStartNavalAiming={(aim) => {
+              setMissileAimingMode(null);
+              missileAimingModeRef.current = null;
+              setAirAimingMode(null);
+              airAimingModeRef.current = null;
+              setNavalAimingMode(aim);
+              navalAimingModeRef.current = aim;
+              const msg =
+                aim.mode === 'LANDING' || aim.mode === 'FLEET_LANDING'
+                  ? '🏖️ Đổ bộ: chạm vào đất địch hoặc đất trống trên bản đồ!'
+                  : aim.mode === 'ATTACK'
+                    ? '⚔️ Chạm tàu địch hoặc vùng biển để Tấn Công!'
+                    : '🌊 Chạm lên vùng BIỂN trên bản đồ để điều tàu!';
+              showMissileToast(msg);
+            }}
+            onNotify={(msg) => showMissileToast(msg)}
             minimapNode={
               <Minimap
                 tiles={gameDataRef.current.tiles}
@@ -5647,6 +5918,8 @@ export default function App() {
               setAirAimingMode(null);
               airAimingModeRef.current = null;
               bomberAimStartRef.current = null;
+              setNavalAimingMode(null);
+              navalAimingModeRef.current = null;
               setMissileAimingMode(type);
               missileAimingModeRef.current = type;
               showMissileToast(`Đã chọn ${MISSILE_CONFIG[type].name}. Hãy chạm vào vùng đất kẻ thù trên bản đồ!`);
@@ -5654,6 +5927,38 @@ export default function App() {
             onOpenBuildModal={() => setIsBuildOpen(true)}
             airUnits={gameDataRef.current?.airUnits}
             airAimingMode={airAimingMode}
+            gameDataRef={gameDataRef}
+            fogOfWarEnabled={fogOfWarEnabled}
+            fogGridRef={fogGridRef}
+            showSeaControl={showSeaControl}
+            onToggleSeaControl={() => setShowSeaControl(v => !v)}
+            requestedTab={missileModalInitialTab}
+            onClearRequestedTab={() => setMissileModalInitialTab(null)}
+            onStartNavalAiming={(aim) => {
+              setMissileAimingMode(null);
+              missileAimingModeRef.current = null;
+              setAirAimingMode(null);
+              airAimingModeRef.current = null;
+              setNavalAimingMode(aim);
+              navalAimingModeRef.current = aim;
+              const msg =
+                aim.mode === 'LANDING' || aim.mode === 'FLEET_LANDING'
+                  ? '🏖️ Chạm vào bờ biển địch hoặc đất trống để Đổ Bộ!'
+                  : aim.mode === 'ATTACK'
+                    ? '⚔️ Chạm tàu địch hoặc vùng biển để Tấn Công!'
+                    : '🌊 Chạm lên vùng BIỂN trên bản đồ để điều tàu!';
+              showMissileToast(msg);
+            }}
+            onFocusMap={(mx, my) => {
+              const vpW = viewportSizeRef.current.width || 360;
+              const vpH = viewportSizeRef.current.height || 560;
+              const curZoom = cameraRef.current.zoom;
+              const rawX = vpW / 2 - (mx * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2) * curZoom;
+              const rawY = vpH / 2 - (my * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2) * curZoom;
+              const clamped = clampCamera(rawX, rawY, curZoom);
+              cameraRef.current = { x: clamped.x, y: clamped.y, zoom: curZoom };
+            }}
+            onNotify={(msg) => showMissileToast(msg)}
             onToggleAirAiming={(type) => {
               const isSameBomber = type === 'BOMBER' && (airAimingMode === 'BOMBER_START' || airAimingMode === 'BOMBER_END');
               if (airAimingMode === type || isSameBomber) {

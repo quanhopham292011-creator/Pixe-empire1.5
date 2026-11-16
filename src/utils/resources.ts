@@ -1,9 +1,11 @@
 import {
   Tile, Nation, MarketState, DepositType, GameEvent, GameParticle, BuildingType, MissileType, TradeOffer,
+  SeaTradeShip,
 } from '../types';
 import { RESOURCE_CONFIG, SUPREME_TECH_CONFIG, TECH_RESOURCE_COST, BUILDING_INFO, MISSILE_CONFIG } from '../data/gameData';
 import { TILE_PIXEL_SIZE, formatGameTime } from './constants';
 import { getSupremeResourceProdMult, getMissileEffectiveCost } from './supremeTech';
+import { getWaterMapInfo, getTradeShipPosition } from './seaPathfinding';
 
 let resourcesEnabled = true;
 export function setResourcesEnabled(v: boolean) { resourcesEnabled = v; }
@@ -56,6 +58,139 @@ function placeDeposit(t: Tile, type: DepositType, reserve: number, discovered: b
   t.resOwner = t.owner;
 }
 
+export function hasAnySeaOilDeposit(tiles: Tile[][]): boolean {
+  return getDepositTiles(tiles).some(t => t.terrain === 'WATER' && t.deposit === 'OIL');
+}
+
+function isOffshoreWaterTile(tiles: Tile[][], x: number, y: number, minCoastDist: number = 3): boolean {
+  const size = tiles.length;
+  if (x < 1 || x >= size - 1 || y < 1 || y >= size - 1) return false;
+  if (tiles[y]?.[x]?.terrain !== 'WATER') return false;
+  const rSq = minCoastDist * minCoastDist;
+  const r = minCoastDist;
+  for (let dy = -r; dy <= r; dy++) {
+    for (let dx = -r; dx <= r; dx++) {
+      if (dx * dx + dy * dy >= rSq) continue;
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || nx >= size || ny < 0 || ny >= size) return false;
+      if (tiles[ny]?.[nx]?.terrain !== 'WATER') return false;
+    }
+  }
+  return true;
+}
+
+function pickSeaOilReserve(): { reserve: number; discovered: boolean } {
+  const r = Math.random();
+  let reserve = RESOURCE_CONFIG.SEA_OIL_RESERVE_SMALL;
+  let hiddenChance = RESOURCE_CONFIG.HIDDEN_CHANCE;
+  if (r >= 0.9) {
+    reserve = RESOURCE_CONFIG.SEA_OIL_RESERVE_LARGE;
+    hiddenChance = 0.5;
+  } else if (r >= 0.6) {
+    reserve = RESOURCE_CONFIG.SEA_OIL_RESERVE_MEDIUM;
+  }
+  return { reserve, discovered: Math.random() >= hiddenChance };
+}
+
+/**
+ * Sinh mỏ dầu biển (WATER, cách bờ >= 3 ô), phân bố đều theo từng biển/đại dương, số lượng ~60% mỏ dầu đất liền.
+ */
+export function generateSeaOilDeposits(tiles: Tile[][], targetCountOverride?: number): void {
+  if (!Array.isArray(tiles) || tiles.length === 0) return;
+  const size = tiles.length;
+  const waterInfo = getWaterMapInfo(tiles);
+  const compBuckets = new Map<number, Tile[]>();
+  let totalOffshore = 0;
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const t = tiles[y]?.[x];
+      if (!t || t.terrain !== 'WATER') continue;
+      if (!isOffshoreWaterTile(tiles, x, y, 3)) continue;
+      const cid = waterInfo.compGrid[y * size + x];
+      if (cid < 0 || (waterInfo.compSizes[cid] || 0) < waterInfo.minOpenOceanTiles) continue;
+      const bucket = compBuckets.get(cid);
+      if (bucket) bucket.push(t);
+      else compBuckets.set(cid, [t]);
+      totalOffshore++;
+    }
+  }
+
+  if (totalOffshore === 0 || compBuckets.size === 0) return;
+
+  const total = size * size;
+  const landOilCount = Math.max(8, Math.round(total * RESOURCE_CONFIG.OIL_DENSITY));
+  const targetSeaOilCount = targetCountOverride ?? Math.max(4, Math.round(landOilCount * RESOURCE_CONFIG.SEA_OIL_RATIO_OF_LAND));
+
+  // Chia chỉ tiêu đều theo diện tích từng vùng biển mở để đại dương nào cũng có mỏ
+  const entries = Array.from(compBuckets.entries()).sort((a, b) => b[1].length - a[1].length);
+  const quotas = new Map<number, number>();
+  let assigned = 0;
+
+  for (const [cid, pool] of entries) {
+    const share = Math.max(1, Math.round((pool.length / totalOffshore) * targetSeaOilCount));
+    const q = Math.min(pool.length, share);
+    quotas.set(cid, q);
+    assigned += q;
+    if (assigned >= targetSeaOilCount) break;
+  }
+
+  // Điều chỉnh nếu tổng vượt target
+  while (assigned > targetSeaOilCount) {
+    let reduced = false;
+    for (const [cid] of entries) {
+      const cur = quotas.get(cid) || 0;
+      if (cur > 1) {
+        quotas.set(cid, cur - 1);
+        assigned--;
+        reduced = true;
+        if (assigned <= targetSeaOilCount) break;
+      }
+    }
+    if (!reduced) break;
+  }
+
+  const placedSea: Tile[] = [];
+  const tryPlaceInPool = (pool: Tile[], want: number) => {
+    let count = 0;
+    const spacings = [6, 4, 3];
+    for (const minDist of spacings) {
+      if (count >= want) break;
+      const maxAttempts = Math.min(pool.length * 2, want * 45);
+      for (let a = 0; a < maxAttempts && count < want; a++) {
+        const candidate = pool[Math.floor(Math.random() * pool.length)];
+        if (candidate.deposit) continue;
+        let close = false;
+        for (const p of placedSea) {
+          if (Math.hypot(p.x - candidate.x, p.y - candidate.y) < minDist) {
+            close = true;
+            break;
+          }
+        }
+        if (close) continue;
+        const { reserve, discovered } = pickSeaOilReserve();
+        candidate.deposit = 'OIL';
+        candidate.reserve = reserve;
+        candidate.reserveMax = reserve;
+        candidate.discovered = discovered;
+        candidate.seaOilRegenTimer = undefined;
+        candidate.condition = 100;
+        candidate.resOwner = 0;
+        placedSea.push(candidate);
+        count++;
+      }
+    }
+  };
+
+  for (const [cid, pool] of entries) {
+    const q = quotas.get(cid) || 0;
+    if (q > 0) tryPlaceInPool(pool, q);
+  }
+
+  depositCache.delete(tiles);
+}
+
 export function generateDeposits(tiles: Tile[][], nations: Nation[]): void {
   const size = tiles.length;
   const land: Tile[] = [];
@@ -64,7 +199,7 @@ export function generateDeposits(tiles: Tile[][], nations: Nation[]): void {
     for (let x = 0; x < size; x++) {
       const t = tiles[y][x];
       t.deposit = undefined; t.reserve = undefined; t.reserveMax = undefined;
-      t.discovered = undefined; t.condition = undefined; t.resOwner = undefined;
+      t.discovered = undefined; t.seaOilRegenTimer = undefined; t.condition = undefined; t.resOwner = undefined;
       if (t.terrain === 'WATER') continue;
       land.push(t);
       if (t.terrain === 'MOUNTAIN') mountains.push(t);
@@ -132,6 +267,9 @@ export function generateDeposits(tiles: Tile[][], nations: Nation[]): void {
       if (!placed.includes(t)) placed.push(t);
     }
   });
+
+  // Sinh Mỏ Dầu Biển (~60% số mỏ dầu đất liền)
+  generateSeaOilDeposits(tiles, Math.max(4, Math.round(oilCount * RESOURCE_CONFIG.SEA_OIL_RATIO_OF_LAND)));
 
   depositCache.delete(tiles);
 }
@@ -340,6 +478,7 @@ export interface ResourceTickData {
   market?: MarketState;
   pendingTradeOffer?: TradeOffer | null;
   nextTradeOfferTimer?: number;
+  tradeShips?: SeaTradeShip[];
 }
 
 function pushEvent(data: ResourceTickData, title: string, description: string, nationId: number, type: GameEvent['type'] = 'HARVEST') {
@@ -375,9 +514,77 @@ export function tickResources(data: ResourceTickData, difficulty: string): boole
   let needRedraw = false;
   const deposits = getDepositTiles(tiles);
   const botTurn = data.gameTimeSeconds % 5 === 0;
+  const shipPositions: { x: number; y: number; nationId: number }[] = [];
+  if (Array.isArray(data.tradeShips) && data.gameTimeSeconds % 2 === 0) {
+    for (const s of data.tradeShips) {
+      if (!s) continue;
+      const pos = getTradeShipPosition(s);
+      shipPositions.push({ x: pos.x, y: pos.y, nationId: s.fromNation });
+    }
+  }
 
   for (const t of deposits) {
     const dep = t.deposit as DepositType;
+
+    // Mỏ Dầu Biển (trên ô WATER): không chiếm đất, khám phá qua tàu/ven biển, cạn thì hồi phục sau ~180s
+    if (t.terrain === 'WATER' && dep === 'OIL') {
+      t.owner = 0;
+      if (!t.discovered) {
+        let discoveredByPlayer = false;
+        let discoveredByAny = false;
+        for (const sp of shipPositions) {
+          if (Math.hypot(sp.x - t.x, sp.y - t.y) <= 6.5) {
+            discoveredByAny = true;
+            if (sp.nationId === 1) discoveredByPlayer = true;
+            break;
+          }
+        }
+        if (!discoveredByAny && data.gameTimeSeconds % 3 === 0) {
+          const size = tiles.length;
+          for (let dy = -6; dy <= 6 && !discoveredByAny; dy++) {
+            for (let dx = -6; dx <= 6; dx++) {
+              if (dx * dx + dy * dy > 36) continue;
+              const nt = tiles[t.y + dy]?.[t.x + dx];
+              if (nt && nt.owner > 0 && Math.random() < RESOURCE_CONFIG.DISCOVER_CHANCE_PER_SEC * 2) {
+                discoveredByAny = true;
+                if (nt.owner === 1) discoveredByPlayer = true;
+                break;
+              }
+            }
+          }
+          if (!discoveredByAny && Math.random() < 0.002 && size > 0) {
+            discoveredByAny = true;
+          }
+        }
+        if (discoveredByAny) {
+          t.discovered = true;
+          needRedraw = true;
+          if (discoveredByPlayer) {
+            pushEvent(data, '🛢️ Phát hiện Mỏ Dầu Biển!', `Tìm thấy Mỏ Dầu Biển (${Math.round(t.reserve || 0)} trữ lượng) tại (${t.x}, ${t.y})!`, 1, 'HARVEST');
+            floatText(data, t, '🛢️ Mỏ Dầu Biển!', '#38bdf8');
+          }
+        }
+      }
+
+      if ((t.reserve || 0) <= 0) {
+        t.reserve = 0;
+        if (t.seaOilRegenTimer === undefined) {
+          t.seaOilRegenTimer = RESOURCE_CONFIG.SEA_OIL_REGEN_SECONDS;
+        } else {
+          t.seaOilRegenTimer = Math.max(0, t.seaOilRegenTimer - 1);
+          if (t.seaOilRegenTimer <= 0) {
+            t.reserve = t.reserveMax || RESOURCE_CONFIG.SEA_OIL_RESERVE_SMALL;
+            t.seaOilRegenTimer = undefined;
+            needRedraw = true;
+            if (t.discovered) {
+              floatText(data, t, '🛢️ Mỏ dầu biển hồi phục!', '#38bdf8');
+            }
+          }
+        }
+      }
+      continue;
+    }
+
     const type = extractorFor(dep);
 
     if (t.resOwner === undefined) t.resOwner = t.owner;

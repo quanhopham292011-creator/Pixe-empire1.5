@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Tile, Nation, PlayerProfile, GeneralStyle, DiplomacyStatus, AirUnitType, MissileType, TradeOffer } from '../types';
+import { Tile, Nation, PlayerProfile, GeneralStyle, DiplomacyStatus, AirUnitType, MissileType, TradeOffer, InspectedShipRef, NavalShip, SeaTradeShip, NavalAimingState } from '../types';
 import { formatPopulation, BUILDING_INFO, GENERAL_ROSTER, AIR_SYSTEM_CONFIG, AIR_UNIT_SPECS, MISSILE_CONFIG } from '../utils/constants';
 import { canDeployGeneral, getLoyaltyState, appointReserveGeneral, calculateGeneralStats } from '../utils/generalCombat';
 import { GENERAL_STYLE_INFO } from '../utils/generalEvolution';
 import { areResourcesEnabled, formatResource, getRepairCost, repairExtractor, isExtractor, depositName } from '../utils/resources';
+import { issueWarshipOrder, startWarshipSeaRepair, loadTroopsOnWarship, unloadTroopsAtCoast, isShipNearOwnedCoast } from '../utils/navalSystem';
 import {
   isSuperBuilding,
   getSuperBuildingState,
@@ -99,6 +100,15 @@ interface GameHudProps {
   onOpenEventLog?: () => void;
   showMinimap?: boolean;
   minimapNode?: React.ReactNode;
+  inspectedShip?: InspectedShipRef | null;
+  setInspectedShip?: (ship: InspectedShipRef | null) => void;
+  showSeaControl?: boolean;
+  onToggleSeaControl?: () => void;
+  navalAimingMode?: NavalAimingState | null;
+  onCancelNavalAiming?: () => void;
+  onOpenNavalManager?: () => void;
+  onStartNavalAiming?: (aim: NavalAimingState) => void;
+  onNotify?: (msg: string) => void;
 }
 
 export const GameHud: React.FC<GameHudProps> = ({
@@ -160,6 +170,15 @@ export const GameHud: React.FC<GameHudProps> = ({
   onOpenEventLog,
   showMinimap,
   minimapNode,
+  inspectedShip,
+  setInspectedShip,
+  showSeaControl,
+  onToggleSeaControl,
+  navalAimingMode,
+  onCancelNavalAiming,
+  onOpenNavalManager,
+  onStartNavalAiming,
+  onNotify,
 }) => {
   void _hasMetBot;
   void _onToggleAirAiming;
@@ -190,6 +209,15 @@ export const GameHud: React.FC<GameHudProps> = ({
     }, 4000);
     return () => clearTimeout(timer);
   }, [selectedTile?.x, selectedTile?.y, selectedTile?.owner, setSelectedTile]);
+
+  // Auto-hide inspected ship card after 6 seconds
+  useEffect(() => {
+    if (!inspectedShip || !setInspectedShip) return;
+    const timer = setTimeout(() => {
+      setInspectedShip(null);
+    }, 6000);
+    return () => clearTimeout(timer);
+  }, [inspectedShip?.id, inspectedShip?.kind, setInspectedShip]);
 
   const playerNation: Nation | undefined = gameDataRef.current?.nations?.[playerNationId];
   const pGen = playerNation?.general;
@@ -513,12 +541,224 @@ export const GameHud: React.FC<GameHudProps> = ({
       {/* Khu vực giữa màn hình dành cho Bản đồ (Minimap & Meme gọn ở góc trên, không che giữa) */}
       <div className="flex-1 pointer-events-none relative">
         <MemeLayer className="absolute top-2 left-2 max-w-[calc(100%-6.5rem)] z-20 pointer-events-none flex flex-col items-start gap-2 animate-in fade-in duration-200" />
-        {showMinimap && minimapNode && (
-          <div className="absolute top-2 right-2 z-20 pointer-events-auto animate-in fade-in duration-150">
-            {minimapNode}
-          </div>
-        )}
+        <div className="absolute top-2 right-2 z-20 pointer-events-auto flex flex-col items-end gap-1.5">
+          {showMinimap && minimapNode && (
+            <div className="animate-in fade-in duration-150">
+              {minimapNode}
+            </div>
+          )}
+          {onToggleSeaControl && (
+            <button
+              type="button"
+              onClick={() => {
+                soundManager.playClick();
+                onToggleSeaControl();
+              }}
+              className={`min-h-[34px] px-2.5 py-1 rounded-xl text-[11px] font-bold border shadow-md backdrop-blur-md active:scale-95 transition-all flex items-center gap-1 ${
+                showSeaControl
+                  ? 'bg-sky-900/90 border-sky-400 text-sky-100'
+                  : 'bg-slate-900/85 border-slate-600 text-slate-300 hover:text-white'
+              }`}
+              title="Bật/tắt lớp hiển thị Vùng Kiểm Soát Biển"
+            >
+              <span>🌊</span>
+              <span>Vùng biển {showSeaControl ? 'Bật' : 'Tắt'}</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* 4a. BẢNG THÔNG TIN TÀU HẢI QUÂN / TÀU THƯƠNG (MÁY CHỦ & CHE THÔNG TIN TÀU ĐỊCH) */}
+      {!selectedTile && inspectedShip && (() => {
+        const nationsList: Nation[] = gameDataRef.current?.nations || [];
+        if (inspectedShip.kind === 'NAVAL') {
+          const ns: NavalShip | undefined = (gameDataRef.current?.navalShips || []).find(
+            (s: NavalShip) => s && s.id === inspectedShip.id && s.hp > 0
+          );
+          if (!ns) return null;
+          const isMine = ns.nationId === playerNationId;
+          const shipLabel = ns.type === 'WARSHIP' ? '⚓ Tàu Chiến' : '🛢️ Tàu Khai Thác';
+          const ownerNation = ns.nationId > 0 ? nationsList[ns.nationId] : null;
+          const ownerLabel = ns.nationId === 0 ? 'Vô chủ (Có thể chiếm)' : isMine ? `${playerName} (Của bạn)` : ownerNation?.name || 'Quốc gia khác';
+          const foreignDip: DiplomacyStatus = ownerNation ? (ownerNation.diplomacy?.[playerNationId]?.status || 'WAR') : 'WAR';
+
+          const stateLabel =
+            ns.state === 'EXTRACTING' ? 'Đang hút dầu' :
+            ns.state === 'MOVING' ? 'Đang di chuyển' :
+            ns.state === 'PATROL' ? 'Đang tuần tra' :
+            ns.state === 'ESCORT' ? 'Đang hộ tống' :
+            ns.state === 'ATTACKING' ? 'Đang chiến đấu' :
+            ns.state === 'RETREATING' ? 'Đang rút về cảng' :
+            ns.state === 'REPAIRING' ? 'Đang sửa chữa' :
+            ns.state === 'TRANSPORTING' ? 'Đang chở quân' :
+            ns.state === 'LANDING' ? 'Đang đổ bộ' : 'Chờ lệnh';
+
+          return (
+            <div className="pointer-events-auto left-2 right-2 mx-2 sm:mx-auto mb-1.5 max-w-lg w-auto box-border bg-slate-950/95 border border-sky-500/70 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md">
+              <div className="flex items-center justify-between pb-1 border-b border-slate-700 text-xs gap-2">
+                <div className="flex items-center flex-wrap gap-1.5 font-bold text-white min-w-0 flex-1">
+                  <span>{shipLabel}</span>
+                  <span className="text-slate-300">•</span>
+                  <span className="text-sky-200 truncate">{ownerLabel}</span>
+                  {!isMine && ns.nationId > 0 && (
+                    <span className={`px-2 py-0.5 rounded-lg text-xs font-bold border shrink-0 ${
+                      foreignDip === 'ALLIANCE' ? 'bg-emerald-500/25 text-emerald-200 border-emerald-400' :
+                      foreignDip === 'TRUCE' ? 'bg-amber-500/25 text-amber-200 border-amber-400' :
+                      'bg-red-500/25 text-red-200 border-red-400'
+                    }`}>
+                      {foreignDip === 'ALLIANCE' ? '🤝 Đồng minh' : foreignDip === 'TRUCE' ? '🕊️ Đình chiến' : '⚔️ Chiến tranh'}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setInspectedShip?.(null)}
+                  className="min-w-[40px] min-h-[40px] p-1.5 text-slate-100 hover:text-white hover:bg-slate-800 rounded-xl shrink-0 flex items-center justify-center"
+                  aria-label="Đóng"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {isMine ? (
+                <div className="flex flex-col gap-2 mt-2 text-xs text-slate-200">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 bg-slate-900/90 border border-slate-800 rounded-xl px-2.5 py-2">
+                    <span>❤️ HP: <strong className="text-emerald-300 font-mono">{Math.round(ns.hp)}/{ns.maxHp}</strong></span>
+                    <span>Quy mô: <strong className="text-cyan-200">{ns.scaleTier === 3 ? 'Lớn' : ns.scaleTier === 2 ? 'Vừa' : 'Nhỏ'}</strong></span>
+                    <span className="truncate">Trạng thái: <strong className="text-amber-200">{stateLabel}</strong></span>
+                    {ns.type === 'WARSHIP' && (
+                      <>
+                        <span>⚔️ Sức mạnh: <strong className="text-rose-300 font-mono">{ns.dps || 30}/s</strong></span>
+                        <span>👥 Chở quân: <strong className="text-sky-200 font-mono">{ns.carriedTroops || 0}/{ns.maxTroopCapacity || 0}</strong></span>
+                      </>
+                    )}
+                    {ns.type === 'EXTRACTOR' && typeof ns.assignedDepositX === 'number' && (
+                      <span>🛢️ Mỏ: <strong className="text-sky-200 font-mono">({ns.assignedDepositX},{ns.assignedDepositY})</strong></span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {ns.type === 'WARSHIP' && isShipNearOwnedCoast(gameDataRef.current?.tiles || [], playerNationId, ns.x, ns.y, 2.8) && (ns.carriedTroops || 0) < (ns.maxTroopCapacity || 0) && (
+                      <button
+                        onClick={() => {
+                          const res = loadTroopsOnWarship(gameDataRef.current, ns);
+                          if (res.ok) onNotify?.(`${res.reason} Bấm "🏖️ Đổ bộ: chạm vào đất địch"!`);
+                          else onNotify?.(res.reason);
+                          soundManager.playClick();
+                          setForceUpdate(v => v + 1);
+                        }}
+                        className="min-h-[40px] px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-xs"
+                      >
+                        🪖 Nạp quân
+                      </button>
+                    )}
+                    {ns.type === 'WARSHIP' && (
+                      <button
+                        onClick={() => {
+                          const near = isShipNearOwnedCoast(gameDataRef.current?.tiles || [], playerNationId, ns.x, ns.y, 2.8);
+                          if ((ns.carriedTroops || 0) <= 0 && !near) {
+                            onNotify?.('Hãy đưa tàu về gần Cảng/bờ phe mình để nạp quân.');
+                            soundManager.playClick();
+                            return;
+                          }
+                          setInspectedShip?.(null);
+                          onStartNavalAiming?.({ mode: 'LANDING', shipId: ns.id });
+                          soundManager.playClick();
+                        }}
+                        className="min-h-[40px] px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs"
+                      >
+                        {(ns.carriedTroops || 0) > 0 ? '🏖️ Đổ bộ: chạm vào đất địch' : '🏖️ Đổ bộ'}
+                      </button>
+                    )}
+                    {ns.type === 'WARSHIP' && isShipNearOwnedCoast(gameDataRef.current?.tiles || [], playerNationId, ns.x, ns.y, 2.8) && (ns.carriedTroops || 0) > 0 && (
+                      <button
+                        onClick={() => {
+                          const res = unloadTroopsAtCoast(gameDataRef.current, ns);
+                          onNotify?.(res.reason);
+                          soundManager.playClick();
+                          setForceUpdate(v => v + 1);
+                        }}
+                        className="min-h-[40px] px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white font-bold rounded-xl text-xs"
+                      >
+                        ↩️ Trả quân
+                      </button>
+                    )}
+                    {ns.type === 'WARSHIP' && ns.hp < ns.maxHp && !ns.isRepairing && (
+                      <button
+                        onClick={() => {
+                          const res = startWarshipSeaRepair(ns);
+                          onNotify?.(res.reason);
+                          soundManager.playClick();
+                          setForceUpdate(v => v + 1);
+                        }}
+                        className="min-h-[40px] px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl text-xs"
+                      >
+                        🔧 Sửa trên biển (2💰/HP)
+                      </button>
+                    )}
+                    {ns.type === 'WARSHIP' && ns.state !== 'RETREATING' && ns.state !== 'REPAIRING' && (
+                      <button
+                        onClick={() => {
+                          const res = issueWarshipOrder(gameDataRef.current, ns, 'RETREAT');
+                          onNotify?.(res.reason);
+                          soundManager.playClick();
+                          setForceUpdate(v => v + 1);
+                        }}
+                        className="min-h-[40px] px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl text-xs"
+                      >
+                        ⚓ Rút về cảng
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setInspectedShip?.(null);
+                        if (onOpenNavalManager) onOpenNavalManager();
+                        else setIsMissileOpen(true);
+                      }}
+                      className="min-h-[40px] px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-500 text-white font-bold rounded-xl text-xs"
+                    >
+                      🚢 Quản lý Hải Quân
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-1.5 text-xs text-slate-300">
+                  {ns.nationId === 0
+                    ? 'Tàu bỏ hoang vô chủ. Điều Tàu Chiến lại gần để chiếm giữ.'
+                    : 'Tàu hoạt động của quốc gia khác (chi tiết kỹ thuật được ẩn).'}
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        const ts: SeaTradeShip | undefined = (gameDataRef.current?.tradeShips || []).find(
+          (s: SeaTradeShip) => s && s.id === inspectedShip.id
+        );
+        if (!ts) return null;
+        const nFrom = nationsList[ts.fromNation];
+        const nTo = nationsList[ts.toNation];
+        const isMineTrade = ts.fromNation === playerNationId || ts.toNation === playerNationId;
+        const ownerLabel = isMineTrade
+          ? `${playerName} ↔ ${ts.fromNation === playerNationId ? (nTo?.name || 'Nội địa') : (nFrom?.name || 'Nội địa')}`
+          : `${nFrom?.name || 'Quốc gia khác'}${nTo && nTo.id !== ts.fromNation ? ` ↔ ${nTo.name}` : ''}`;
+
+        return (
+          <div className="pointer-events-auto left-2 right-2 mx-2 sm:mx-auto mb-1.5 max-w-lg w-auto box-border bg-slate-950/95 border border-amber-500/60 rounded-2xl p-2.5 shadow-2xl backdrop-blur-md">
+            <div className="flex items-center justify-between text-xs gap-2">
+              <div className="flex items-center flex-wrap gap-1.5 font-bold text-white min-w-0 flex-1">
+                <span>⛵ Tàu Thương</span>
+                <span className="text-slate-300">•</span>
+                <span className="text-amber-200 truncate">{ownerLabel}</span>
+              </div>
+              <button
+                onClick={() => setInspectedShip?.(null)}
+                className="min-w-[40px] min-h-[40px] p-1.5 text-slate-100 hover:text-white hover:bg-slate-800 rounded-xl shrink-0 flex items-center justify-center"
+                aria-label="Đóng"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 4. BẢNG THÔNG TIN Ô ĐẤT: Hiện chi tiết theo trạng thái Ngoại giao */}
       {selectedTile && (
@@ -557,7 +797,7 @@ export const GameHud: React.FC<GameHudProps> = ({
           <div className="flex flex-col gap-1.5 mt-1.5 text-xs">
             <div className="text-slate-100 flex flex-wrap items-center gap-1.5 leading-snug">
               <span>
-                📍 ({selectedTile.x}, {selectedTile.y}) • <strong className="text-white">{selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi'}</strong>
+                📍 ({selectedTile.x}, {selectedTile.y}) • <strong className="text-white">{selectedTile.terrain === 'WATER' ? 'Biển' : selectedTile.terrain === 'LAND' ? 'Đồng bằng' : selectedTile.terrain === 'FOREST' ? 'Rừng' : 'Núi'}</strong>
               </span>
               {selectedTile.building !== 'NONE' && (
                 <span className="text-amber-300 font-bold">
@@ -571,7 +811,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               )}
               {areResourcesEnabled() && selectedTile.deposit && selectedTile.discovered && (
                 <span className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-600 text-xs font-mono text-sky-200">
-                  {selectedTile.deposit === 'OIL' ? '🛢️' : '⛏️'} {depositName(selectedTile.deposit)} ({formatResource(selectedTile.reserve)})
+                  {selectedTile.terrain === 'WATER' ? '🛢️ Mỏ Dầu Biển' : `${selectedTile.deposit === 'OIL' ? '🛢️' : '⛏️'} ${depositName(selectedTile.deposit)}`} ({(selectedTile.reserve || 0) <= 0 && selectedTile.seaOilRegenTimer ? `Hồi phục ${Math.ceil(selectedTile.seaOilRegenTimer)}s` : formatResource(selectedTile.reserve)})
                   {isExtractor(selectedTile.building) && ` • Độ bền ${Math.round(selectedTile.condition ?? 100)}%`}
                 </span>
               )}
@@ -690,13 +930,19 @@ export const GameHud: React.FC<GameHudProps> = ({
                   </button>
                 </>
               ) : selectedTile.owner === 0 ? (
-                <button
-                  onClick={handleAttackTile}
-                  className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-white shadow bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1.5"
-                >
-                  <Swords className="w-3.5 h-3.5" />
-                  <span>Mở Rộng ({actualAttackTroops}q)</span>
-                </button>
+                selectedTile.terrain === 'WATER' ? (
+                  <span className="px-2.5 py-1.5 rounded-xl bg-sky-950/80 border border-sky-500/40 text-xs font-bold text-sky-200">
+                    🛢️ Dùng Tàu Khai Thác từ Hải Cảng để hút dầu
+                  </span>
+                ) : (
+                  <button
+                    onClick={handleAttackTile}
+                    className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-white shadow bg-emerald-600 hover:bg-emerald-500 flex items-center gap-1.5"
+                  >
+                    <Swords className="w-3.5 h-3.5" />
+                    <span>Mở Rộng ({actualAttackTroops}q)</span>
+                  </button>
+                )
               ) : (
                 /* selectedTile.owner > 1 */
                 <>
@@ -829,6 +1075,30 @@ export const GameHud: React.FC<GameHudProps> = ({
           {onCancelMissileAiming && (
             <button
               onClick={onCancelMissileAiming}
+              className="min-h-[44px] min-w-[44px] px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm rounded-xl border border-slate-500 active:scale-95 shrink-0"
+            >
+              Hủy
+            </button>
+          )}
+        </div>
+      )}
+
+      {!airAimingMode && !missileAimingMode && navalAimingMode && (
+        <div className="pointer-events-auto mx-2 mb-1.5 max-w-xl sm:mx-auto bg-slate-950/95 border-2 border-cyan-400 text-white px-3 py-2 rounded-2xl shadow-2xl flex items-center justify-between gap-2.5 backdrop-blur-md">
+          <div className="text-left min-w-0 flex-1">
+            <div className="text-sm font-black text-cyan-200 leading-snug">
+              {navalAimingMode.mode === 'MOVE' || navalAimingMode.mode === 'FLEET_MOVE'
+                ? '📍 Điều động Hải Quân: Chạm vùng BIỂN cần di chuyển tới'
+                : navalAimingMode.mode === 'PATROL' || navalAimingMode.mode === 'FLEET_PATROL'
+                  ? '🛡️ Tuần tra Hải Quân: Chạm vùng BIỂN làm tâm tuần tra'
+                  : navalAimingMode.mode === 'ATTACK'
+                    ? '⚔️ Tấn công Hải Quân: Chạm tàu địch hoặc vùng biển mục tiêu'
+                    : '🏖️ Đổ bộ Đường Biển: Chạm đất địch hoặc đất trống (trong 6 ô ven bờ)'}
+            </div>
+          </div>
+          {onCancelNavalAiming && (
+            <button
+              onClick={onCancelNavalAiming}
               className="min-h-[44px] min-w-[44px] px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm rounded-xl border border-slate-500 active:scale-95 shrink-0"
             >
               Hủy

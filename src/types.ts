@@ -54,6 +54,7 @@ export interface Tile {
   reserve?: number;
   reserveMax?: number;
   discovered?: boolean;
+  seaOilRegenTimer?: number;
   condition?: number;
   resOwner?: number;
   superState?: SuperBuildingState;
@@ -183,6 +184,7 @@ export interface Nation {
   grandArsenalDestroyed?: boolean; // Đại Công Xưởng bị phá trước khi mở khóa Loại 2 & 3
   airAdvancedUnlocked?: boolean; // Đã mở khóa vĩnh viễn Loại 2 & 3 (kể cả khi Đại Công Xưởng bị phá)
   lastBomberRoute?: { startX: number; startY: number; endX: number; endY: number }; // Tuyến bay gần nhất của Ném Bom (L3)
+  lastSamBuildTime?: number; // Thời điểm xây Phòng Không gần nhất (hồi chiêu 10s)
   diplomacy: {
     [targetId: number]: {
       status: DiplomacyStatus;
@@ -310,6 +312,8 @@ export interface SeaTradeRoute {
   toPortX: number;
   toPortY: number;
   distanceTiles: number;
+  seaDistanceTiles?: number;
+  waypoints?: { x: number; y: number }[];
   isIntercontinental: boolean;
 }
 
@@ -331,6 +335,117 @@ export interface SeaTradeShip {
   isIntercontinental: boolean;
   hp?: number;
   maxHp?: number;
+  waypoints?: { x: number; y: number }[];
+  reverseDir?: boolean;
+  isEnclosedLocal?: boolean;
+  scaleTier?: 1 | 2 | 3;
+  ownerNationId?: number;
+  derelict?: boolean;
+}
+
+export type NavalShipType = 'EXTRACTOR' | 'WARSHIP';
+
+export type NavalShipState =
+  | 'IDLE'
+  | 'MOVING'
+  | 'EXTRACTING'
+  | 'PATROL'
+  | 'ESCORT'
+  | 'ATTACKING'
+  | 'RETREATING'
+  | 'REPAIRING'
+  | 'TRANSPORTING'
+  | 'LANDING';
+
+export type WarshipOrder = 'AUTO' | 'MOVE' | 'ATTACK' | 'PATROL' | 'ESCORT' | 'LANDING' | 'RETREAT';
+
+export interface NavalShip {
+  id: string;
+  type: NavalShipType;
+  nationId: number; // 0 = vô chủ / tàu bỏ hoang
+  prevNationId?: number;
+  x: number;
+  y: number;
+  angle: number;
+  hp: number;
+  maxHp: number;
+  speed: number;
+  state: NavalShipState;
+  scaleTier: 1 | 2 | 3;
+
+  homePortX?: number;
+  homePortY?: number;
+
+  waypoints?: { x: number; y: number }[];
+  waypointIdx?: number;
+  targetX?: number;
+  targetY?: number;
+  repathCooldown?: number;
+
+  // Tàu Khai Thác
+  assignedDepositX?: number;
+  assignedDepositY?: number;
+  oilCapacity?: number;
+  extractedTotal?: number;
+
+  // Tàu Chiến
+  dps?: number;
+  range?: number;
+  vision?: number;
+  order?: WarshipOrder;
+  patrolX?: number;
+  patrolY?: number;
+  escortShipId?: string;
+  targetShipId?: string;
+  attackCooldown?: number;
+  isRepairing?: boolean;
+
+  // Chở quân & đổ bộ
+  carriedTroops?: number;
+  maxTroopCapacity?: number;
+  landingTargetX?: number;
+  landingTargetY?: number;
+  landingCoastX?: number;
+  landingCoastY?: number;
+
+  // Hạm đội & chiếm tàu bỏ hoang
+  fleetId?: string;
+  captureTargetShipId?: string;
+  captureProgress?: number;
+  derelictTimer?: number;
+}
+
+export interface PortBuildQueueItem {
+  id: string;
+  nationId: number;
+  portX: number;
+  portY: number;
+  shipType: NavalShipType;
+  remainingTime: number;
+  totalTime: number;
+  paidGold: number;
+  paidOil: number;
+  paidMinerals: number;
+}
+
+export interface SeaControlGrid {
+  cellSize: number;
+  cols: number;
+  rows: number;
+  owners: number[];
+  strengths: number[];
+  updatedAtSec: number;
+}
+
+export interface InspectedShipRef {
+  kind: 'NAVAL' | 'TRADE';
+  id: string;
+}
+
+export interface NavalAimingState {
+  mode: 'MOVE' | 'PATROL' | 'ATTACK' | 'LANDING' | 'FLEET_MOVE' | 'FLEET_PATROL' | 'FLEET_LANDING';
+  shipId?: string;
+  fleetId?: string;
 }
 
 export interface GameParticle {

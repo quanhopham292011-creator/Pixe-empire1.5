@@ -1,6 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { Tile, Nation, DarkTitan, FlyingMissile, PendingTitanSpawn } from '../types';
 import { getNationColor } from '../utils/buildingSprites';
+import { getDepositTiles } from '../utils/resources';
 
 interface MinimapProps {
   tiles: Tile[][];
@@ -46,6 +47,7 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const visibleMapRef = useRef<Uint8Array | null>(null);
 
   // 1. Offscreen Cache: Chỉ vẽ lại toàn bộ lưới ô vuông khi tiles hoặc nations thay đổi (Fast ImageData)
   useEffect(() => {
@@ -135,6 +137,7 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
       }
     }
 
+    visibleMapRef.current = visibleMap;
     offCtx.putImageData(imgData, 0, 0);
   }, [tiles, nations, mapSize, fogOfWarEnabled, playerNationId]);
 
@@ -153,6 +156,23 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
     // Vẽ nền địa hình từ offscreen cache
     if (offscreenCanvasRef.current) {
       ctx.drawImage(offscreenCanvasRef.current, 0, 0, size, size);
+    }
+
+    // Vẽ Mỏ Dầu Biển đã phát hiện (tôn trọng sương mù chiến tranh)
+    if (tiles && tiles.length > 0) {
+      const vis = visibleMapRef.current;
+      const deposits = getDepositTiles(tiles);
+      for (let i = 0; i < deposits.length; i++) {
+        const d = deposits[i];
+        if (!d || d.terrain !== 'WATER' || d.deposit !== 'OIL' || !d.discovered) continue;
+        if (vis && vis[d.y * mapSize + d.x] !== 1) continue;
+        const dx = d.x * tileSize + tileSize / 2;
+        const dy = d.y * tileSize + tileSize / 2;
+        ctx.fillStyle = (d.reserve || 0) > 0 ? '#f59e0b' : '#64748b';
+        ctx.beginPath();
+        ctx.arc(dx, dy, Math.max(1.4, tileSize * 0.9), 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     // Điểm sáng Thủ đô của Người chơi, Đồng minh & Boss

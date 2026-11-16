@@ -1,16 +1,29 @@
 import { useCallback } from 'react';
+import { AIR_SYSTEM_CONFIG } from '../data/gameData';
 import { Nation, SeaTradeRoute, SeaTradeShip, Tile } from '../types';
 import { soundManager } from '../utils/audio';
 import { TILE_PIXEL_SIZE, formatGameTime } from '../utils/constants';
+import {
+  computePolylineLength,
+  findSeaPath,
+  getPortWaterAccess,
+  getShipPopulationScale,
+  getTradeShipPosition,
+} from '../utils/seaPathfinding';
+import { convertEliminatedNationShipsToDerelict } from '../utils/navalSystem';
 
 export interface PortInfo {
   x: number;
   y: number;
   owner: number;
   nation: Nation;
+  isEnclosed?: boolean;
+  localLoop?: { x: number; y: number }[] | null;
 }
 
 const MAX_ROUTES_PER_NATION = 4;
+const MAX_TRADE_SHIPS_PER_PORT = 3;
+const SEA_TRADE_SPEED_TILES_PER_SEC = 2.8;
 const ROUTE_DIMINISHING_MULTS = [1.0, 0.65, 0.42, 0.25];
 
 /**
@@ -106,6 +119,7 @@ export function cleanupEliminatedNationDiplomacy(eliminatedId: number, nations: 
   }
 
   if (data) {
+    convertEliminatedNationShipsToDerelict(data, eliminatedId);
     if (Array.isArray(data.tradeRoutes)) {
       data.tradeRoutes = data.tradeRoutes.filter(
         (r: SeaTradeRoute) => r.fromNation !== eliminatedId && r.toNation !== eliminatedId
@@ -131,7 +145,15 @@ export function collectPortList(tiles: Tile[][] | undefined, nations: Nation[] |
       if (t.inactiveTimer && t.inactiveTimer > 0) continue;
       const nat = nations[t.owner];
       if (nat && !nat.isEliminated && t.owner > 0) {
-        ports.push({ x, y, owner: t.owner, nation: nat });
+        const access = getPortWaterAccess(tiles, x, y);
+        ports.push({
+          x,
+          y,
+          owner: t.owner,
+          nation: nat,
+          isEnclosed: access.isEnclosed,
+          localLoop: access.localLoop,
+        });
       }
     }
   }
@@ -148,7 +170,8 @@ export function computeShipCargoForNation(
   baseCargo: number,
   nationId: number,
   routeIndex: number,
-  gameTimeSeconds: number
+  gameTimeSeconds: number,
+  nation?: Nation | null
 ): number {
   const eff = getTradeRouteEfficiency(routeIndex);
   // Chỉ giảm nhẹ giai đoạn đầu (< 300s) cho người chơi để tránh cộng dồn quá mạnh; giữa/cuối game giữ nguyên và tăng nhẹ về cuối trận
@@ -158,7 +181,8 @@ export function computeShipCargoForNation(
       : nationId === 1 && gameTimeSeconds < 300
         ? 0.62
         : 1.0;
-  return Math.max(3, Math.round(baseCargo * phaseMult * eff));
+  const popMult = getShipPopulationScale(nation).hpAndCapMult;
+  return Math.max(3, Math.round(baseCargo * phaseMult * eff * popMult));
 }
 
 export function syncBalancedTradeRoutes(data: any, portList: PortInfo[]): void {
@@ -166,9 +190,23 @@ export function syncBalancedTradeRoutes(data: any, portList: PortInfo[]): void {
   data.tradeRoutes = data.tradeRoutes || [];
   data.tradeShips = data.tradeShips || [];
   const nations: Nation[] = Array.isArray(data.nations) ? data.nations : [];
+  const tiles: Tile[][] = Array.isArray(data.tiles) ? data.tiles : [];
+  const hasTiles = tiles.length > 0;
   const gameTimeSeconds = data.gameTimeSeconds || 0;
 
-  // 1. Gom tối đa 1 tuyến tốt nhất cho mỗi cặp quốc gia (loại bỏ tự giao thương, nước đã bị loại và trùng lặp nhiều cảng)
+  // Bổ sung trạng thái vùng nước kín cho portList nếu chưa tính sẵn
+  const enrichedPorts: PortInfo[] = portList.map((p) => {
+    if (typeof p.isEnclosed === 'boolean') return p;
+    if (!hasTiles) return { ...p, isEnclosed: false, localLoop: null };
+    const access = getPortWaterAccess(tiles, p.x, p.y);
+    return { ...p, isEnclosed: access.isEnclosed, localLoop: access.localLoop };
+  });
+
+  // Chỉ các cảng thông ra biển mở mới tham gia tuyến giao thương quốc tế sinh vàng
+  const openPorts = enrichedPorts.filter((p) => !p.isEnclosed);
+  const enclosedPorts = enrichedPorts.filter((p) => p.isEnclosed && p.localLoop && p.localLoop.length >= 2);
+
+  // 1. Gom tối đa 1 tuyến đường biển (WATER 100%) tốt nhất cho mỗi cặp quốc gia
   const bestPairMap = new Map<
     string,
     {
@@ -177,15 +215,17 @@ export function syncBalancedTradeRoutes(data: any, portList: PortInfo[]): void {
       pA: PortInfo;
       pB: PortInfo;
       dist: number;
+      seaDist: number;
+      waypoints?: { x: number; y: number }[];
       isAlliance: boolean;
       isIntercontinental: boolean;
     }
   >();
 
-  for (let i = 0; i < portList.length; i++) {
-    for (let j = i + 1; j < portList.length; j++) {
-      const p1 = portList[i];
-      const p2 = portList[j];
+  for (let i = 0; i < openPorts.length; i++) {
+    for (let j = i + 1; j < openPorts.length; j++) {
+      const p1 = openPorts[i];
+      const p2 = openPorts[j];
       if (!p1 || !p2 || p1.owner <= 0 || p2.owner <= 0 || p1.owner === p2.owner) continue;
       if (!p1.nation || !p2.nation || p1.nation.isEliminated || p2.nation.isEliminated) continue;
 
@@ -193,28 +233,50 @@ export function syncBalancedTradeRoutes(data: any, portList: PortInfo[]): void {
       const dip2 = p2.nation?.diplomacy?.[p1.owner]?.status || 'WAR';
       if (dip1 === 'WAR' || dip2 === 'WAR') continue;
 
-      const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
-      if (dist < 4) continue;
+      const straightDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+      if (straightDist < 4) continue;
 
       const [idA, pA, idB, pB] = p1.owner < p2.owner ? [p1.owner, p1, p2.owner, p2] : [p2.owner, p2, p1.owner, p1];
+
+      let waypoints: { x: number; y: number }[] | undefined;
+      let seaDist = straightDist;
+      if (hasTiles) {
+        const seaPath = findSeaPath(tiles, pA.x, pA.y, pB.x, pB.y, false);
+        if (!seaPath || seaPath.waypoints.length < 2) continue; // Bị đất liền hoặc hồ kín chặn hoàn toàn -> bỏ
+        waypoints = seaPath.waypoints;
+        seaDist = Math.max(straightDist, seaPath.length);
+      }
+
       const pairKey = `${idA}_${idB}`;
       const isAlliance = dip1 === 'ALLIANCE' && dip2 === 'ALLIANCE';
-      const isIntercontinental = dist > 10;
+      const isIntercontinental = straightDist > 10 || seaDist > 14;
 
       const existing = bestPairMap.get(pairKey);
-      if (!existing || (isAlliance && !existing.isAlliance) || (isAlliance === existing.isAlliance && dist > existing.dist)) {
-        bestPairMap.set(pairKey, { idA, idB, pA, pB, dist, isAlliance, isIntercontinental });
+      if (!existing || (isAlliance && !existing.isAlliance) || (isAlliance === existing.isAlliance && seaDist > existing.seaDist)) {
+        bestPairMap.set(pairKey, {
+          idA,
+          idB,
+          pA,
+          pB,
+          dist: straightDist,
+          seaDist,
+          waypoints,
+          isAlliance,
+          isIntercontinental,
+        });
       }
     }
   }
 
-  // 2. Ưu tiên tuyến Đồng Minh trước rồi mới tới Đình Chiến, giới hạn mềm số tuyến hiệu lực mỗi nước
+  // 2. Ưu tiên tuyến Đồng Minh trước rồi mới tới Đình Chiến, giới hạn theo nước & theo từng cảng
   const candidates = Array.from(bestPairMap.values()).sort((a, b) => {
     if (a.isAlliance !== b.isAlliance) return a.isAlliance ? -1 : 1;
-    return b.dist - a.dist;
+    return b.seaDist - a.seaDist;
   });
 
   const routeCountByNation: Record<number, number> = {};
+  const shipCountByPort: Record<string, number> = {};
+  const portKey = (x: number, y: number) => `${x}_${y}`;
   const updatedRoutes: SeaTradeRoute[] = [];
   const routeMeta = new Map<
     string,
@@ -225,6 +287,13 @@ export function syncBalancedTradeRoutes(data: any, portList: PortInfo[]): void {
     const countA = routeCountByNation[cand.idA] || 0;
     const countB = routeCountByNation[cand.idB] || 0;
     if (countA >= MAX_ROUTES_PER_NATION || countB >= MAX_ROUTES_PER_NATION) continue;
+
+    const kA = portKey(cand.pA.x, cand.pA.y);
+    const kB = portKey(cand.pB.x, cand.pB.y);
+    const pShipsA = shipCountByPort[kA] || 0;
+    const pShipsB = shipCountByPort[kB] || 0;
+    const freeSlots = Math.min(MAX_TRADE_SHIPS_PER_PORT - pShipsA, MAX_TRADE_SHIPS_PER_PORT - pShipsB);
+    if (freeSlots <= 0) continue;
 
     routeCountByNation[cand.idA] = countA + 1;
     routeCountByNation[cand.idB] = countB + 1;
@@ -239,13 +308,17 @@ export function syncBalancedTradeRoutes(data: any, portList: PortInfo[]): void {
       toPortX: cand.pB.x,
       toPortY: cand.pB.y,
       distanceTiles: Math.round(cand.dist),
+      seaDistanceTiles: Math.max(4, Math.round(cand.seaDist)),
+      waypoints: cand.waypoints,
       isIntercontinental: cand.isIntercontinental,
     };
     updatedRoutes.push(route);
 
     const baseCargo = route.isIntercontinental ? 45 : 15;
-    const fromCargoGold = computeShipCargoForNation(baseCargo, cand.idA, countA, gameTimeSeconds);
-    const toCargoGold = computeShipCargoForNation(baseCargo, cand.idB, countB, gameTimeSeconds);
+    const natA = nations[cand.idA] || cand.pA.nation;
+    const natB = nations[cand.idB] || cand.pB.nation;
+    const fromCargoGold = computeShipCargoForNation(baseCargo, cand.idA, countA, gameTimeSeconds, natA);
+    const toCargoGold = computeShipCargoForNation(baseCargo, cand.idB, countB, gameTimeSeconds, natB);
     const displayCargoGold =
       cand.idA === 1
         ? fromCargoGold
@@ -254,22 +327,39 @@ export function syncBalancedTradeRoutes(data: any, portList: PortInfo[]): void {
           : Math.round((fromCargoGold + toCargoGold) / 2);
 
     const involvesPlayerEarly = (cand.idA === 1 || cand.idB === 1) && gameTimeSeconds < 300;
-    const targetShips = route.isIntercontinental && !involvesPlayerEarly ? 2 : 1;
+    const desiredShips = route.isIntercontinental && !involvesPlayerEarly ? 2 : 1;
+    const targetShips = Math.max(1, Math.min(desiredShips, freeSlots));
+
+    shipCountByPort[kA] = pShipsA + targetShips;
+    shipCountByPort[kB] = pShipsB + targetShips;
 
     routeMeta.set(routeId, { fromCargoGold, toCargoGold, displayCargoGold, targetShips });
   }
 
   data.tradeRoutes = updatedRoutes;
 
-  // 3. Đồng bộ tàu buôn theo tuyến hợp lệ (chống trùng tàu, loại tàu thuộc nước đã bị loại, cập nhật tọa độ cảng và giá trị hàng hóa)
+  // 3. Đồng bộ tàu buôn theo tuyến hợp lệ (tốc độ cố định, theo dân số, đi đúng đường biển)
   const validRouteMap = new Map<string, SeaTradeRoute>();
-  updatedRoutes.forEach(r => validRouteMap.set(r.id, r));
+  updatedRoutes.forEach((r) => validRouteMap.set(r.id, r));
 
   const seenShipIds = new Set<string>();
   const keptShipsByRoute = new Map<string, SeaTradeShip[]>();
+  const existingLocalShips = new Map<string, SeaTradeShip>();
 
   for (const ship of data.tradeShips as SeaTradeShip[]) {
     if (!ship || !ship.id || seenShipIds.has(ship.id)) continue;
+
+    if (ship.isEnclosedLocal) {
+      const nat = nations[ship.fromNation];
+      if (!nat || nat.isEliminated) continue;
+      const key = portKey(ship.sourceX, ship.sourceY);
+      if (!existingLocalShips.has(key)) {
+        seenShipIds.add(ship.id);
+        existingLocalShips.set(key, ship);
+      }
+      continue;
+    }
+
     if (ship.fromNation === ship.toNation) continue;
     if (nations.length > 0) {
       const fNat = nations[ship.fromNation];
@@ -289,7 +379,9 @@ export function syncBalancedTradeRoutes(data: any, portList: PortInfo[]): void {
     const list = keptShipsByRoute.get(matchedRoute.id) || [];
     if (list.length >= meta.targetShips) continue;
 
-    const travelDurationSeconds = Math.max(8, Math.min(22, matchedRoute.distanceTiles * 0.7));
+    const pathTiles = Math.max(4, matchedRoute.seaDistanceTiles || matchedRoute.distanceTiles || 10);
+    const travelDurationSeconds = pathTiles / SEA_TRADE_SPEED_TILES_PER_SEC;
+
     const matchesForward =
       ship.sourceX === matchedRoute.fromPortX &&
       ship.sourceY === matchedRoute.fromPortY &&
@@ -308,7 +400,12 @@ export function syncBalancedTradeRoutes(data: any, portList: PortInfo[]): void {
       ship.sourceY = matchedRoute.fromPortY;
       ship.targetX = matchedRoute.toPortX;
       ship.targetY = matchedRoute.toPortY;
+      ship.reverseDir = false;
+    } else {
+      ship.reverseDir = matchesReverse;
     }
+
+    ship.waypoints = matchedRoute.waypoints;
     ship.speed = 1 / travelDurationSeconds;
     ship.routeId = matchedRoute.id;
     ship.cargoGold = meta.displayCargoGold;
@@ -321,16 +418,34 @@ export function syncBalancedTradeRoutes(data: any, portList: PortInfo[]): void {
     }
     ship.isIntercontinental = matchedRoute.isIntercontinental;
 
+    // Quy mô tàu theo dân số quốc gia
+    const scaleA = getShipPopulationScale(nations[matchedRoute.fromNation]);
+    const scaleB = getShipPopulationScale(nations[matchedRoute.toNation]);
+    const scaleMult = Math.max(scaleA.hpAndCapMult, scaleB.hpAndCapMult);
+    const scaleTier = (scaleA.tier >= scaleB.tier ? scaleA.tier : scaleB.tier) as 1 | 2 | 3;
+    const newMaxHp = Math.round(AIR_SYSTEM_CONFIG.SHIP_BASE_HP * scaleMult);
+    const oldMaxHp = ship.maxHp || AIR_SYSTEM_CONFIG.SHIP_BASE_HP;
+    const hpRatio = typeof ship.hp === 'number' ? Math.max(0.05, Math.min(1, ship.hp / Math.max(1, oldMaxHp))) : 1;
+    ship.maxHp = newMaxHp;
+    ship.hp = Math.round(newMaxHp * hpRatio);
+    ship.scaleTier = scaleTier;
+
     seenShipIds.add(ship.id);
     list.push(ship);
     keptShipsByRoute.set(matchedRoute.id, list);
   }
 
   const nextShips: SeaTradeShip[] = [];
-  updatedRoutes.forEach(route => {
+  updatedRoutes.forEach((route) => {
     const meta = routeMeta.get(route.id)!;
     const list = keptShipsByRoute.get(route.id) || [];
-    const travelDurationSeconds = Math.max(8, Math.min(22, route.distanceTiles * 0.7));
+    const pathTiles = Math.max(4, route.seaDistanceTiles || route.distanceTiles || 10);
+    const travelDurationSeconds = pathTiles / SEA_TRADE_SPEED_TILES_PER_SEC;
+    const scaleA = getShipPopulationScale(nations[route.fromNation]);
+    const scaleB = getShipPopulationScale(nations[route.toNation]);
+    const scaleMult = Math.max(scaleA.hpAndCapMult, scaleB.hpAndCapMult);
+    const scaleTier = (scaleA.tier >= scaleB.tier ? scaleA.tier : scaleB.tier) as 1 | 2 | 3;
+    const maxHp = Math.round(AIR_SYSTEM_CONFIG.SHIP_BASE_HP * scaleMult);
 
     while (list.length < meta.targetShips) {
       const initialProgress = list.length === 1 ? 0.5 : 0;
@@ -349,9 +464,54 @@ export function syncBalancedTradeRoutes(data: any, portList: PortInfo[]): void {
         fromCargoGold: meta.fromCargoGold,
         toCargoGold: meta.toCargoGold,
         isIntercontinental: route.isIntercontinental,
+        waypoints: route.waypoints,
+        reverseDir: false,
+        hp: maxHp,
+        maxHp,
+        scaleTier,
       });
     }
     nextShips.push(...list);
+  });
+
+  // 4. Với cảng nằm ở vùng nước kín: tối đa 1 tàu địa phương chạy vòng quanh (0 vàng)
+  enclosedPorts.forEach((p) => {
+    const key = portKey(p.x, p.y);
+    const loop = p.localLoop!;
+    const loopLen = Math.max(2, computePolylineLength(loop));
+    const durationSec = Math.max(4, loopLen / (SEA_TRADE_SPEED_TILES_PER_SEC * 0.7));
+    const existing = existingLocalShips.get(key);
+    if (existing) {
+      existing.waypoints = loop;
+      existing.speed = 1 / durationSec;
+      existing.cargoGold = 0;
+      existing.fromCargoGold = 0;
+      existing.toCargoGold = 0;
+      nextShips.push(existing);
+    } else {
+      nextShips.push({
+        id: `local_boat_${p.owner}_${p.x}_${p.y}_${Math.random().toString(36).slice(2, 6)}`,
+        routeId: `local_${p.x}_${p.y}`,
+        fromNation: p.owner,
+        toNation: p.owner,
+        sourceX: p.x,
+        sourceY: p.y,
+        targetX: p.x,
+        targetY: p.y,
+        progress: Math.random() * 0.8,
+        speed: 1 / durationSec,
+        cargoGold: 0,
+        fromCargoGold: 0,
+        toCargoGold: 0,
+        isIntercontinental: false,
+        isEnclosedLocal: true,
+        waypoints: loop,
+        reverseDir: false,
+        hp: 150,
+        maxHp: 150,
+        scaleTier: 1,
+      });
+    }
   });
 
   data.tradeShips = nextShips;
@@ -369,14 +529,23 @@ export function useTradeRoutes(gameDataRef: React.MutableRefObject<any>) {
     const data = gameDataRef.current;
     if (!data || !data.tradeShips || data.tradeShips.length === 0) return false;
 
+    const routeMap = new Map<string, SeaTradeRoute>();
+    if (Array.isArray(data.tradeRoutes)) {
+      data.tradeRoutes.forEach((r: SeaTradeRoute) => {
+        if (r?.id) routeMap.set(r.id, r);
+      });
+    }
+
     let lootedShipIdx = -1;
+    let lootShipPos = { x: 0, y: 0 };
     for (let i = 0; i < data.tradeShips.length; i++) {
       const ship: SeaTradeShip = data.tradeShips[i];
-      const curShipX = ship.sourceX + (ship.targetX - ship.sourceX) * ship.progress;
-      const curShipY = ship.sourceY + (ship.targetY - ship.sourceY) * ship.progress;
-      const dist = Math.hypot(curShipX - mapX, curShipY - mapY);
+      if (!ship || ship.isEnclosedLocal || (ship.cargoGold || 0) <= 0) continue;
+      const pos = getTradeShipPosition(ship, routeMap);
+      const dist = Math.hypot(pos.x - mapX, pos.y - mapY);
       if (dist <= 1.8) {
         lootedShipIdx = i;
+        lootShipPos = { x: pos.x, y: pos.y };
         break;
       }
     }
@@ -391,8 +560,8 @@ export function useTradeRoutes(gameDataRef: React.MutableRefObject<any>) {
 
       soundManager.playCapture();
 
-      const curShipX = ship.sourceX + (ship.targetX - ship.sourceX) * ship.progress;
-      const curShipY = ship.sourceY + (ship.targetY - ship.sourceY) * ship.progress;
+      const curShipX = lootShipPos.x;
+      const curShipY = lootShipPos.y;
 
       data.particles.push({
         x: curShipX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
