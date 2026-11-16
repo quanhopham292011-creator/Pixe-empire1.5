@@ -858,7 +858,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                 <button
                   key={pct}
                   onClick={() => setAttackPercent(pct)}
-                  className={`min-h-[40px] min-w-[44px] px-1.5 py-1 rounded-lg text-sm font-bold border ${
+                  className={`min-h-[38px] min-w-[44px] px-1.5 py-1 rounded-lg text-sm font-bold border ${
                     attackPercent === pct ? 'bg-amber-400 border-amber-200 text-slate-950 font-black' : 'bg-slate-800 border-slate-600 text-slate-100'
                   }`}
                 >
@@ -961,7 +961,7 @@ export const GameHud: React.FC<GameHudProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowReserves(prev => !prev)}
-                    className="flex items-center justify-between w-full min-h-[44px] text-sm font-bold text-slate-100 hover:text-amber-200 transition-colors py-1"
+                    className="flex items-center justify-between w-full min-h-[36px] text-sm font-bold text-slate-100 hover:text-amber-200 transition-colors py-0"
                   >
                     <span className="flex items-center gap-1">
                       <span>📋 Dự bị ({reserveGenerals.length})</span>
@@ -1054,7 +1054,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             className="flex flex-col items-center justify-center py-1 px-0.5 bg-red-950/90 hover:bg-red-900 active:scale-95 border border-red-400/80 rounded-xl text-white transition-all min-h-[40px]"
           >
             <Rocket className="w-3 h-3 text-red-300 mb-0 shrink-0" />
-            <span className="text-xs font-bold leading-none text-center">Tấn Công</span>
+            <span className="text-[11px] font-bold leading-none text-center whitespace-nowrap">Tấn Công</span>
           </button>
 
           {/* Nút 2: Xây Dựng */}
@@ -1072,7 +1072,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             className="flex flex-col items-center justify-center py-1 px-0.5 bg-amber-950/90 hover:bg-amber-900 active:scale-95 border border-amber-400/80 rounded-xl text-white transition-all min-h-[40px]"
           >
             <Building2 className="w-3 h-3 text-amber-300 mb-0 shrink-0" />
-            <span className="text-xs font-bold leading-none text-center">Xây Dựng</span>
+            <span className="text-[11px] font-bold leading-none text-center whitespace-nowrap">Xây Dựng</span>
           </button>
 
           {/* Nút 3: Công Nghệ */}
@@ -1084,7 +1084,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             }`}
           >
             <Cpu className="w-3 h-3 text-blue-300 mb-0 shrink-0" />
-            <span className="text-xs font-bold leading-none text-center">Công Nghệ</span>
+            <span className="text-[11px] font-bold leading-none text-center whitespace-nowrap">Công Nghệ</span>
           </button>
 
           {/* Nút 4: Xếp Hạng */}
@@ -1096,7 +1096,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             className="flex flex-col items-center justify-center py-1 px-0.5 bg-amber-950/90 hover:bg-amber-900 active:scale-95 border border-amber-400/80 rounded-xl text-white transition-all min-h-[40px]"
           >
             <Trophy className="w-3 h-3 text-amber-300 mb-0 shrink-0" />
-            <span className="text-xs font-bold leading-none text-center">Xếp Hạng</span>
+            <span className="text-[11px] font-bold leading-none text-center whitespace-nowrap">Xếp Hạng</span>
           </button>
 
           {/* Nút Sáng Tạo (Chỉ hiển thị khi gameMode === 'CREATIVE') */}
@@ -1110,7 +1110,7 @@ export const GameHud: React.FC<GameHudProps> = ({
               title="Mở Bảng Sáng Tạo"
             >
               <Wand2 className="w-3 h-3 text-purple-300 mb-0 shrink-0" />
-              <span className="text-xs font-bold leading-none text-center">Sáng Tạo</span>
+              <span className="text-[11px] font-bold leading-none text-center whitespace-nowrap">Sáng Tạo</span>
             </button>
           )}
 
@@ -1122,7 +1122,7 @@ export const GameHud: React.FC<GameHudProps> = ({
             }`}
           >
             <span className="text-sm mb-0 leading-none">🤖</span>
-            <span className="text-xs font-bold leading-none text-center">{autoExpand ? 'Tự Động' : 'Tắt'}</span>
+            <span className="text-[11px] font-bold leading-none text-center whitespace-nowrap">{autoExpand ? 'Tự Động' : 'Tắt'}</span>
           </button>
         </div>
       </footer>
