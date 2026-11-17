@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Tile, Nation, PlayerProfile, GeneralStyle, DiplomacyStatus, AirUnitType, MissileType, TradeOffer, InspectedShipRef, NavalShip, SeaTradeShip, NavalAimingState } from '../types';
-import { formatPopulation, BUILDING_INFO, GENERAL_ROSTER, AIR_SYSTEM_CONFIG, AIR_UNIT_SPECS, MISSILE_CONFIG } from '../utils/constants';
+import { formatPopulation, BUILDING_INFO, GENERAL_ROSTER, AIR_SYSTEM_CONFIG, AIR_UNIT_SPECS, MISSILE_CONFIG, TILE_PIXEL_SIZE } from '../utils/constants';
+import { isLandConnected } from '../utils/landConnectivity';
+import { pushFeedbackText } from '../utils/floatFeedback';
 import { canDeployGeneral, getLoyaltyState, appointReserveGeneral, calculateGeneralStats } from '../utils/generalCombat';
 import { GENERAL_STYLE_INFO } from '../utils/generalEvolution';
 import { areResourcesEnabled, formatResource, getRepairCost, repairExtractor, isExtractor, depositName } from '../utils/resources';
@@ -63,7 +65,7 @@ interface GameHudProps {
   attackPercent: number;
   setAttackPercent: (pct: number) => void;
   actualAttackTroops: number;
-  launchAttackWave: (fromN: number, toN: number, src: Tile, tgt: Tile, troops: number, queue?: any[]) => void;
+  launchAttackWave: (fromN: number, toN: number, src: Tile, tgt: Tile, troops: number, queue?: any[]) => boolean | void;
   playerGeneralDeployMode: boolean;
   setPlayerGeneralDeployMode: (mode: boolean | ((prev: boolean) => boolean)) => void;
   activateGeneralSkill: (nationId: number) => void;
@@ -274,12 +276,13 @@ export const GameHud: React.FC<GameHudProps> = ({
         }
       }
 
-      // Nếu không có ô lân cận trực tiếp mới quét các ô xa hơn
+      // Nếu không có ô lân cận trực tiếp mới quét các ô xa hơn (chỉ xét ô nối liền đất liền)
       if (!bestSource) {
         for (let y = 0; y < size; y++) {
           for (let x = 0; x < size; x++) {
             const t = tiles[y][x];
             if (t.owner === 1) {
+              if (!isLandConnected(tiles, x, y, sx, sy)) continue;
               const dist = Math.hypot(x - sx, y - sy);
               if (dist < minDistance) {
                 minDistance = dist;
@@ -292,8 +295,19 @@ export const GameHud: React.FC<GameHudProps> = ({
 
       if (bestSource) {
         const troopsToSend = Math.max(5, Math.floor(player.troops * (attackPercent / 100)));
-        launchAttackWave(1, selectedTile.owner, bestSource, selectedTile, troopsToSend);
-        soundManager.playAttack();
+        const success = launchAttackWave(1, selectedTile.owner, bestSource, selectedTile, troopsToSend);
+        if (success !== false) {
+          soundManager.playAttack();
+        }
+      } else {
+        if (!isLandConnected(tiles, player.capitalX, player.capitalY, sx, sy)) {
+          pushFeedbackText(gameDataRef.current.particles, {
+            x: sx * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+            y: sy * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+            color: '#f87171',
+            text: '🚢 Cần Tàu Chiến để đưa quân qua biển (Tấn Công → Tàu Thuyền → Đổ bộ)'
+          });
+        }
       }
     }
   };

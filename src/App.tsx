@@ -81,6 +81,9 @@ import {
   isGeneralUnlocked, purchaseGeneral, selectGeneral
 } from './utils/progression';
 import { applyCasualties } from './utils/casualties';
+import { computeNationLabelCenters } from './utils/nationLabels';
+import { pushFeedbackText } from './utils/floatFeedback';
+import { isLandConnected } from './utils/landConnectivity';
 import { BuildModal } from './components/BuildModal';
 import { TechModal } from './components/TechModal';
 import { MissileModal } from './components/MissileModal';
@@ -107,6 +110,7 @@ import { DefeatModal } from './components/modals/DefeatModal';
 import { ConfirmNewGameModal } from './components/modals/ConfirmNewGameModal';
 import { StartLocationModal } from './components/modals/StartLocationModal';
 import { TitleMenu } from './components/TitleMenu';
+import McLobby from './McLobby';
 import { GameHud } from './components/GameHud';
 import { MemeLayer } from './components/MemeLayer';
 import { showMeme, allianceMemeFor, warMemeFor } from './utils/memes';
@@ -171,6 +175,7 @@ export default function App() {
   const [isCreativeOpen, setIsCreativeOpen] = useState<boolean>(false);
   const [isGeneralSelectOpen, setIsGeneralSelectOpen] = useState<boolean>(false);
   const [isSkillTreeOpen, setIsSkillTreeOpen] = useState<boolean>(false);
+  const [, forceUpdate] = useState<number>(0);
   const [godModeLocked, setGodModeLocked] = useState<boolean>(false);
   const godModeLockedRef = useRef<boolean>(false);
 
@@ -557,12 +562,12 @@ export default function App() {
 
     const amount = Math.floor(player.gold * 0.3);
     if (amount < 1) {
-      data.particles.push({
+      pushFeedbackText(data.particles, {
         x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
         y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
-        color: '#ef4444', size: 0, life: 30, maxLife: 30, vx: 0, vy: -0.6,
-        type: 'FLOAT_TEXT', text: '⚠️ Không đủ Vàng để viện trợ!'
-      });
+        color: '#ef4444',
+        text: '⚠️ Không đủ Vàng để viện trợ!'
+      }, 30);
       return;
     }
 
@@ -592,6 +597,74 @@ export default function App() {
     });
   }, []);
 
+  const acceptAllianceFromBot = useCallback((botId: number) => {
+    const data = gameDataRef.current;
+    if (!data) return;
+    const player = data.nations[1];
+    const sender = data.nations[botId];
+    if (!player || !sender || sender.isEliminated) return;
+
+    reconcileNationAlliances(player, data.nations);
+    reconcileNationAlliances(sender, data.nations);
+
+    const playerAllies = countActiveAlliances(player, data.nations);
+    const senderAllies = countActiveAlliances(sender, data.nations);
+
+    if (playerAllies >= 3) {
+      showMissileToast('⚠️ Bạn đã đạt tối đa 3 đồng minh!');
+      return;
+    }
+    if (senderAllies >= 3) {
+      showMissileToast(`⚠️ ${sender.name} đã có đủ 3 đồng minh!`);
+      return;
+    }
+
+    player.diplomacy[botId] = { status: 'ALLIANCE', relation: 80, truceTimer: 0 };
+    if (!sender.diplomacy) sender.diplomacy = {};
+    sender.diplomacy[1] = { status: 'ALLIANCE', relation: 80, truceTimer: 0 };
+
+    data.attackWaves = (data.attackWaves || []).filter((w: any) => 
+      !((w.fromNation === 1 && w.toNation === botId) || (w.fromNation === botId && w.toNation === 1))
+    );
+
+    syncBalancedTradeRoutes(data, collectPortList(data.tiles, data.nations));
+    showMeme(allianceMemeFor(sender, player));
+    soundManager.playCapture();
+
+    data.particles.push({
+      x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+      y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+      color: '#10b981', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.8,
+      type: 'FLOAT_TEXT', text: `🤝 Đã kết minh thành công với ${sender.name}!`
+    });
+
+    data.events.unshift({
+      id: Math.random().toString(),
+      title: '🤝 Liên Minh Thành Lập',
+      description: `Bạn đã chấp nhận lời mời kết minh từ ${sender.name}!`,
+      type: 'DIPLOMACY',
+      targetNationId: botId,
+      timestamp: formatGameTime(data.gameTimeSeconds),
+    });
+
+    player.allianceInvites = (player.allianceInvites || []).filter(inv => inv.senderNationId !== botId);
+    forceUpdate((c: number) => c + 1);
+  }, []);
+
+  const rejectAllianceFromBot = useCallback((botId: number) => {
+    const data = gameDataRef.current;
+    if (!data) return;
+    const player = data.nations[1];
+    const sender = data.nations[botId];
+    if (player && sender) {
+      player.lastRejectedInviteTimer = player.lastRejectedInviteTimer || {};
+      player.lastRejectedInviteTimer[botId] = 30;
+      player.allianceInvites = (player.allianceInvites || []).filter(inv => inv.senderNationId !== botId);
+    }
+    showMissileToast('Đã từ chối lời mời liên minh.');
+    forceUpdate((c: number) => c + 1);
+  }, []);
+
   const handleSendTroopAid = useCallback((botId: number) => {
     const data = gameDataRef.current;
     const player = data.nations[1];
@@ -603,12 +676,12 @@ export default function App() {
     const room = Math.floor(Math.max(0, bot.maxTroops - bot.troops));
     const amount = Math.min(wanted, room);
     if (amount < 1) {
-      data.particles.push({
+      pushFeedbackText(data.particles, {
         x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
         y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
-        color: '#ef4444', size: 0, life: 30, maxLife: 30, vx: 0, vy: -0.6,
-        type: 'FLOAT_TEXT', text: wanted < 1 ? '⚠️ Không đủ Quân để chuyển tiếp viện!' : '⚠️ Nước nhận đã đầy quân!'
-      });
+        color: '#ef4444',
+        text: wanted < 1 ? '⚠️ Không đủ Quân để chuyển tiếp viện!' : '⚠️ Nước nhận đã đầy quân!'
+      }, 30);
       return;
     }
 
@@ -665,12 +738,12 @@ export default function App() {
       });
     } else {
       showMeme('AID_FAIL');
-      data.particles.push({
+      pushFeedbackText(data.particles, {
         x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
         y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
-        color: '#ef4444', size: 0, life: 30, maxLife: 30, vx: 0, vy: -0.6,
-        type: 'FLOAT_TEXT', text: `⚠️ ${bot.name} hiện không có đủ tài chính dư dả!`
-      });
+        color: '#ef4444',
+        text: `⚠️ ${bot.name} hiện không có đủ tài chính dư dả!`
+      }, 30);
     }
   }, []);
 
@@ -737,12 +810,12 @@ export default function App() {
     if (res.ok) {
       data.pendingTradeOffer = null;
     } else {
-      data.particles.push({
+      pushFeedbackText(data.particles, {
         x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
         y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
-        color: '#ef4444', size: 0, life: 40, maxLife: 40, vx: 0, vy: -0.6,
-        type: 'FLOAT_TEXT', text: `⚠️ Không thể giao dịch: ${res.message}`
-      });
+        color: '#ef4444',
+        text: `⚠️ Không thể giao dịch: ${res.message}`
+      }, 40);
       if (res.message === 'Đang chiến tranh' || res.message === 'Không khả dụng') {
         data.pendingTradeOffer = null;
       }
@@ -783,12 +856,12 @@ export default function App() {
     if (gen.skillId === 'MISSILE_BARRAGE') {
       if (nation.gold < 150) {
         if (nation.isPlayer) {
-          data.particles.push({
+          pushFeedbackText(data.particles, {
             x: gen.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
             y: gen.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-            color: '#ef4444', size: 0, life: 35, maxLife: 35, vx: 0, vy: -0.6,
-            type: 'FLOAT_TEXT', text: '⚠️ Cần 150 Vàng để gọi Mưa Tên Lửa!'
-          });
+            color: '#ef4444',
+            text: '⚠️ Cần 150 Vàng để gọi Mưa Tên Lửa!'
+          }, 35);
         }
         return false;
       }
@@ -1659,6 +1732,16 @@ export default function App() {
           });
         }
 
+        // Xử lý đếm ngược lời mời kết minh gửi tới người chơi (n.id === 1)
+        if (n.id === 1 && !n.isEliminated && n.allianceInvites && n.allianceInvites.length > 0) {
+          const playerRemaining: { senderNationId: number; expiryTimer: number }[] = [];
+          for (const inv of n.allianceInvites) {
+            inv.expiryTimer -= 1;
+            if (inv.expiryTimer > 0) playerRemaining.push(inv);
+          }
+          n.allianceInvites = playerRemaining;
+        }
+
         // Xử lý các lời mời kết minh (allianceInvites) được gửi tới bot
         if (n.id > 1 && !n.isEliminated && n.allianceInvites && n.allianceInvites.length > 0) {
           const remainingInvites: { senderNationId: number; expiryTimer: number }[] = [];
@@ -2003,7 +2086,16 @@ export default function App() {
           };
         }
       });
-      nationCentersRef.current = newCenters;
+      if (
+        data.gameTimeSeconds % 3 === 0 ||
+        !nationCentersRef.current ||
+        Object.keys(nationCentersRef.current).length === 0
+      ) {
+        nationCentersRef.current = {
+          ...newCenters,
+          ...computeNationLabelCenters(tiles, TILE_PIXEL_SIZE),
+        };
+      }
 
       let tradeRoutesNeedSync = false;
       nations.forEach(n => {
@@ -2347,6 +2439,8 @@ export default function App() {
               });
             }
           }
+          fogBaseDirtyRef.current = true;
+          offscreenTerritoryDirtyRef.current = true;
           data.researching = null;
         }
       }
@@ -3189,14 +3283,14 @@ export default function App() {
     }
 
     if (bestSource) {
-      // Logic attack: check adjacency or port
+      // Logic attack: check adjacency only (không được bắn quân qua biển bằng cảng)
       const neighborTiles = [
         [tile.x + 1, tile.y], [tile.x - 1, tile.y],
         [tile.x, tile.y + 1], [tile.x, tile.y - 1]
       ];
       const isAdjacent = neighborTiles.some(([nx, ny]) => tiles[ny]?.[nx]?.owner === 1);
       
-      if (!isAdjacent && (!player.hasPort || !tile.hasHarborAccess)) return false;
+      if (!isAdjacent) return false;
 
       const troopsToSend = Math.max(5, Math.floor(player.troops * (attackPercent / 100)));
       launchAttackWave(1, tile.owner, bestSource, tile, troopsToSend);
@@ -3212,7 +3306,12 @@ export default function App() {
     const size = tiles.length;
     const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
     const say = (text: string) => {
-      data.particles.push({ x: tile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2, y: tile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2, color: '#f87171', size: 0, life: 55, maxLife: 55, vx: 0, vy: -0.7, type: 'FLOAT_TEXT', text });
+      pushFeedbackText(data.particles, {
+        x: tile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        y: tile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        color: '#f87171',
+        text
+      });
     };
     if (tile.owner === 1 || tile.terrain === 'WATER') return false;
     if (player.troops < 5) { say('Không đủ quân (cần ít nhất 5)'); return false; }
@@ -3230,8 +3329,13 @@ export default function App() {
     }
     if (launch && tile.owner === 0 && best > 12) launch = null;
     if (!launch) {
-      if (player.hasPort && tile.hasHarborAccess) launch = tile;
-      else { say(tile.owner === 0 ? 'Đất hoang quá xa biên giới' : 'Chưa giáp biên giới (cần cảng để đánh qua biển)'); return false; }
+      const isConnected = isLandConnected(tiles, player.capitalX, player.capitalY, tile.x, tile.y);
+      if (!isConnected) {
+        say('🚢 Cần Tàu Chiến để đưa quân qua biển (Tấn Công → Tàu Thuyền → Đổ bộ)');
+        return false;
+      }
+      say(tile.owner === 0 ? 'Đất hoang quá xa biên giới' : 'Chưa giáp biên giới với nước này');
+      return false;
     }
     let source: Tile | null = null;
     for (const [dx, dy] of DIRS) {
@@ -3664,36 +3768,62 @@ export default function App() {
     troops: number,
     customQueue?: { x: number; y: number }[],
     withGeneral?: boolean,
-    preDeducted?: boolean
+    preDeducted?: boolean,
+    skipSeaCheck?: boolean,
+    param10?: boolean
   ): boolean => {
     const data = gameDataRef.current;
     const attacker = data.nations[from];
     if (!attacker || troops <= 0 || !target || target.terrain === 'WATER') return false;
     if (!preDeducted && attacker.troops < troops) return false;
 
+    // Kiểm tra kết nối đất liền:
+    // Đợt quân chỉ được phát động khi:
+    // (a) Đổ bộ từ tàu chiến (nguồn là WATER hoặc preDeducted === true),
+    // (b) Ô nguồn kề ô đích (khoảng cách Euclidean <= 1.5),
+    // (c) Hoặc ô nguồn và ô đích nối liền bằng đất liền (không qua biển).
+    if (!skipSeaCheck && !param10) {
+      const isAmphibious = source.terrain === 'WATER' || preDeducted === true;
+      const isAdjacent = Math.hypot(source.x - target.x, source.y - target.y) <= 1.5;
+      if (!isAmphibious && !isAdjacent) {
+        const connected = isLandConnected(data.tiles, source.x, source.y, target.x, target.y);
+        if (!connected) {
+          if (from === 1) {
+            pushFeedbackText(data.particles, {
+              x: target.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              y: target.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              color: '#f87171',
+              text: '🚢 Cần Tàu Chiến để đưa quân qua biển (Tấn Công → Tàu Thuyền → Đổ bộ)'
+            });
+          }
+          return false;
+        }
+      }
+    }
+
     // Ngăn chặn hoàn toàn việc tấn công Đồng Minh Sắt Son hoặc nước đang Đình Chiến
     if (to > 0 && attacker.diplomacy) {
       const dip = attacker.diplomacy[to]?.status;
       if (dip === 'ALLIANCE') {
         if (from === 1) {
-          data.particles.push({
+          pushFeedbackText(data.particles, {
             x: target.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
             y: target.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-            color: '#10b981', size: 0, life: 45, maxLife: 45, vx: 0, vy: -0.7,
-            type: 'FLOAT_TEXT', text: '🤝 Không thể tấn công Đồng Minh Sắt Son!'
-          });
+            color: '#10b981',
+            text: '🤝 Không thể tấn công Đồng Minh Sắt Son!',
+          }, 45);
         }
         return false;
       }
       if (dip === 'TRUCE') {
         if (from === 1) {
           const rem = Math.ceil(attacker.diplomacy[to]?.truceTimer || 45);
-          data.particles.push({
+          pushFeedbackText(data.particles, {
             x: target.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
             y: target.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-            color: '#38bdf8', size: 0, life: 45, maxLife: 45, vx: 0, vy: -0.7,
-            type: 'FLOAT_TEXT', text: `🕊️ Đang trong Hiệp Ước Đình Chiến (${rem}s)!`
-          });
+            color: '#38bdf8',
+            text: `🕊️ Đang trong Hiệp Ước Đình Chiến (${rem}s)!`,
+          }, 45);
         }
         return false;
       }
@@ -3788,7 +3918,7 @@ export default function App() {
       const src = data.tiles[action.sourceY]?.[action.sourceX];
       const tgt = data.tiles[action.targetY]?.[action.targetX];
       if (src && tgt) {
-        launchAttackWave(action.fromNation, action.toNation, src, tgt, action.troops);
+        launchAttackWave(action.fromNation, action.toNation, src, tgt, action.troops, undefined, false, false, true);
       }
     };
 
@@ -4652,22 +4782,22 @@ export default function App() {
     // Xử lý xây / nâng cấp Giàn Khoan Dầu & Mỏ Khoáng Sản trên ô có mỏ
     if (isExtractor(buildingType)) {
       if (!targetTile || targetTile.owner !== myNation) {
-        data.particles.push({
+        pushFeedbackText(data.particles, {
           x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
           y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
-          color: '#ef4444', size: 0, life: 30, maxLife: 30, vx: 0, vy: -0.6,
-          type: 'FLOAT_TEXT', text: 'Hãy chọn ô đất có mỏ thuộc sở hữu!'
-        });
+          color: '#ef4444',
+          text: 'Hãy chọn ô đất có mỏ thuộc sở hữu!'
+        }, 30);
         return;
       }
       const res = buildOrUpgradeExtractor(targetTile, player);
       if (!res.ok) {
-        data.particles.push({
+        pushFeedbackText(data.particles, {
           x: targetTile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
           y: targetTile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-          color: '#ef4444', size: 0, life: 35, maxLife: 35, vx: 0, vy: -0.6,
-          type: 'FLOAT_TEXT', text: res.message
-        });
+          color: '#ef4444',
+          text: res.message
+        }, 35);
         return;
       }
       data.stats.buildingsCount += 1;
@@ -4704,24 +4834,24 @@ export default function App() {
       }
       const check = canBuildSuperBuilding(player, buildingType, counts);
       if (!check.ok) {
-        data.particles.push({
+        pushFeedbackText(data.particles, {
           x: (targetTile?.x ?? player.capitalX) * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
           y: (targetTile?.y ?? player.capitalY) * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-          color: '#ef4444', size: 0, life: 45, maxLife: 45, vx: 0, vy: -0.6,
-          type: 'FLOAT_TEXT', text: check.reason || 'Không thể xây Siêu Công Trình!'
-        });
+          color: '#ef4444',
+          text: check.reason || 'Không thể xây Siêu Công Trình!'
+        }, 45);
         return;
       }
       const chosenTile = (targetTile && targetTile.owner === myNation && !isSuperBuilding(targetTile.building))
         ? targetTile
         : fallbackTile;
       if (!chosenTile) {
-        data.particles.push({
+        pushFeedbackText(data.particles, {
           x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
           y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-          color: '#ef4444', size: 0, life: 40, maxLife: 40, vx: 0, vy: -0.6,
-          type: 'FLOAT_TEXT', text: 'Hãy chọn ô đất hợp lệ không có Siêu Công Trình khác!'
-        });
+          color: '#ef4444',
+          text: 'Hãy chọn ô đất hợp lệ không có Siêu Công Trình khác!'
+        }, 40);
         return;
       }
       const superCost = BUILDING_INFO[buildingType].baseCost;
@@ -4800,12 +4930,12 @@ export default function App() {
     }
 
     if (eligibleTiles.length === 0) {
-      data.particles.push({
+      pushFeedbackText(data.particles, {
         x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
         y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
-        color: '#ef4444', size: 0, life: 30, maxLife: 30, vx: 0, vy: -0.6,
-        type: 'FLOAT_TEXT', text: isPort ? 'Không có ô giáp biển thuộc sở hữu!' : 'Không có chỗ xây: cần ô trống cách công trình khác ít nhất 1 ô!'
-      });
+        color: '#ef4444',
+        text: isPort ? 'Không có ô giáp biển thuộc sở hữu!' : 'Không có chỗ xây: cần ô trống cách công trình khác ít nhất 1 ô!'
+      }, 30);
       return;
     }
 
@@ -4847,12 +4977,12 @@ export default function App() {
     }
 
     if (actualBuiltCount === 0) {
-      data.particles.push({
+      pushFeedbackText(data.particles, {
         x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
         y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
-        color: '#ef4444', size: 0, life: 30, maxLife: 30, vx: 0, vy: -0.6,
-        type: 'FLOAT_TEXT', text: 'Không đủ Vàng hoặc Khoáng sản để xây / nâng cấp!'
-      });
+        color: '#ef4444',
+        text: 'Không đủ Vàng hoặc Khoáng sản để xây / nâng cấp!'
+      }, 30);
       return;
     }
 
@@ -4940,34 +5070,42 @@ export default function App() {
       {/* THÔNG BÁO CHƠI OFFLINE KHI MẤT MẠNG (CHỈ Ở MÀN HÌNH CHỜ; TRONG TRẬN ĐÃ GỘP VÀO THANH TRÊN DUY NHẤT) */}
       {gameState === 'TITLE' && <OfflineIndicator />}
       
-      {/* 1. MÀN HÌNH BẮT ĐẦU VỚI TỔ HỢP TITLE MENU MỚI */}
+      {/* 1. MÀN HÌNH BẮT ĐẦU VỚI GIAO DIỆN MCLOBBY */}
       {gameState === 'TITLE' && (
-        <TitleMenu
-          currentUser={currentUser}
-          playerProfile={playerProfile}
-          playerName={playerName}
-          setPlayerName={setPlayerName}
-          mapSize={mapSize}
-          setMapSize={setMapSize}
-          gameMode={gameMode}
-          setGameMode={setGameMode}
-          difficulty={difficulty}
-          setDifficulty={setDifficulty}
-          savedGameInfo={savedGameInfo}
-          loadGame={loadGame}
-          startNewGame={startNewGame}
-          setShowConfirmNewGame={setShowConfirmNewGame}
-          setIsAuthModalOpen={setIsAuthModalOpen}
-          setIsAdminPanelOpen={setIsAdminPanelOpen}
-          setIsGeneralSelectOpen={setIsGeneralSelectOpen}
-          setIsSkillTreeOpen={setIsSkillTreeOpen}
-          setIsTechOpen={setIsTechOpen}
-          setIsMultiplayerModalOpen={setIsMultiplayerModalOpen}
-          setIsSettingsOpen={setIsSettingsOpen}
-          isUserAdmin={isUserAdmin}
-          fbSignOut={fbSignOut}
-          auth={auth}
-          soundManager={soundManager}
+        <McLobby
+          title="PIXEL EMPIRE"
+          modes={[
+            { id: 'STANDARD', label: 'Tiêu chuẩn', desc: 'Chế độ chiến thuật chinh phục thế giới cổ điển với tài nguyên và kinh tế.' },
+            { id: 'CREATIVE', label: 'Sáng tạo', desc: 'Tự do tùy biến, vàng và quân đội vô hạn, triệu hồi Tà Thần.' }
+          ]}
+          difficulties={[
+            { id: 'EASY', label: 'Dễ', desc: 'Dành cho người mới, bot thân thiện, khởi đầu dễ dàng.' },
+            { id: 'NORMAL', label: 'Thường', desc: 'Trải nghiệm cân bằng giữa mở rộng và phòng thủ.' },
+            { id: 'HARD', label: 'Khó', desc: 'Bot thông minh hơn, tấn công dồn dập, đòi hỏi chiến thuật cao.' },
+            { id: 'EXTREME', label: 'Cực Khó', desc: 'Thử thách tối thượng cho các bậc thầy chiến lược.' }
+          ]}
+          saves={savedGameInfo ? [{ id: 'autosave', name: 'Ván chơi đã lưu', info: `${savedGameInfo.playerName} • ${savedGameInfo.timestamp} (${savedGameInfo.gameTimeStr})` }] : []}
+          onContinue={(_saveId) => {
+            loadGame();
+          }}
+          onCreate={(cfg) => {
+            setMapSize(96);
+            setDifficulty(cfg.difficulty as GameDifficulty);
+            setGameMode(cfg.mode as GameMode);
+            setPlayerName(cfg.name);
+            startNewGame(cfg.difficulty as GameDifficulty, 96, cfg.name, cfg.mode as GameMode);
+          }}
+          onSettings={() => setIsSettingsOpen(true)}
+          onSkills={() => setIsSkillTreeOpen(true)}
+          onProfile={() => setIsAuthModalOpen(true)}
+          onFriends={() => setIsMultiplayerModalOpen(true)}
+          onLeaderboard={() => setIsLeaderboardOpen(true)}
+          playerName={currentUser?.displayName || playerName}
+          selectedGeneral={playerProfile.selectedGeneral}
+          onGenerals={() => {
+            soundManager.playClick();
+            setIsGeneralSelectOpen(true);
+          }}
         />
       )}
 
@@ -5034,6 +5172,44 @@ export default function App() {
             />
           </div>
 
+
+          {/* Hộp thư liên minh cho người chơi */}
+          {gameState === 'PLAYING' && gameDataRef.current?.nations?.[1]?.allianceInvites && gameDataRef.current.nations[1].allianceInvites.length > 0 && (
+            <div className="absolute top-20 right-4 z-40 max-w-xs w-full bg-slate-900/95 border border-emerald-500/50 rounded-lg p-3 shadow-xl backdrop-blur-md flex flex-col gap-2 pointer-events-auto">
+              <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5 border-b border-emerald-500/30 pb-1.5">
+                <span>🤝</span> Hộp Thư Kết Minh ({gameDataRef.current.nations[1].allianceInvites.length})
+              </div>
+              {gameDataRef.current.nations[1].allianceInvites.slice(0, 2).map((inv: any) => {
+                const sender = gameDataRef.current.nations[inv.senderNationId];
+                if (!sender) return null;
+                return (
+                  <div key={inv.senderNationId} className="bg-slate-800/80 rounded p-2 flex flex-col gap-2 text-xs">
+                    <div className="text-slate-200 font-medium flex items-center justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: sender.color }}></span>
+                        {sender.name} mời kết minh
+                      </span>
+                      <span className="text-amber-400 font-mono text-[11px]">{inv.expiryTimer}s</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => acceptAllianceFromBot(sender.id)}
+                        className="h-10 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded flex items-center justify-center gap-1 shadow transition active:scale-95 text-xs"
+                      >
+                        <span>✓</span> Chấp nhận
+                      </button>
+                      <button
+                        onClick={() => rejectAllianceFromBot(sender.id)}
+                        className="h-10 bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold rounded flex items-center justify-center gap-1 shadow transition active:scale-95 text-xs"
+                      >
+                        <span>✕</span> Từ chối
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           <GameHud
             hudStats={{
@@ -5777,8 +5953,16 @@ export default function App() {
         onCycleWeather={cycleWeather}
         fogOfWarEnabled={fogOfWarEnabled}
         onToggleFogOfWar={handleToggleFogOfWar}
-        onQuitToTitle={() => {
+        onSaveAndContinue={() => {
           saveGameRef.current();
+          soundManager.playClick();
+        }}
+        onSaveAndQuit={() => {
+          saveGameRef.current();
+          setGameState('TITLE');
+          soundManager.playClick();
+        }}
+        onQuitWithoutSaving={() => {
           setGameState('TITLE');
           soundManager.playClick();
         }}

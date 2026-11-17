@@ -11,7 +11,7 @@ import {
 } from '../types';
 import { AIR_SYSTEM_CONFIG } from '../data/gameData';
 import { TILE_PIXEL_SIZE } from './constants';
-import { getDepositTiles } from './resources';
+import { getDepositTiles, hasActiveMineralMine } from './resources';
 import {
   findSeaPath,
   getPortWaterAccess,
@@ -224,6 +224,12 @@ export function canQueueNavalShip(
   }
   if ((nation.minerals || 0) < cfg.MINERAL_COST) {
     return { ok: false, reason: `Thiếu Khoáng sản (cần ${cfg.MINERAL_COST}).` };
+  }
+  if (nation.id > 1) {
+    const minReserve = hasActiveMineralMine(data.tiles, nation.id) ? 0 : 25;
+    if ((nation.minerals || 0) - cfg.MINERAL_COST < minReserve) {
+      return { ok: false, reason: 'Bot cần giữ ít nhất 25 khoáng sản dự trữ.' };
+    }
   }
 
   return { ok: true, reason: '' };

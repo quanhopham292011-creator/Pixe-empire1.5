@@ -58,6 +58,46 @@ function placeDeposit(t: Tile, type: DepositType, reserve: number, discovered: b
   t.resOwner = t.owner;
 }
 
+export function isTooCloseToDeposits(t: Tile, existing: Tile[]): boolean {
+  for (let i = 0; i < existing.length; i++) {
+    const p = existing[i];
+    if (Math.abs(p.x - t.x) < 2 && Math.abs(p.y - t.y) < 2) return true;
+  }
+  return false;
+}
+
+export function pickDepositTileFromPool(
+  pool: Tile[],
+  existingDeposits: Tile[],
+  nations?: Nation[]
+): Tile | null {
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const t = pool[Math.floor(Math.random() * pool.length)];
+    if (!t) continue;
+    if (t.deposit) continue;
+    if (t.building !== 'NONE') continue;
+    if (isTooCloseToDeposits(t, existingDeposits)) continue;
+    if (nations && t.owner > 0 && nations[t.owner]?.isEliminated) continue;
+    return t;
+  }
+  return null;
+}
+
+export function hasActiveMineralMine(tiles: Tile[][], nationId: number): boolean {
+  if (!tiles || nationId <= 0) return false;
+  for (let y = 0; y < tiles.length; y++) {
+    const row = tiles[y];
+    if (!row) continue;
+    for (let x = 0; x < row.length; x++) {
+      const t = row[x];
+      if (t && t.owner === nationId && t.building === 'MINE' && (t.reserve || 0) > 0 && !(t.inactiveTimer && t.inactiveTimer > 0)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function hasAnySeaOilDeposit(tiles: Tile[][]): boolean {
   return getDepositTiles(tiles).some(t => t.terrain === 'WATER' && t.deposit === 'OIL');
 }
@@ -208,19 +248,7 @@ export function generateDeposits(tiles: Tile[][], nations: Nation[]): void {
   if (land.length === 0) return;
 
   const placed: Tile[] = [];
-  const tooClose = (t: Tile) => {
-    for (const p of placed) {
-      if (Math.abs(p.x - t.x) < 2 && Math.abs(p.y - t.y) < 2) return true;
-    }
-    return false;
-  };
-  const pickFrom = (pool: Tile[]): Tile | null => {
-    for (let attempt = 0; attempt < 40; attempt++) {
-      const t = pool[Math.floor(Math.random() * pool.length)];
-      if (!t.deposit && t.building === 'NONE' && !tooClose(t)) return t;
-    }
-    return null;
-  };
+  const pickFrom = (pool: Tile[]): Tile | null => pickDepositTileFromPool(pool, placed);
 
   const total = size * size;
   const oilCount = Math.max(8, Math.round(total * RESOURCE_CONFIG.OIL_DENSITY));
@@ -401,7 +429,11 @@ export function getExtractorBuildCost(tile: Tile, _nation?: Nation | null): { go
   };
 }
 
-export function buildOrUpgradeExtractor(tile: Tile, nation: Nation): { ok: boolean; message: string } {
+export function buildOrUpgradeExtractor(
+  tile: Tile,
+  nation: Nation,
+  opts?: { waiveMinerals?: boolean }
+): { ok: boolean; message: string } {
   ensureNationResources(nation);
   if (!tile.deposit) return { ok: false, message: 'Ô này không có mỏ.' };
   if (tile.owner !== nation.id) return { ok: false, message: 'Bạn phải sở hữu ô này.' };
@@ -412,6 +444,9 @@ export function buildOrUpgradeExtractor(tile: Tile, nation: Nation): { ok: boole
     return { ok: false, message: 'Ô đang có công trình khác. Hãy phá/thay thế trước.' };
   }
   const cost = getExtractorBuildCost(tile, nation);
+  if (opts?.waiveMinerals) {
+    cost.minerals = 0;
+  }
   if (cost.isUpgrade && (tile.buildingLevel || 1) >= RESOURCE_CONFIG.MAX_EXTRACTOR_LEVEL) {
     return { ok: false, message: 'Đã đạt cấp tối đa.' };
   }
@@ -479,6 +514,7 @@ export interface ResourceTickData {
   pendingTradeOffer?: TradeOffer | null;
   nextTradeOfferTimer?: number;
   tradeShips?: SeaTradeShip[];
+  _lateMineralSpawnedAt?: Set<number>;
 }
 
 function pushEvent(data: ResourceTickData, title: string, description: string, nationId: number, type: GameEvent['type'] = 'HARVEST') {
@@ -645,16 +681,74 @@ export function tickResources(data: ResourceTickData, difficulty: string): boole
     if (botTurn && t.owner > 1) {
       const bot = nations[t.owner];
       if (bot && !bot.isEliminated && bot.colonyCategory !== 'FOREST') {
+        const botHasMine = hasActiveMineralMine(tiles, bot.id);
+        const minReserve = botHasMine ? 0 : 25;
+
         if (t.building === type && (t.condition ?? 100) < 60) {
-          const r = repairExtractor(t, bot);
-          if (r.ok) needRedraw = true;
+          const cost = getRepairCost(t);
+          if (bot.gold >= cost.gold && (bot.minerals || 0) - cost.minerals >= minReserve) {
+            const r = repairExtractor(t, bot);
+            if (r.ok) needRedraw = true;
+          }
         } else if (t.building === 'NONE' || (t.building === type && (t.buildingLevel || 1) < RESOURCE_CONFIG.MAX_EXTRACTOR_LEVEL && bot.gold >= 900)) {
           const cost = getExtractorBuildCost(t, bot);
-          if (bot.gold >= cost.gold * 1.35 && (bot.minerals || 0) >= cost.minerals) {
-            const b = buildOrUpgradeExtractor(t, bot);
+          const isNewMineral = dep === 'MINERAL' && t.building === 'NONE';
+          const waiveMinerals = isNewMineral && (bot.minerals || 0) < cost.minerals;
+          const minCheck = waiveMinerals || ((bot.minerals || 0) - cost.minerals >= minReserve);
+          if (bot.gold >= cost.gold * 1.35 && minCheck) {
+            const b = buildOrUpgradeExtractor(t, bot, { waiveMinerals });
             if (b.ok) needRedraw = true;
           }
         }
+      }
+    }
+  }
+
+  // Sinh thêm mỏ khoáng ẩn mới giai đoạn sau (cứ mỗi 120s, khi số mỏ khoáng đất liền < 40% ban đầu)
+  const gameTime = data.gameTimeSeconds || 0;
+  if (gameTime > 0 && gameTime % 120 === 0 && !data._lateMineralSpawnedAt?.has?.(gameTime)) {
+    if (!data._lateMineralSpawnedAt) data._lateMineralSpawnedAt = new Set<number>();
+    data._lateMineralSpawnedAt.add(gameTime);
+
+    const size = tiles.length;
+    const initialMineralTarget = Math.round(size * size * RESOURCE_CONFIG.MINERAL_DENSITY);
+    const allDeposits = getDepositTiles(tiles);
+    const activeLandMinerals = allDeposits.filter(
+      (t) => t.terrain !== 'WATER' && t.deposit === 'MINERAL' && (t.reserve || 0) > 0
+    );
+
+    if (activeLandMinerals.length < initialMineralTarget * 0.4) {
+      const candidates: Tile[] = [];
+      const mountainCandidates: Tile[] = [];
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const t = tiles[y]?.[x];
+          if (!t || t.terrain === 'WATER') continue;
+          if (t.deposit || t.building !== 'NONE') continue;
+          if (t.owner > 0 && nations[t.owner]?.isEliminated) continue;
+          candidates.push(t);
+          if (t.terrain === 'MOUNTAIN') mountainCandidates.push(t);
+        }
+      }
+
+      const spawnCount = Math.floor(Math.random() * 2) + 2; // 2-3 mỏ mới
+      const currentDeposits = [...allDeposits];
+      let spawned = 0;
+
+      for (let i = 0; i < spawnCount; i++) {
+        const pool = (mountainCandidates.length > 0 && Math.random() < 0.65) ? mountainCandidates : candidates;
+        const t = pickDepositTileFromPool(pool, currentDeposits, nations);
+        if (t) {
+          const { reserve } = pickReserve();
+          placeDeposit(t, 'MINERAL', reserve, false); // discovered = false
+          currentDeposits.push(t);
+          spawned++;
+        }
+      }
+
+      if (spawned > 0) {
+        depositCache.delete(tiles);
+        needRedraw = true;
       }
     }
   }

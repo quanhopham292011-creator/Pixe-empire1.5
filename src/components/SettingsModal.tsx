@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Volume2, VolumeX, Pause, Play, Map, LogOut, X, AlertTriangle, Settings, Cloud, CloudRain, Sun, EyeOff, Eye, Maximize2 } from 'lucide-react';
+import { Volume2, VolumeX, Pause, Play, Map, LogOut, X, AlertTriangle, Settings, Cloud, CloudRain, Sun, EyeOff, Eye } from 'lucide-react';
 import { WeatherType } from '../types';
 
 interface SettingsModalProps {
@@ -17,7 +17,9 @@ interface SettingsModalProps {
   onCycleWeather: () => void;
   fogOfWarEnabled: boolean;
   onToggleFogOfWar: () => void;
-  onQuitToTitle: () => void;
+  onSaveAndContinue: () => void;
+  onSaveAndQuit: () => void;
+  onQuitWithoutSaving: () => void;
 }
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -35,7 +37,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onCycleWeather,
   fogOfWarEnabled,
   onToggleFogOfWar,
-  onQuitToTitle,
+  onSaveAndContinue,
+  onSaveAndQuit,
+  onQuitWithoutSaving,
 }) => {
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
   const [uiScale] = useState(() => {
@@ -47,7 +51,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     document.documentElement.style.fontSize = uiScale;
     localStorage.setItem('uiScale', uiScale);
   }, [uiScale]);
-
 
   if (!isOpen) return null;
 
@@ -70,13 +73,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </button>
         </div>
 
-        {/* Nội dung xác nhận thoát trận */}
+        {/* Nội dung xác nhận thoát không lưu */}
         {showQuitConfirm ? (
           <div className="bg-red-950/70 border border-red-400/60 rounded-2xl p-4 text-center space-y-3 animate-in zoom-in-95 duration-150">
             <AlertTriangle className="w-10 h-10 text-red-300 mx-auto animate-bounce" />
-            <h4 className="font-bold text-base text-red-100">XÁC NHẬN THOÁT TRẬN?</h4>
+            <h4 className="font-bold text-base text-red-100">THOÁT KHÔNG LƯU?</h4>
             <p className="text-sm text-slate-100 leading-relaxed">
-              Bạn có chắc chắn muốn rời khỏi trận đấu? Tiến trình hiện tại sẽ bị hủy.
+              Bạn có chắc chắn muốn thoát mà không lưu? Tiến trình chưa lưu sẽ bị mất.
             </p>
             <div className="flex gap-2 pt-1">
               <button
@@ -89,11 +92,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 onClick={() => {
                   setShowQuitConfirm(false);
                   onClose();
-                  onQuitToTitle();
+                  onQuitWithoutSaving();
                 }}
                 className="flex-1 min-h-[44px] py-2.5 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-xl shadow-lg"
               >
-                Xác Nhận Thoát
+                Thoát Không Lưu
               </button>
             </div>
           </div>
@@ -163,7 +166,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
 
-            {/* 4. Hiệu ứng Thời tiết (Mây trôi / Mưa) */}
+            {/* 4. Hiệu ứng Thời tiết */}
             <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-950/90 rounded-2xl border border-slate-700">
               <div className="flex items-center gap-2.5 min-w-0">
                 {weather === 'RAIN' ? (
@@ -202,7 +205,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
             </div>
 
-            {/* 5. Sương Mù Chiến Tranh (Fog of War) */}
+            {/* 5. Sương Mù Chiến Tranh */}
             <div className="flex items-center justify-between gap-2 p-3 bg-slate-950/90 rounded-2xl border border-slate-700">
               <div className="flex items-center gap-2.5 min-w-0">
                 {fogOfWarEnabled ? <EyeOff className="w-5 h-5 text-purple-300 shrink-0" /> : <Eye className="w-5 h-5 text-slate-300 shrink-0" />}
@@ -223,14 +226,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
 
-            {/* 6. Nút Thoát trận */}
-            <button
-              onClick={() => setShowQuitConfirm(true)}
-              className="w-full min-h-[48px] py-3 bg-red-950/80 hover:bg-red-900 border border-red-500/80 text-red-100 font-extrabold rounded-2xl text-sm flex items-center justify-center gap-2 transition-all active:scale-95 mt-2"
-            >
-              <LogOut className="w-4 h-4" />
-              THOÁT TRẬN ĐẤU
-            </button>
+            {/* 6. Nút Lưu và Thoát */}
+            <div className="space-y-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => {
+                  onClose();
+                  onSaveAndContinue();
+                }}
+                className="w-full min-h-[44px] py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 shadow transition-all active:scale-95"
+              >
+                💾 Lưu và tiếp tục
+              </button>
+              <button
+                onClick={() => {
+                  onClose();
+                  onSaveAndQuit();
+                }}
+                className="w-full min-h-[44px] py-2.5 bg-blue-700 hover:bg-blue-600 text-white font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 shadow transition-all active:scale-95"
+              >
+                💾 Lưu và thoát về menu chính
+              </button>
+              <button
+                onClick={() => setShowQuitConfirm(true)}
+                className="w-full min-h-[44px] py-2.5 bg-red-950/80 hover:bg-red-900 border border-red-500/80 text-red-100 font-extrabold rounded-xl text-sm flex items-center justify-center gap-2 transition-all active:scale-95"
+              >
+                <LogOut className="w-4 h-4" />
+                Thoát không lưu
+              </button>
+            </div>
           </div>
         )}
 

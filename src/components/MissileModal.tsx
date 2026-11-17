@@ -261,19 +261,22 @@ export const MissileModal: React.FC<MissileModalProps> = ({
   const [selectedForFleet, setSelectedForFleet] = useState<string[]>([]);
   const [, setLocalTick] = useState(0);
 
+  const wasOpenRef = useRef(false);
+
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !wasOpenRef.current) {
       if (requestedTab) {
         setActiveTab(requestedTab);
         onClearRequestedTab?.();
       } else {
         const countdown = getGrandArsenalCountdownState(playerNation, hasArsenalReady);
         const unlocked = hasAnyAirUnlocked(playerNation) || countdown.show;
-        setActiveTab((prev) => (prev === 'NAVAL' ? 'NAVAL' : unlocked ? 'PLANES' : 'MISSILES'));
+        setActiveTab(unlocked ? 'PLANES' : 'MISSILES');
       }
       setSelectedForFleet([]);
     }
-  }, [isOpen, playerNation, hasArsenalReady, requestedTab, onClearRequestedTab]);
+    wasOpenRef.current = isOpen;
+  }, [isOpen, requestedTab, onClearRequestedTab, playerNation, hasArsenalReady]);
 
   if (!isOpen) return null;
 

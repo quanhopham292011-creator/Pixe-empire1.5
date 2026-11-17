@@ -195,6 +195,7 @@ export interface Nation {
   allianceInvites: { senderNationId: number; expiryTimer: number }[];
   lastRejectedInviteTimer: { [nationId: number]: number };
   traitorTimer: number; // 2 phút (120s)
+  nextBetrayalAt?: number;
   tradeCooldown?: number; // giây chờ giữa 2 lần giao thương với người chơi
   autoTruceState?: {
     dangerTicks: Record<number, number>;

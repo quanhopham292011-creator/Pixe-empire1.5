@@ -31,6 +31,75 @@ function drawRoundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, 
   ctx.closePath();
 }
 
+function drawChibiPixelGeneral(ctx: CanvasRenderingContext2D, cx: number, cy: number, skillId: string) {
+  ctx.save();
+  ctx.translate(Math.round(cx - 8), Math.round(cy - 8));
+  const p = (x: number, y: number, w: number, h: number, fill: string) => {
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, w, h);
+  };
+
+  if (skillId === 'INSPIRE_AURA') {
+    p(7, 0, 2, 3, '#ffffff'); p(6, 1, 1, 2, '#e2e8f0');
+    p(5, 2, 6, 2, '#1e3a8a');
+    p(6, 4, 4, 2, '#fde68a'); p(6, 4, 1, 1, '#1e293b'); p(9, 4, 1, 1, '#1e293b');
+    p(4, 6, 8, 5, '#2563eb'); p(5, 7, 6, 3, '#3b82f6');
+    p(3, 6, 2, 2, '#f59e0b'); p(11, 6, 2, 2, '#f59e0b');
+    p(3, 8, 2, 3, '#1d4ed8'); p(11, 8, 2, 3, '#1d4ed8');
+    p(12, 7, 3, 2, '#fbbf24'); p(14, 6, 2, 4, '#f59e0b');
+    p(5, 11, 6, 1, '#78350f'); p(7, 11, 2, 1, '#fbbf24');
+    p(5, 12, 2, 3, '#1e40af'); p(9, 12, 2, 3, '#1e40af');
+    p(4, 15, 3, 1, '#0f172a'); p(9, 15, 3, 1, '#0f172a');
+  } else if (skillId === 'IRON_BORDER_SHIELD') {
+    p(5, 1, 6, 3, '#64748b'); p(6, 2, 4, 1, '#94a3b8');
+    p(6, 4, 4, 2, '#fde68a'); p(5, 4, 6, 1, '#475569');
+    p(6, 4, 1, 1, '#0f172a'); p(9, 4, 1, 1, '#0f172a');
+    p(4, 6, 8, 5, '#475569'); p(5, 7, 6, 3, '#64748b');
+    p(1, 6, 5, 7, '#94a3b8'); p(2, 7, 3, 5, '#cbd5e1'); p(3, 8, 1, 3, '#f59e0b');
+    p(11, 7, 2, 4, '#334155');
+    p(5, 11, 6, 1, '#1e293b');
+    p(5, 12, 2, 3, '#334155'); p(9, 12, 2, 3, '#334155');
+    p(4, 15, 3, 1, '#0f172a'); p(9, 15, 3, 1, '#0f172a');
+  } else if (skillId === 'SUPPLY_REINFORCE') {
+    p(3, 1, 2, 2, '#fbbf24'); p(11, 1, 2, 2, '#fbbf24');
+    p(5, 1, 6, 3, '#92400e'); p(7, 0, 2, 2, '#f59e0b');
+    p(6, 4, 4, 2, '#fde68a'); p(6, 4, 1, 1, '#451a03'); p(9, 4, 1, 1, '#451a03');
+    p(3, 5, 3, 2, '#f59e0b'); p(10, 5, 3, 2, '#f59e0b');
+    p(4, 6, 8, 5, '#b45309'); p(5, 7, 6, 3, '#d97706');
+    p(2, 7, 2, 6, '#78350f'); p(12, 7, 2, 6, '#78350f');
+    p(5, 11, 6, 1, '#f59e0b');
+    p(5, 12, 2, 3, '#78350f'); p(9, 12, 2, 3, '#78350f');
+    p(4, 15, 3, 1, '#451a03'); p(9, 15, 3, 1, '#451a03');
+  } else if (skillId === 'SHADOW_RAID') {
+    p(5, 1, 6, 3, '#3b0764'); p(6, 2, 4, 1, '#581c87');
+    p(6, 4, 4, 1, '#fde68a'); p(6, 4, 1, 1, '#a855f7'); p(9, 4, 1, 1, '#a855f7');
+    p(5, 5, 6, 2, '#2e1065');
+    p(4, 6, 8, 5, '#18181b'); p(5, 7, 6, 3, '#3f3f46');
+    p(2, 6, 2, 7, '#2e1065'); p(12, 6, 2, 7, '#2e1065');
+    p(2, 8, 1, 4, '#38bdf8'); p(13, 8, 1, 4, '#38bdf8');
+    p(5, 11, 6, 1, '#a855f7');
+    p(5, 12, 2, 3, '#18181b'); p(9, 12, 2, 3, '#18181b');
+    p(4, 15, 3, 1, '#09090b'); p(9, 15, 3, 1, '#09090b');
+  } else if (skillId === 'MISSILE_BARRAGE') {
+    p(4, 0, 1, 3, '#ea580c'); p(11, 0, 1, 3, '#ea580c');
+    p(5, 1, 1, 2, '#f97316'); p(10, 1, 1, 2, '#f97316');
+    p(5, 2, 6, 2, '#b91c1c');
+    p(6, 4, 4, 2, '#fde68a'); p(6, 4, 1, 1, '#7f1d1d'); p(9, 4, 1, 1, '#7f1d1d');
+    p(2, 5, 2, 4, '#ef4444'); p(2, 4, 2, 1, '#f97316');
+    p(12, 5, 2, 4, '#ef4444'); p(12, 4, 2, 1, '#f97316');
+    p(4, 6, 8, 5, '#dc2626'); p(5, 7, 6, 3, '#ea580c');
+    p(5, 11, 6, 1, '#f97316');
+    p(5, 12, 2, 3, '#991b1b'); p(9, 12, 2, 3, '#991b1b');
+    p(4, 15, 3, 1, '#450a0a'); p(9, 15, 3, 1, '#450a0a');
+  } else {
+    p(5, 2, 6, 3, '#b45309');
+    p(6, 5, 4, 3, '#fde68a');
+    p(4, 8, 8, 6, '#d97706');
+    p(5, 14, 2, 2, '#451a03'); p(9, 14, 2, 2, '#451a03');
+  }
+  ctx.restore();
+}
+
 interface UseGameRendererParams {
   mapSize: MapDimension;
   gameStateRef: React.MutableRefObject<'TITLE' | 'PLAYING' | 'VICTORY' | 'DEFEAT'>;
@@ -1013,25 +1082,17 @@ export function useGameRenderer({
           ctx.lineWidth = 2.0;
           ctx.stroke();
 
-          // Sprite Tướng (Biểu tượng Kiếm Vàng)
-          ctx.fillStyle = '#fbbf24';
-          ctx.beginPath();
-          ctx.arc(gx, gy, 7.5, 0, Math.PI * 2);
-          ctx.fill();
+          // Sprite Tướng (Nhân vật Chibi Pixel)
+          drawChibiPixelGeneral(ctx, gx, gy, gen.skillId);
 
-          ctx.fillStyle = '#ffffff';
-          ctx.font = 'bold 9px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.fillText('⚔️', gx, gy + 3);
-
-          // Tag Tướng (+30% Sức Mạnh & Kỹ năng chủ động đang hiệu lực)
+          // Tag Tướng (Chỉ hiển thị tên riêng và trạng thái kỹ năng, bỏ chữ Đại Tướng và (+30%))
           ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
           ctx.strokeStyle = '#f59e0b';
           ctx.lineWidth = 1.0;
           const isSkillActive = (gen.skillActiveTimer || 0) > 0;
           const rItem = GENERAL_ROSTER.find(r => r.skillId === gen.skillId);
           const skillTag = isSkillActive && rItem ? ` [${rItem.emoji} ${gen.skillActiveTimer}s]` : '';
-          const tagText = `⚔️ ${gen.name}${skillTag} (+30%)`;
+          const tagText = `${gen.name}${skillTag}`;
           const font = 'bold 9px sans-serif';
           const tw = getCachedWidth(ctx, tagText, font) + 8;
           ctx.fillRect(gx - tw / 2, gy - 20, tw, 14);

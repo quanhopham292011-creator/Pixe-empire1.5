@@ -1,11 +1,12 @@
 import React, { useCallback } from 'react';
 import { Nation, Tile, BuildingType, GameDifficulty, GeneralBehavior, NavalShip } from '../types';
 import { RoomState } from '../multiplayer/types';
-import { BUILDING_INFO, formatGameTime } from '../utils/constants';
+import { BUILDING_INFO, formatGameTime, TILE_PIXEL_SIZE } from '../utils/constants';
 import { hasBuildingNearby } from '../utils/buildingSpacing';
 import { GENERAL_CONSTANTS, canDeployGeneral } from '../utils/generalCombat';
 import { getStyleAIWeights } from '../utils/generalEvolution';
-import { countActiveAlliances, reconcileNationAlliances } from './useTradeRoutes';
+import { countActiveAlliances, reconcileNationAlliances, collectPortList, syncBalancedTradeRoutes } from './useTradeRoutes';
+import { showMeme } from '../utils/memes';
 import { getPortWaterAccess, getTradeShipPosition } from '../utils/seaPathfinding';
 import {
   SUPER_BUILDING_CONFIG,
@@ -19,7 +20,7 @@ import {
   getAcademyResearchSpeedMult,
 } from '../utils/superBuildings';
 import { NAVAL_CONFIG, SUPREME_TECH_CONFIG } from '../data/gameData';
-import { areResourcesEnabled, getDepositTiles, isExtractor } from '../utils/resources';
+import { areResourcesEnabled, getDepositTiles, isExtractor, hasActiveMineralMine, getBuildingMineralCost } from '../utils/resources';
 import {
   assignExtractorDeposit,
   canQueueNavalShip,
@@ -490,6 +491,109 @@ export function useBotAI({
       // 1. Dùng kỹ năng Tướng
       botUseGeneralSkill(bot);
 
+      // --- 1B. Bot chủ động xin liên minh ---
+      if ((bot.id + gameTime) % 15 === 0 && bot.traitorTimer <= 0 && countActiveAlliances(bot, nations) < 3) {
+        const diffInviteProb = difficulty === 'EXTREME' ? 0.40 : difficulty === 'HARD' ? 0.35 : difficulty === 'NORMAL' ? 0.25 : 0.15;
+        const persInviteMult = bot.personality === 'AGGRESSIVE' ? 0.3 : bot.personality === 'MERCHANT' ? 1.5 : 1.0;
+        if (Math.random() < diffInviteProb * persInviteMult) {
+          const candidates: Nation[] = [];
+          nations.forEach((other: Nation) => {
+            if (!other || other.id === bot.id || other.isEliminated || other.colonyCategory === 'FOREST') return;
+            reconcileNationAlliances(bot, nations);
+            reconcileNationAlliances(other, nations);
+            if (bot.diplomacy?.[other.id]?.status === 'ALLIANCE') return;
+            if (countActiveAlliances(other, nations) >= 3) return;
+            if ((bot.lastRejectedInviteTimer?.[other.id] || 0) > 0) return;
+            if (other.allianceInvites?.some((inv: any) => inv.senderNationId === bot.id)) return;
+            candidates.push(other);
+          });
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => {
+              const relA = bot.diplomacy?.[a.id]?.relation || 0;
+              const relB = bot.diplomacy?.[b.id]?.relation || 0;
+              return relB - relA;
+            });
+            const target = candidates[0];
+            target.allianceInvites = target.allianceInvites || [];
+            target.allianceInvites.push({
+              senderNationId: bot.id,
+              expiryTimer: 20
+            });
+            if (target.id === 1) {
+              data.particles.push({
+                x: bot.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                y: bot.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                color: '#10b981', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
+                type: 'FLOAT_TEXT', text: `🤝 ${bot.name} muốn kết minh với bạn!`
+              });
+              data.events.unshift({
+                id: Math.random().toString(),
+                title: '🤝 Lời Mời Kết Minh',
+                description: `${bot.name} đã gửi lời mời liên minh tới bạn (hiệu lực 20s)!`,
+                type: 'DIPLOMACY',
+                targetNationId: bot.id,
+                timestamp: formatGameTime(gameTime),
+              });
+            }
+          }
+        }
+      }
+
+      // --- 1C. Bot phản bội liên minh ---
+      if (gameTime > 180 && (bot.id + gameTime) % 10 === 0 && bot.traitorTimer <= 0 && difficulty !== 'EASY' && bot.personality !== 'MERCHANT' && (bot.nextBetrayalAt || 0) <= gameTime) {
+        const diffBetrayProb = difficulty === 'EXTREME' ? 0.06 : difficulty === 'HARD' ? 0.035 : 0.015;
+        const persBetrayMult = bot.personality === 'AGGRESSIVE' ? 2.0 : bot.personality === 'OPPORTUNIST' ? 1.5 : 0.7;
+        if (Math.random() < diffBetrayProb * persBetrayMult) {
+          const botPower = (bot.troops || 0) + (bot.territoryCount || 0) * 10;
+          let activeWars = 0;
+          Object.values(bot.diplomacy || {}).forEach((d: any) => {
+            if (d?.status === 'WAR') activeWars++;
+          });
+
+          if (activeWars <= 1) {
+            for (const [otherIdStr, dipInfo] of Object.entries(bot.diplomacy || {})) {
+              const otherId = Number(otherIdStr);
+              if ((dipInfo as any)?.status === 'ALLIANCE') {
+                const ally = nations[otherId];
+                if (!ally || ally.isEliminated) continue;
+                const allyPower = (ally.troops || 0) + (ally.territoryCount || 0) * 10;
+                if (botPower > allyPower * 1.3) {
+                  bot.traitorTimer = 120;
+                  bot.nextBetrayalAt = gameTime + 120;
+                  bot.diplomacy[otherId] = { status: 'WAR', relation: 0, truceTimer: 0 };
+                  if (!ally.diplomacy) ally.diplomacy = {};
+                  ally.diplomacy[bot.id] = { status: 'WAR', relation: 0, truceTimer: 0 };
+
+                  data.attackWaves = (data.attackWaves || []).filter((w: any) => 
+                    !((w.fromNation === bot.id && w.toNation === otherId) || (w.fromNation === otherId && w.toNation === bot.id))
+                  );
+                  syncBalancedTradeRoutes(data, collectPortList(tiles, nations));
+
+                  if (otherId === 1 || bot.id === 1) {
+                    showMeme('BETRAY');
+                    data.particles.push({
+                      x: bot.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                      y: bot.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                      color: '#ef4444', size: 0, life: 75, maxLife: 75, vx: 0, vy: -0.8,
+                      type: 'FLOAT_TEXT', text: `⚡ ${bot.name} PHẢN BỘI LIÊN MINH!`
+                    });
+                    data.events.unshift({
+                      id: Math.random().toString(),
+                      title: '⚡ PHẢN BỘI ĐỘNG TRỜI!',
+                      description: `${bot.name} đã xé bỏ hiệp ước liên minh và tuyên chiến bất ngờ với bạn!`,
+                      type: 'DIPLOMACY',
+                      targetNationId: bot.id,
+                      timestamp: formatGameTime(gameTime),
+                    });
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        }
+      }
+
       const ownedList = ownedByNation[bot.id] || [];
 
       // --- 2. TỰ ĐỘNG PHÁT TRIỂN KINH TẾ, DÂN SỐ & CÔNG NGHỆ (Dynamic Economy & Tech) ---
@@ -559,10 +663,15 @@ export function useBotAI({
               (t) => t.branchKey === brKey && t.level === curSupLvl + 1
             );
             if (nextSup) {
-              const res = startSupremeResearchForNation(bot, nextSup.id, bot.supremeResearching);
-              if (res.ok && res.researching) {
-                bot.supremeResearching = res.researching;
-                break;
+              const supMinCost = nextSup.mineralCost || 0;
+              const botHasMine = hasActiveMineralMine(tiles, bot.id);
+              const minReserve = botHasMine ? 0 : 25;
+              if ((bot.minerals || 0) - supMinCost >= minReserve) {
+                const res = startSupremeResearchForNation(bot, nextSup.id, bot.supremeResearching);
+                if (res.ok && res.researching) {
+                  bot.supremeResearching = res.researching;
+                  break;
+                }
               }
             }
           }
@@ -803,8 +912,8 @@ export function useBotAI({
       }
 
       // 6a2. AI xây 1 Cảng ở ô ven biển để có thể đổ bộ
-      if (!bot.hasPort && gameTime >= 120 && ownedList.length >= 12 && (bot.id + gameTime) % 7 === 0 &&
-          bot.gold >= BUILDING_INFO.PORT.baseCost + 300) {
+      if (!bot.hasPort && (gameTime >= 120 || (neutralTargets.length === 0 && ownedList.length >= 5)) && (ownedList.length >= 12 || neutralTargets.length === 0) && (bot.id + gameTime) % 7 === 0 &&
+          bot.gold >= BUILDING_INFO.PORT.baseCost + 200) {
         const portSpot = ownedList.find(t =>
           t.terrain !== 'WATER' && t.hasHarborAccess && t.building === 'NONE' &&
           !(t.x === bot.capitalX && t.y === bot.capitalY)
@@ -864,7 +973,9 @@ export function useBotAI({
 
       // 6c. Bot nâng cấp Mỏ / Giàn Dầu Cao Cấp (tối đa 2 hoặc 4)
       const botMaxAdv = getMaxAdvancedExtractors(bot);
-      if (botMaxAdv > 0 && (bot.minerals || 0) >= 120 && (bot.id + gameTime) % 5 === 0) {
+      const botHasMineAdv = hasActiveMineralMine(tiles, bot.id);
+      const minReserveAdv = botHasMineAdv ? 0 : 25;
+      if (botMaxAdv > 0 && (bot.minerals || 0) - 80 >= minReserveAdv && (bot.id + gameTime) % 5 === 0) {
         if (countAdvancedExtractors(tiles, bot.id) < botMaxAdv) {
           const advTarget = ownedList.find(
             (ot) => isExtractor(ot.building) && !ot.isAdvancedExtractor && !(ot.inactiveTimer && ot.inactiveTimer > 0)
@@ -1014,10 +1125,21 @@ export function useBotAI({
         const siloMinGold = difficulty === 'EASY' ? 6000 : difficulty === 'NORMAL' ? 4500 : 3500;
         let botSilos = 0;
         ownedList.forEach(t => { if (t.building === 'MISSILE_SILO') botSilos++; });
-        if (botSilos < siloMaxByDiff && bot.gold >= siloMinGold + BUILDING_INFO.MISSILE_SILO.baseCost) {
+        const siloMinCost = areResourcesEnabled() ? getBuildingMineralCost('MISSILE_SILO', botSilos) : 0;
+        const botHasMine = hasActiveMineralMine(tiles, bot.id);
+        const minReserve = botHasMine ? 0 : 25;
+
+        if (
+          botSilos < siloMaxByDiff &&
+          bot.gold >= siloMinGold + BUILDING_INFO.MISSILE_SILO.baseCost &&
+          (bot.minerals || 0) - siloMinCost >= minReserve
+        ) {
           const siloSpot = ownedList.find(t => t.terrain === 'LAND' && t.building === 'NONE' && !(t.x === bot.capitalX && t.y === bot.capitalY) && !hasBuildingNearby(tiles, t.x, t.y));
           if (siloSpot) {
             bot.gold -= BUILDING_INFO.MISSILE_SILO.baseCost;
+            if (siloMinCost > 0) {
+              bot.minerals = Math.max(0, (bot.minerals || 0) - siloMinCost);
+            }
             siloSpot.building = 'MISSILE_SILO';
             siloSpot.buildingLevel = 1;
             offscreenTerritoryDirtyRef.current = true;
@@ -1038,12 +1160,14 @@ export function useBotAI({
         const opponentHasAir = (data.airUnits || []).some((u: any) => u.owner !== bot.id && !u.isEliminated);
         const opponentHasMissileSilo = nations.some((n: Nation) => n.id !== bot.id && !n.isEliminated && ownedByNation[n.id]?.some((t: Tile) => t.building === 'MISSILE_SILO'));
         const opponentHasActiveThreats = opponentHasAir || opponentHasMissileSilo;
+        const samMinCost = areResourcesEnabled() ? getBuildingMineralCost('AIR_DEFENSE', botSams) : 0;
 
         if (
           opponentHasActiveThreats &&
           botSams < samMax &&
           canBuildSamTime &&
-          bot.gold >= BUILDING_INFO.AIR_DEFENSE.baseCost
+          bot.gold >= BUILDING_INFO.AIR_DEFENSE.baseCost &&
+          (bot.minerals || 0) - samMinCost >= minReserve
         ) {
           // Ưu tiên đặt gần các công trình quan trọng: Thủ đô, Siêu công trình, Bệ phóng tên lửa, Thành Thị, Doanh Trại
           const anchors: { x: number; y: number }[] = [];
@@ -1076,6 +1200,9 @@ export function useBotAI({
           }
           if (samSpot) {
             bot.gold -= BUILDING_INFO.AIR_DEFENSE.baseCost;
+            if (samMinCost > 0) {
+              bot.minerals = Math.max(0, (bot.minerals || 0) - samMinCost);
+            }
             samSpot.building = 'AIR_DEFENSE';
             samSpot.buildingLevel = 1;
             samSpot.inactiveTimer = 3;
@@ -1106,8 +1233,10 @@ export function useBotAI({
             }
 
             const bCost = BUILDING_INFO[buildType as Exclude<BuildingType, 'NONE'>].baseCost;
-            if (bot.gold >= bCost) {
+            const bMinCost = areResourcesEnabled() ? getBuildingMineralCost(buildType, 0) : 0;
+            if (bot.gold >= bCost && (bot.minerals || 0) - bMinCost >= minReserve) {
               bot.gold -= bCost;
+              if (bMinCost > 0) bot.minerals = Math.max(0, (bot.minerals || 0) - bMinCost);
               tileToBuild.building = buildType;
               tileToBuild.buildingLevel = 1;
               offscreenTerritoryDirtyRef.current = true;
@@ -1116,8 +1245,10 @@ export function useBotAI({
             }
           } else if (['FORTRESS', 'BARRACKS', 'CITY', 'AIR_DEFENSE'].includes(tileToBuild.building)) {
             const upgradeCost = Math.floor(BUILDING_INFO[tileToBuild.building].baseCost * 0.8);
-            if (bot.gold >= upgradeCost && (tileToBuild.buildingLevel || 1) < maxBuildLvl) {
+            const upMinCost = areResourcesEnabled() ? getBuildingMineralCost(tileToBuild.building, tileToBuild.buildingLevel || 1) : 0;
+            if (bot.gold >= upgradeCost && (tileToBuild.buildingLevel || 1) < maxBuildLvl && (bot.minerals || 0) - upMinCost >= minReserve) {
               bot.gold -= upgradeCost;
+              if (upMinCost > 0) bot.minerals = Math.max(0, (bot.minerals || 0) - upMinCost);
               tileToBuild.buildingLevel = (tileToBuild.buildingLevel || 1) + 1;
               offscreenTerritoryDirtyRef.current = true;
               fogBaseDirtyRef.current = true;
@@ -1236,43 +1367,6 @@ export function useBotAI({
         }
       }
 
-      // 8b. Đổ bộ qua biển: chiếm đảo / vùng xa biển bằng Cảng
-      if (bot.hasPort && (bot.id + gameTime) % 6 === 0 && (data.attackWaves?.length || 0) < waveBudgetBase) {
-        const seaProb = difficulty === 'EXTREME' ? 0.8 : difficulty === 'HARD' ? 0.6 : difficulty === 'NORMAL' ? 0.4 : 0.25;
-        const seaKeep = bot.maxTroops * 0.2;
-        if (Math.random() < seaProb && bot.troops - seaKeep >= 12) {
-          let seaTarget: Tile | null = null;
-          for (let k = 0; k < 60 && !seaTarget; k++) {
-            const rx = Math.floor(Math.random() * size);
-            const ry = Math.floor(Math.random() * size);
-            const ct = tiles[ry][rx];
-            if (ct.owner !== 0 || ct.terrain === 'WATER' || !ct.hasHarborAccess) continue;
-            let nearOwn = false;
-            for (let ni = 0; ni < 4; ni++) {
-              const nt = tiles[ry + DY[ni]]?.[rx + DX[ni]];
-              if (nt && nt.owner === bot.id) { nearOwn = true; break; }
-            }
-            if (!nearOwn) seaTarget = ct;
-          }
-          if (seaTarget) {
-            let seaSource: Tile | null = null;
-            let seaBest = Infinity;
-            for (let oi = 0; oi < ownedList.length; oi++) {
-              const ot = ownedList[oi];
-              if (ot.terrain === 'WATER' || !ot.hasHarborAccess) continue;
-              const d = Math.hypot(ot.x - seaTarget.x, ot.y - seaTarget.y);
-              if (d < seaBest) { seaBest = d; seaSource = ot; }
-            }
-            if (seaSource) {
-              const seaSend = Math.max(8, Math.floor((bot.troops - seaKeep) * 0.18));
-              if (seaSend <= bot.troops) {
-                launchAttackWave(bot.id, 0, seaSource, seaTarget, seaSend, undefined, false);
-              }
-            }
-          }
-        }
-      }
-
       // --- 9. AI & BOSS HẢI QUÂN (Đóng tàu đúng luật, khai thác dầu biển, hạm đội, hộ tống, đổ bộ) ---
       const navalTickInterval = difficulty === 'EXTREME' ? 3 : difficulty === 'HARD' ? 4 : difficulty === 'NORMAL' ? 5 : 7;
       if (gameTime >= 25 && (bot.id + gameTime) % navalTickInterval === 0) {
@@ -1310,9 +1404,12 @@ export function useBotAI({
             const goldBufferExtractor = difficulty === 'EASY' ? 900 : 450;
 
             let queuedShipThisTick = false;
+            const botHasMineNaval = hasActiveMineralMine(tiles, bot.id);
+            const minReserveNaval = botHasMineNaval ? 0 : 25;
             if (
               nationCounts.totalNationExtractors < desiredExtractors &&
               bot.gold >= NAVAL_CONFIG.EXTRACTOR.GOLD_COST + goldBufferExtractor &&
+              (bot.minerals || 0) - NAVAL_CONFIG.EXTRACTOR.MINERAL_COST >= minReserveNaval &&
               discoveredSeaOils.some(dep => !isDepositClaimedByOtherExtractor(data, dep.x, dep.y) && hasSeaOilExtractionRight(data, bot.id, dep.x, dep.y))
             ) {
               for (const op of openPorts) {
@@ -1344,12 +1441,16 @@ export function useBotAI({
                   ? (isBoss ? 6 : 4)
                   : (isBoss ? 8 : 5)
               );
-              const goldBufferWarship = isBoss ? 1100 : difficulty === 'EXTREME' ? 900 : difficulty === 'HARD' ? 1300 : difficulty === 'NORMAL' ? 1700 : 2400;
+              const isIsolatedIsland = borderThreats.length === 0 && neutralTargets.length === 0 && openPorts.length > 0;
+              const goldBufferWarship = (isIsolatedIsland && nationCounts.totalNationWarships === 0)
+                ? (isBoss ? 200 : 300)
+                : (isBoss ? 1100 : difficulty === 'EXTREME' ? 900 : difficulty === 'HARD' ? 1300 : difficulty === 'NORMAL' ? 1700 : 2400);
 
               if (
                 nationCounts.totalNationWarships < desiredWarships &&
-                (hasNavalEnemy || myExtractors.length > 0 || discoveredSeaOils.length > 0) &&
-                bot.gold >= NAVAL_CONFIG.WARSHIP.GOLD_COST + goldBufferWarship
+                (hasNavalEnemy || myExtractors.length > 0 || discoveredSeaOils.length > 0 || isIsolatedIsland) &&
+                bot.gold >= NAVAL_CONFIG.WARSHIP.GOLD_COST + goldBufferWarship &&
+                (bot.minerals || 0) - NAVAL_CONFIG.WARSHIP.MINERAL_COST >= minReserveNaval
               ) {
                 for (const op of openPorts) {
                   if (canQueueNavalShip(data, bot, op.tile.x, op.tile.y, 'WARSHIP').ok) {
