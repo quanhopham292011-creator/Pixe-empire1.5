@@ -43,3 +43,15 @@
   }
 }
 
+/* Điện thoại cầm ngang (landscape): thu gọn header & footer để ưu tiên diện tích bản đồ */
+@media (max-height: 500px) and (max-width: 960px) {
+  .hud-header {
+    padding-top: 2px;
+    padding-bottom: 2px;
+  }
+  .hud-footer {
+    max-height: 36dvh;
+    padding-top: 2px;
+  }
+}
+

@@ -26,16 +26,16 @@ export default function McCharacter({ name, selectedGeneral = 'INSPIRE_AURA', on
         <div className="mc-char-avatar">
           <GeneralModel skillId={selectedGeneral} size={84} />
         </div>
-        <div className="w-full text-center mt-2 px-1 overflow-hidden">
+        <div className="w-full text-center mt-1.5 md:mt-2 px-1 overflow-hidden">
           <div
-            className="text-[#ffe9a8] font-bold text-[22px] leading-tight truncate"
+            className="text-[#ffe9a8] font-bold text-[18px] md:text-[22px] leading-tight truncate"
             style={{ textShadow: '1px 1px 2px #000, 0 0 4px rgba(0,0,0,0.8)' }}
             title={rosterItem.name}
           >
             {rosterItem.name}
           </div>
           <div
-            className="text-[#7df3e4] font-medium text-[18px] leading-tight truncate mt-1"
+            className="text-[#7df3e4] font-medium text-[15px] md:text-[18px] leading-tight truncate mt-0.5 md:mt-1"
             style={{ textShadow: '1px 1px 2px #000, 0 0 4px rgba(0,0,0,0.8)' }}
             title={rosterItem.skillName}
           >
@@ -51,10 +51,10 @@ export default function McCharacter({ name, selectedGeneral = 'INSPIRE_AURA', on
         className="mc-btn-general"
         title="Bảng chọn Tướng"
       >
-        <span className="w-[28px] h-[28px] flex items-center justify-center shrink-0 overflow-hidden">
+        <span className="w-[22px] h-[22px] md:w-[28px] md:h-[28px] flex items-center justify-center shrink-0 overflow-hidden">
           <GeneralModel skillId={selectedGeneral} size={28} />
         </span>
-        <span className="text-[24px] font-bold leading-none select-none">Tướng</span>
+        <span className="text-[18px] md:text-[24px] font-bold leading-none select-none">Tướng</span>
       </button>
 
       {/* Bóng dưới chân */}

@@ -164,7 +164,7 @@ export interface Nation {
   hasPort: boolean;
   general?: General; // Mỗi quốc gia có tối đa 1 Đại Tướng ACTIVE
   reserveGenerals?: General[]; // Danh sách Đại Tướng dự bị (chuẩn bị v1.2)
-  titanBuffTimer?: number; // Đếm ngược Buff Tà Thần (+30% Sức mạnh, Vàng, Dân số trong 180s)
+  titanBuffTimer?: number; // Đếm ngược Buff Tà Thần (+20% Sức mạnh, Vàng, Dân số trong 180s)
   techLevels: {
     economy: number;
     military: number;
@@ -190,6 +190,7 @@ export interface Nation {
       status: DiplomacyStatus;
       relation: number;
       truceTimer: number;
+      alliedSince?: number;
     };
   };
   allianceInvites: { senderNationId: number; expiryTimer: number }[];
@@ -203,6 +204,9 @@ export interface Nation {
     truceCounts: Record<number, number>;
     prevTerritory: number;
     recentLoss: number;
+    globalCooldownUntil?: number;
+    totalTrucesUsed?: number;
+    lastIncomingTruceAt?: number;
   };
 }
 

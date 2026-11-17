@@ -9,7 +9,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Khai Khẩn Điền Trang',
     description: 'Tăng 8% sản lượng vàng từ đất đai và thành thị.',
     cost: 300,
-    researchTime: 15,
+    researchTime: 14,
   },
   {
     id: 'eco_2',
@@ -18,7 +18,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Phường Buôn Phồn Hoa',
     description: 'Tăng 15% thu nhập vàng và giảm 8% chi phí xây dựng.',
     cost: 900,
-    researchTime: 30,
+    researchTime: 27,
   },
   {
     id: 'eco_3a',
@@ -28,7 +28,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Thương Nhân',
     description: 'Tổng +25% thu nhập vàng, cộng 3 vàng mỗi ô chiếm (tối đa 30 vàng/s).',
     cost: 2500,
-    researchTime: 50,
+    researchTime: 45,
   },
   {
     id: 'eco_3b',
@@ -38,7 +38,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Thợ Xây',
     description: 'Thu nhập vàng +15%, giảm thêm 20% giá xây mọi công trình, Thành Thị +15% vàng.',
     cost: 2500,
-    researchTime: 50,
+    researchTime: 45,
   },
 
   // QUÂN SỰ
@@ -49,7 +49,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Hành Quân Thần Tốc',
     description: 'Tăng 10% tốc độ hành quân của quân đội.',
     cost: 300,
-    researchTime: 15,
+    researchTime: 14,
   },
   {
     id: 'mil_2',
@@ -58,7 +58,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Kỵ Binh Giáp Nặng',
     description: 'Giảm 8% quân tốn khi chiếm ô, tăng +30 quân tối đa.',
     cost: 900,
-    researchTime: 30,
+    researchTime: 27,
   },
   {
     id: 'mil_3a',
@@ -68,7 +68,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Phá Núi',
     description: 'Giảm 20% sức phòng thủ ở ô Núi của địch, giảm thêm 5% quân tốn khi chiếm ô.',
     cost: 2500,
-    researchTime: 50,
+    researchTime: 45,
   },
   {
     id: 'mil_3b',
@@ -78,7 +78,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Hậu Cần',
     description: 'Tăng 10% tốc độ hồi quân mỗi giây, tăng +60 quân tối đa.',
     cost: 2500,
-    researchTime: 50,
+    researchTime: 45,
   },
 
   // PHÒNG THỦ
@@ -89,7 +89,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Hào Sâu Cọc Nhọn',
     description: 'Tăng 10% sức phòng thủ cho toàn bộ biên giới.',
     cost: 300,
-    researchTime: 15,
+    researchTime: 14,
   },
   {
     id: 'def_2',
@@ -98,7 +98,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Tường Đá Hoa Cương',
     description: 'Tăng 18% sức phòng thủ cho toàn bộ biên giới.',
     cost: 900,
-    researchTime: 30,
+    researchTime: 27,
   },
   {
     id: 'def_3a',
@@ -108,7 +108,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Trường Thành',
     description: 'Tăng 25% sức phòng thủ biên giới khi kẻ địch tiến công.',
     cost: 2500,
-    researchTime: 50,
+    researchTime: 45,
   },
   {
     id: 'def_3b',
@@ -118,7 +118,7 @@ export const TECH_TREE: TechNode[] = [
     name: 'Lá Chắn Trời',
     description: 'Phòng Không (SAM) đánh hạ tên lửa Atom/Hydro 90%, tầm bảo vệ 6 ô, phòng thủ biên giới +18%.',
     cost: 2500,
-    researchTime: 50,
+    researchTime: 45,
   },
 ];
 
@@ -226,13 +226,13 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
   },
   SUPREME_FORTRESS: {
     name: 'Pháo Đài Tối Thượng',
-    desc: 'Giảm 80% sát thương tên lửa nhận vào trong bán kính 8 ô (xây 45s, tối đa 1).',
+    desc: 'Giảm 80% sát thương tên lửa nhận vào trong bán kính 8 ô (xây 41s, tối đa 1).',
     baseCost: 25_000,
     icon: 'Shield',
   },
   GRAND_ACADEMY: {
     name: 'Đại Học Viện',
-    desc: 'Tốc độ nghiên cứu công nghệ nhanh gấp đôi khi hoạt động (xây 45s, tối đa 1).',
+    desc: 'Tốc độ nghiên cứu công nghệ nhanh gấp đôi khi hoạt động (xây 41s, tối đa 1).',
     baseCost: 30_000,
     icon: 'GraduationCap',
   },
@@ -310,13 +310,13 @@ export const DARK_TITAN_CONFIG = {
   Q_DAMAGE_TROOPS: 138,
   E_DAMAGE_TROOPS: 92,
   W_WAVE_LOSS_RATIO: 0.135,
-  ULT_TROOP_LOSS_RATIO: 0.46,
-  ULT_MAX_TROOP_LOSS_RATIO: 0.75,
+  ULT_TROOP_LOSS_RATIO: 0.40,
+  ULT_MAX_TROOP_LOSS_RATIO: 0.65,
   POST_ULT_PAUSE_SECONDS: 4,
   MAX_HP: 5000,
   BOUNTY_GOLD: 5600,
   BUFF_DURATION_SECONDS: 180,
-  BUFF_MULTIPLIER: 1.35,
+  BUFF_MULTIPLIER: 1.20,
   Q_COOLDOWN: 6.7,
   W_COOLDOWN: 12.2,
   E_COOLDOWN: 15.6,
@@ -327,8 +327,8 @@ export const DARK_TITAN_CONFIG = {
   RESPAWN_COOLDOWN_SECONDS: 180,
   POWER_REF: 6000,
   TIME_REF_SECONDS: 2400,
-  HP_GROW: { EASY: 2, NORMAL: 4, HARD: 6, EXTREME: 8 } as Record<string, number>,
-  DMG_GROW: { EASY: 0.5, NORMAL: 0.8, HARD: 1.1, EXTREME: 1.5 } as Record<string, number>,
+  HP_GROW: { EASY: 1.8, NORMAL: 3.4, HARD: 5.0, EXTREME: 6.5 } as Record<string, number>,
+  DMG_GROW: { EASY: 0.45, NORMAL: 0.7, HARD: 0.95, EXTREME: 1.25 } as Record<string, number>,
   TIER_NAMES: ['Sơ Khai', 'Hắc Ám', 'Hủy Diệt'],
 };
 
@@ -403,9 +403,9 @@ export const GENERAL_ROSTER: GeneralRosterItem[] = [
 ];
 
 export const RESOURCE_CONFIG = {
-  OIL_DENSITY: 0.0065,
+  OIL_DENSITY: 0.004,
   MINERAL_DENSITY: 0.0075,
-  SEA_OIL_RATIO_OF_LAND: 0.6,
+  SEA_OIL_RATIO_OF_LAND: 0.95,
   SEA_OIL_RESERVE_SMALL: 1800,
   SEA_OIL_RESERVE_MEDIUM: 4500,
   SEA_OIL_RESERVE_LARGE: 10000,
@@ -467,9 +467,9 @@ export interface SupremeTechItem {
 }
 
 const SUPREME_LEVEL_COSTS = {
-  1: { gold: 15_000, oil: 1_500, minerals: 1_500, researchTime: 60 },
-  2: { gold: 25_000, oil: 3_000, minerals: 3_000, researchTime: 75 },
-  3: { gold: 40_000, oil: 5_000, minerals: 5_000, researchTime: 90 },
+  1: { gold: 15_000, oil: 1_500, minerals: 1_500, researchTime: 54 },
+  2: { gold: 25_000, oil: 3_000, minerals: 3_000, researchTime: 68 },
+  3: { gold: 40_000, oil: 5_000, minerals: 5_000, researchTime: 81 },
 } as const;
 
 export const SUPREME_TECH_EFFECTS = {
@@ -753,7 +753,7 @@ export const NAVAL_CONFIG = {
     GOLD_COST: 350,
     OIL_COST: 30,
     MINERAL_COST: 25,
-    BUILD_TIME_SECONDS: 20,
+    BUILD_TIME_SECONDS: 18,
     CANCEL_REFUND_RATIO: 0.5,
     MAX_PER_PORT: 2,
     MAX_PER_NATION: 16,
@@ -768,7 +768,7 @@ export const NAVAL_CONFIG = {
     GOLD_COST: 900,
     OIL_COST: 80,
     MINERAL_COST: 60,
-    BUILD_TIME_SECONDS: 40,
+    BUILD_TIME_SECONDS: 36,
     CANCEL_REFUND_RATIO: 0.5,
     MAX_PER_PORT: 3,
     MAX_PER_NATION: 12,

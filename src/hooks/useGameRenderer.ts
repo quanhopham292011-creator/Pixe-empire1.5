@@ -1071,42 +1071,63 @@ export function useGameRenderer({
         if (gen.status === 'MARCHING') {
           const gx = gen.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
           const gy = gen.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
+          const minVp = Math.min(vpW, vpH);
+          const isMobileScreen = vpW < 768 || minVp < 540;
+          const genScale = isMobileScreen ? Math.max(0.56, Math.min(0.75, minVp / 520)) : 1;
 
+          ctx.save();
           // Hào quang Tướng Đại Diện
           ctx.fillStyle = 'rgba(245, 158, 11, 0.35)';
           ctx.beginPath();
-          ctx.arc(gx, gy, 14, 0, Math.PI * 2);
+          ctx.arc(gx, gy, 14 * genScale, 0, Math.PI * 2);
           ctx.fill();
 
           ctx.strokeStyle = '#f59e0b';
-          ctx.lineWidth = 2.0;
+          ctx.lineWidth = Math.max(1.2, 2.0 * genScale);
           ctx.stroke();
 
-          // Sprite Tướng (Nhân vật Chibi Pixel)
-          drawChibiPixelGeneral(ctx, gx, gy, gen.skillId);
+          // Sprite Tướng (Nhân vật Chibi Pixel) — thu gọn trên màn hình điện thoại để không che bản đồ
+          if (genScale < 1) {
+            ctx.save();
+            ctx.translate(gx, gy);
+            ctx.scale(genScale, genScale);
+            drawChibiPixelGeneral(ctx, 0, 0, gen.skillId);
+            ctx.restore();
+          } else {
+            drawChibiPixelGeneral(ctx, gx, gy, gen.skillId);
+          }
 
           // Tag Tướng (Chỉ hiển thị tên riêng và trạng thái kỹ năng, bỏ chữ Đại Tướng và (+30%))
           ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
           ctx.strokeStyle = '#f59e0b';
-          ctx.lineWidth = 1.0;
+          ctx.lineWidth = Math.max(0.75, 1.0 * genScale);
           const isSkillActive = (gen.skillActiveTimer || 0) > 0;
           const rItem = GENERAL_ROSTER.find(r => r.skillId === gen.skillId);
           const skillTag = isSkillActive && rItem ? ` [${rItem.emoji} ${gen.skillActiveTimer}s]` : '';
           const tagText = `${gen.name}${skillTag}`;
-          const font = 'bold 9px sans-serif';
-          const tw = getCachedWidth(ctx, tagText, font) + 8;
-          ctx.fillRect(gx - tw / 2, gy - 20, tw, 14);
-          ctx.strokeRect(gx - tw / 2, gy - 20, tw, 14);
+          const fontSize = Math.max(6, Math.round(9 * genScale));
+          const font = `bold ${fontSize}px sans-serif`;
+          const tw = getCachedWidth(ctx, tagText, font) + 8 * genScale;
+          const tagH = Math.round(14 * genScale);
+          const tagY = gy - Math.round(20 * genScale);
+          ctx.fillRect(gx - tw / 2, tagY, tw, tagH);
+          ctx.strokeRect(gx - tw / 2, tagY, tw, tagH);
 
+          ctx.font = font;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
           ctx.fillStyle = isSkillActive ? '#fef08a' : '#fbbf24';
-          ctx.fillText(tagText, gx, gy - 13);
+          ctx.fillText(tagText, gx, tagY + tagH / 2);
 
           // Thanh máu nhỏ của Đại Tướng trên chiến trường
           const hpRatio = Math.max(0, Math.min(1, (gen.hp || 1000) / (gen.maxHp || 1000)));
+          const hpBarY = gy - Math.round(5 * genScale);
+          const hpBarH = Math.max(2, Math.round(3 * genScale));
           ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-          ctx.fillRect(gx - tw / 2, gy - 5, tw, 3);
+          ctx.fillRect(gx - tw / 2, hpBarY, tw, hpBarH);
           ctx.fillStyle = hpRatio >= 0.6 ? '#22c55e' : hpRatio > 0.2 ? '#eab308' : '#ef4444';
-          ctx.fillRect(gx - tw / 2, gy - 5, tw * hpRatio, 3);
+          ctx.fillRect(gx - tw / 2, hpBarY, tw * hpRatio, hpBarH);
+          ctx.restore();
         }
       });
 

@@ -303,7 +303,7 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
             handleInteract(e.touches[0].clientX, e.touches[0].clientY);
           }
         }}
-        className="w-20 h-20 sm:w-24 sm:h-24 cursor-pointer block image-rendering-pixelated touch-none"
+        className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 cursor-pointer block image-rendering-pixelated touch-none"
       />
     </div>
   );

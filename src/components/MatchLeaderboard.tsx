@@ -150,8 +150,11 @@ export const MatchLeaderboard: React.FC<MatchLeaderboardProps> = ({
                     </span>
                   )}
                   {isTraitor && (
-                    <span className="text-sm bg-red-950 text-red-200 border border-red-500 px-1.5 py-0.5 rounded font-bold shrink-0 animate-pulse">
-                      ⚠️ Kẻ phản bội
+                    <span
+                      className="text-sm bg-red-950 text-red-200 border border-red-500 px-1.5 py-0.5 rounded font-bold shrink-0 animate-pulse"
+                      title={`Hình phạt phản bội: -20% phòng thủ (còn ${Math.ceil(nation.traitorTimer || 0)}s)`}
+                    >
+                      ⚠️ Phản bội (-20% thủ)
                     </span>
                   )}
                   {isEliminated && (

@@ -84,6 +84,16 @@ import { applyCasualties } from './utils/casualties';
 import { computeNationLabelCenters } from './utils/nationLabels';
 import { pushFeedbackText } from './utils/floatFeedback';
 import { isLandConnected } from './utils/landConnectivity';
+import {
+  TRUCE_DURATION,
+  getTruceAvailability,
+  applyTruceAgreement,
+  recordTruceBrokenCooldown,
+} from './utils/truceSystem';
+import {
+  evaluateAllianceDecision,
+  selectBestPortTileForNation,
+} from './utils/diplomacyAI';
 import { BuildModal } from './components/BuildModal';
 import { TechModal } from './components/TechModal';
 import { MissileModal } from './components/MissileModal';
@@ -579,6 +589,10 @@ export default function App() {
     if (player.diplomacy[botId]) {
       player.diplomacy[botId].relation = Math.min(100, player.diplomacy[botId].relation + 15);
     }
+    if (!bot.diplomacy) bot.diplomacy = {};
+    if (bot.diplomacy[1]) {
+      bot.diplomacy[1].relation = Math.min(100, (bot.diplomacy[1].relation || 0) + 15);
+    }
 
     data.events.unshift({
       id: Math.random().toString(),
@@ -619,9 +633,10 @@ export default function App() {
       return;
     }
 
-    player.diplomacy[botId] = { status: 'ALLIANCE', relation: 80, truceTimer: 0 };
+    const nowSec = data.gameTimeSeconds || 0;
+    player.diplomacy[botId] = { status: 'ALLIANCE', relation: 80, truceTimer: 0, alliedSince: nowSec };
     if (!sender.diplomacy) sender.diplomacy = {};
-    sender.diplomacy[1] = { status: 'ALLIANCE', relation: 80, truceTimer: 0 };
+    sender.diplomacy[1] = { status: 'ALLIANCE', relation: 80, truceTimer: 0, alliedSince: nowSec };
 
     data.attackWaves = (data.attackWaves || []).filter((w: any) => 
       !((w.fromNation === 1 && w.toNation === botId) || (w.fromNation === botId && w.toNation === 1))
@@ -693,6 +708,10 @@ export default function App() {
     if (player.diplomacy[botId]) {
       player.diplomacy[botId].relation = Math.min(100, player.diplomacy[botId].relation + 15);
     }
+    if (!bot.diplomacy) bot.diplomacy = {};
+    if (bot.diplomacy[1]) {
+      bot.diplomacy[1].relation = Math.min(100, (bot.diplomacy[1].relation || 0) + 15);
+    }
 
     data.events.unshift({
       id: Math.random().toString(),
@@ -745,6 +764,120 @@ export default function App() {
         text: `⚠️ ${bot.name} hiện không có đủ tài chính dư dả!`
       }, 30);
     }
+  }, []);
+
+  const handleProposeTruce = useCallback((id: number) => {
+    const data = gameDataRef.current;
+    const player = data.nations[1];
+    const targetNat = data.nations[id];
+    if (!player || !targetNat || targetNat.isEliminated) return;
+
+    const gameTime = data.gameTimeSeconds || 0;
+    const check = getTruceAvailability(player, targetNat, gameTime);
+    if (!check.ok) {
+      let msg = '⚠️ Không thể đình chiến lúc này!';
+      if (check.reason === 'LIMIT') {
+        msg = `⚠️ Đã hết lượt Đình Chiến với ${targetNat.name} (${check.usedCount}/${check.maxAllowed})!`;
+      } else if (check.reason === 'PAIR_COOLDOWN') {
+        msg = `⏳ Đình Chiến với ${targetNat.name} đang hồi (${check.cooldownRemaining}s)!`;
+      } else if (check.reason === 'GLOBAL_COOLDOWN') {
+        msg = `⏳ Cần chờ ${check.cooldownRemaining}s trước khi Đình Chiến nước khác!`;
+      } else if (check.reason === 'NOT_WAR') {
+        msg = '⚠️ Chỉ có thể Đình Chiến khi đang có chiến tranh!';
+      }
+      soundManager.playClick();
+      pushFeedbackText(data.particles, {
+        x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        color: '#f59e0b',
+        text: msg,
+      }, 35);
+      return;
+    }
+
+    showMeme('TRUCE');
+    applyTruceAgreement(player, targetNat, data, gameTime, false);
+
+    soundManager.playTruce();
+    const remUses = Math.max(0, check.maxAllowed - (check.usedCount + 1));
+    data.particles.push({
+      x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+      y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+      color: '#38bdf8', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.8,
+      type: 'FLOAT_TEXT',
+      text: `🕊️ ĐÌNH CHIẾN ${TRUCE_DURATION} GIÂY (còn ${remUses}/${check.maxAllowed} lần)!`
+    });
+
+    data.events.unshift({
+      id: Math.random().toString(),
+      title: `🕊️ Hiệp Ước Đình Chiến (${TRUCE_DURATION} Giây)`,
+      description: `Đã ký hiệp ước đình chiến ${TRUCE_DURATION} giây với ${targetNat.name} (lần ${check.usedCount + 1}/${check.maxAllowed})! Giao tranh được đóng băng tạm thời.`,
+      type: 'DIPLOMACY',
+      targetNationId: id,
+      timestamp: formatGameTime(gameTime),
+    });
+  }, []);
+
+  const handleDeclareWar = useCallback((id: number) => {
+    const data = gameDataRef.current;
+    const player = data.nations[1];
+    const targetNat = data.nations[id];
+    if (!player || !targetNat) return;
+
+    const prevStatus = player.diplomacy[id]?.status;
+    const wasAlly = prevStatus === 'ALLIANCE';
+    const wasTruce = prevStatus === 'TRUCE';
+    showMeme(warMemeFor(player, targetNat, wasAlly));
+
+    if (wasAlly) {
+      player.traitorTimer = 120; // 120 giây bị gắn nhãn Kẻ Phản Bội
+    }
+
+    player.diplomacy[id] = { status: 'WAR', relation: -50, truceTimer: 0 };
+    if (!targetNat.diplomacy) targetNat.diplomacy = {};
+    targetNat.diplomacy[1] = { status: 'WAR', relation: -50, truceTimer: 0 };
+    if (wasTruce) {
+      recordTruceBrokenCooldown(player, targetNat, data.gameTimeSeconds || 0);
+    }
+
+    if (Array.isArray(targetNat.allianceInvites)) {
+      targetNat.allianceInvites = targetNat.allianceInvites.filter(inv => inv.senderNationId !== 1);
+    }
+    if (Array.isArray(player.allianceInvites)) {
+      player.allianceInvites = player.allianceInvites.filter(inv => inv.senderNationId !== id);
+    }
+
+    if (data.tradeRoutes) {
+      data.tradeRoutes = data.tradeRoutes.filter(r =>
+        !((r.fromNation === 1 && r.toNation === id) || (r.fromNation === id && r.toNation === 1))
+      );
+    }
+    if (data.tradeShips) {
+      data.tradeShips = data.tradeShips.filter(s =>
+        !((s.fromNation === 1 && s.toNation === id) || (s.fromNation === id && s.toNation === 1))
+      );
+    }
+    syncBalancedTradeRoutes(data, collectPortList(data.tiles, data.nations));
+
+    soundManager.playAttack();
+    data.particles.push({
+      x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+      y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+      color: '#ef4444', size: 0, life: 50, maxLife: 50, vx: 0, vy: -0.8,
+      type: 'FLOAT_TEXT',
+      text: wasAlly ? `🗡️ PHẢN BỘI LIÊN MINH (${targetNat.name})!` : `⚔️ TUYÊN CHIẾN: ${targetNat.name}!`
+    });
+
+    data.events.unshift({
+      id: Math.random().toString(),
+      title: wasAlly ? '🗡️ Phản Bội Liên Minh' : '⚔️ Tuyên Chiến',
+      description: wasAlly
+        ? `Bạn đơn phương huỷ liên minh với ${targetNat.name}. Các quốc gia khác sẽ từ chối kết minh với bạn và phòng thủ bị giảm 20% trong 120 giây.`
+        : `Đã tuyên chiến với ${targetNat.name}! Mối quan hệ ngoại giao sụp đổ.`,
+      type: 'DIPLOMACY',
+      targetNationId: id,
+      timestamp: formatGameTime(data.gameTimeSeconds),
+    });
   }, []);
 
   const handleTradeWithAI = useCallback((
@@ -1685,7 +1818,7 @@ export default function App() {
               dip.relation = 0;
               dip.truceTimer = 0;
               const other = nations[targetId];
-              if (other && !other.isEliminated && other.diplomacy?.[n.id]?.status === 'TRUCE' && (other.diplomacy[n.id].truceTimer || 0) <= 0) {
+              if (other && !other.isEliminated && other.diplomacy?.[n.id]?.status === 'TRUCE') {
                 other.diplomacy[n.id].status = 'WAR';
                 other.diplomacy[n.id].relation = 0;
                 other.diplomacy[n.id].truceTimer = 0;
@@ -1762,61 +1895,66 @@ export default function App() {
             if (n.diplomacy?.[sender.id]?.status === 'ALLIANCE' && sender.diplomacy?.[n.id]?.status === 'ALLIANCE') {
               continue;
             }
-            const botAllies = countActiveAlliances(n, nations);
-            const senderAllies = countActiveAlliances(sender, nations);
+            // Đánh giá liên minh dựa trên sức mạnh, quan hệ, tình hình chiến tranh và trạng thái phản bội
+            const totalLandNow = Math.max(1, totalLandCountRef.current || 1);
+            let curSuperId = 0;
+            let curMaxRatio = 0;
+            for (const nn of nations) {
+              if (nn && !nn.isEliminated && nn.id > 0) {
+                const r = (nn.territoryCount || 0) / totalLandNow;
+                if (r > curMaxRatio) {
+                  curMaxRatio = r;
+                  curSuperId = nn.id;
+                }
+              }
+            }
 
-            // Đang đánh nhau giữa 2 bên?
-            const isFighting = data.attackWaves.some((w: any) => 
-              (w.fromNation === n.id && w.toNation === sender.id) ||
-              (w.fromNation === sender.id && w.toNation === n.id)
-            );
-
-            // Kẻ phản bội?
-            const isTraitor = (sender.traitorTimer || 0) > 0;
-
-            // Tỷ lệ sức mạnh
-            const botPower = (n.troops || 0) + (n.territoryCount || 0) * 10;
-            const senderPower = (sender.troops || 0) + (sender.territoryCount || 0) * 10;
-            const powerRatio = senderPower / Math.max(1, botPower);
-
-            let minReqRatio = 0.4;
-            if (n.personality === 'AGGRESSIVE') minReqRatio = 0.7;
-            else if (n.personality === 'MERCHANT') minReqRatio = 0.2;
-            else if (n.personality === 'OPPORTUNIST') minReqRatio = 0.35;
-
-            const isStrengthOk = powerRatio >= minReqRatio;
-            const shouldAccept = botAllies < 3 && senderAllies < 3 && !isTraitor && !isFighting && isStrengthOk;
+            const evalRes = evaluateAllianceDecision(n, sender, {
+              nations,
+              tiles: data.tiles,
+              attackWaves: data.attackWaves,
+              difficulty,
+              superpowerId: curSuperId,
+              maxLandRatio: curMaxRatio,
+              isProposal: false,
+            });
+            const shouldAccept = evalRes.ok;
 
             if (shouldAccept) {
               // CHẤP NHẬN LIÊN MINH
-              n.diplomacy[sender.id] = { status: 'ALLIANCE', relation: 80, truceTimer: 0 };
+              const nowSec = data.gameTimeSeconds || 0;
+              n.diplomacy[sender.id] = { status: 'ALLIANCE', relation: 80, truceTimer: 0, alliedSince: nowSec };
               if (!sender.diplomacy) sender.diplomacy = {};
-              sender.diplomacy[n.id] = { status: 'ALLIANCE', relation: 80, truceTimer: 0 };
+              sender.diplomacy[n.id] = { status: 'ALLIANCE', relation: 80, truceTimer: 0, alliedSince: nowSec };
 
               // Xóa sóng tấn công đang di chuyển giữa 2 bên
               data.attackWaves = data.attackWaves.filter((w: any) => 
                 !( (w.fromNation === n.id && w.toNation === sender.id) || (w.fromNation === sender.id && w.toNation === n.id) )
               );
 
-              // Kích hoạt đường biển nếu có cảng (KHÔNG CỘNG 150 VÀNG THƯỞNG)
+              // Kích hoạt đường biển nếu có cảng thông biển mở (KHÔNG CỘNG 150 VÀNG THƯỞNG)
               let pPort = data.tiles.flat().find((t: any) => t.owner === sender.id && t.building === 'PORT');
               let aPort = data.tiles.flat().find((t: any) => t.owner === n.id && t.building === 'PORT');
               if (!pPort) {
-                const pCoastal = data.tiles.flat().find((t: any) => t.owner === sender.id && t.hasHarborAccess && t.building === 'NONE');
+                const pCoastal = selectBestPortTileForNation(data.tiles, sender);
                 if (pCoastal) {
                   pCoastal.building = 'PORT';
                   pCoastal.buildingLevel = 1;
+                  sender.hasPort = true;
                   pPort = pCoastal;
                   offscreenTerritoryDirtyRef.current = true;
+                  fogBaseDirtyRef.current = true;
                 }
               }
               if (!aPort) {
-                const aCoastal = data.tiles.flat().find((t: any) => t.owner === n.id && t.hasHarborAccess && t.building === 'NONE');
+                const aCoastal = selectBestPortTileForNation(data.tiles, n);
                 if (aCoastal) {
                   aCoastal.building = 'PORT';
                   aCoastal.buildingLevel = 1;
+                  n.hasPort = true;
                   aPort = aCoastal;
                   offscreenTerritoryDirtyRef.current = true;
+                  fogBaseDirtyRef.current = true;
                 }
               }
 
@@ -2125,11 +2263,15 @@ export default function App() {
         // 1. TRẦN DÂN SỐ & TĂNG TRƯỞNG DÂN SỐ MỖI GIÂY (THEO CÂY KỸ NĂNG & ĐỘ KHÓ)
         const skillBonuses = n.isPlayer ? getSkillTreeBonuses(playerProfileRef.current.skillTree) : null;
         const isBoss = n.tier === 'BOSS';
+        const isSubBoss = isBoss && Boolean(n.name?.includes('(Đế Quốc)'));
+        const isMainBoss = isBoss && !isSubBoss;
         const botPopMult = n.isPlayer
           ? 1.0
-          : isBoss
-            ? (difficulty === 'EXTREME' ? 1.30 : difficulty === 'HARD' ? 1.15 : difficulty === 'NORMAL' ? 1.05 : 0.85)
-            : (difficulty === 'EXTREME' ? 1.20 : difficulty === 'HARD' ? 1.08 : difficulty === 'NORMAL' ? 0.95 : 0.80);
+          : isMainBoss
+            ? (difficulty === 'EXTREME' ? 1.24 : difficulty === 'HARD' ? 1.12 : difficulty === 'NORMAL' ? 1.02 : 0.82)
+            : isSubBoss
+              ? (difficulty === 'EXTREME' ? 1.22 : difficulty === 'HARD' ? 1.10 : difficulty === 'NORMAL' ? 0.99 : 0.81)
+              : (difficulty === 'EXTREME' ? 1.20 : difficulty === 'HARD' ? 1.08 : difficulty === 'NORMAL' ? 0.95 : 0.80);
 
         const basePopCap = 20 + (n.territoryCount * 6) + (cityCount * 30);
         const popCap = Math.round(basePopCap * (skillBonuses ? skillBonuses.popCapMult : botPopMult));
@@ -2147,10 +2289,14 @@ export default function App() {
           }
         }
 
-        // 2. QUÂN ĐỘI & VÀNG (THEO CÂY KĨ NĂNG, CÔNG NGHỆ & ĐỘ KHÓ PHÂN HÓA BOSS / THUỘC ĐỊA)
-        const botEconArmyMult = isBoss
-          ? (difficulty === 'EXTREME' ? 1.80 : difficulty === 'HARD' ? 1.35 : difficulty === 'NORMAL' ? 1.10 : 0.82)
-          : (difficulty === 'EXTREME' ? 1.42 : difficulty === 'HARD' ? 1.14 : difficulty === 'NORMAL' ? 0.95 : 0.72);
+        // 2. QUÂN ĐỘI & VÀNG (THEO CÂY KĨ NĂNG, CÔNG NGHỆ & ĐỘ KHÓ PHÂN HÓA BOSS / BOSS PHỤ / THUỘC ĐỊA)
+        const baseBotEconArmy = difficulty === 'EXTREME' ? 1.42 : difficulty === 'HARD' ? 1.14 : difficulty === 'NORMAL' ? 0.95 : 0.72;
+        const botTierScale = n.tier === 'TIER_1_FOREST' ? 0.90 : n.tier === 'TIER_2_TRIBE' ? 0.95 : 1.0;
+        const botEconArmyMult = isMainBoss
+          ? (difficulty === 'EXTREME' ? 1.62 : difficulty === 'HARD' ? 1.28 : difficulty === 'NORMAL' ? 1.06 : 0.80)
+          : isSubBoss
+            ? (difficulty === 'EXTREME' ? 1.52 : difficulty === 'HARD' ? 1.21 : difficulty === 'NORMAL' ? 1.01 : 0.76)
+            : Number((baseBotEconArmy * botTierScale).toFixed(3));
         const isMil3B = n.techLevels?.military === 3 && n.techChoices?.military === 'B';
         const milTechTroopBonus = isMil3B ? 60 : (n.techLevels?.military >= 2 ? 30 : 0);
         const arsenalBonus = getArsenalBonusesFromState(arsenalStates[n.id] || null);
@@ -4342,13 +4488,18 @@ export default function App() {
         cache.t = data.gameTimeSeconds; cache.counts = counts;
       }
       const density = defender.troops / Math.max(1, cache.counts[tgt.owner] || 1);
-      cost = Math.round(cost * Math.min(3, Math.max(0.7, 0.7 + density / 10)));
+      cost = Math.round(cost * Math.min(5, Math.max(0.7, 0.7 + density / 6)));
     }
 
     // Kỹ năng 3: "Khiên Sắt Biên Giới" của Đại Tướng Thiết Bích (+40% phòng thủ ô biên giới, Boss tùy độ khó)
     if (!attackerHasShadowRaid && defender?.general?.skillId === 'IRON_BORDER_SHIELD' && (defender.general.skillActiveTimer || 0) > 0 && tgt.isBorder) {
       const defPower = getSkillPower(defender, difficulty);
       cost = Math.round(cost * (1.0 + 0.40 * defPower));
+    }
+
+    // Hình phạt phản bội: Quốc gia đang chịu hiệu lực Kẻ Phản Bội bị giảm 20% phòng thủ
+    if (defender && tgt.owner > 0 && (defender.traitorTimer || 0) > 0) {
+      cost = Math.max(1, Math.round(cost * 0.80));
     }
 
     // General System 1.2: Tướng chỉ huy (wave.hasGeneral)
@@ -4365,12 +4516,30 @@ export default function App() {
       cost = Math.max(1, Math.floor(cost * (1.0 - discount)));
     }
 
+    // Chuỗi chiếm liên tiếp: mỗi ô sau trong cùng chuỗi đắt thêm 10%, tối đa +60%
+    cost = Math.round(cost * (1 + 0.10 * Math.min(6, depth)));
+
     if (wave.troops >= cost) {
       wave.troops -= cost;
+      // Quân thủ phản công: ô đông quân thủ làm đợt tấn công mất thêm quân
+      const defTilesCount = Math.max(1, tileCountCacheRef.current.counts?.[tgt.owner] || 1);
+      const defDensityNow = (defender?.troops || 0) / defTilesCount;
+      const counterLoss = Math.round(cost * 0.25 * Math.min(2, defDensityNow / 10));
+      wave.troops = Math.max(0, wave.troops - counterLoss);
       applyCasualties(attacker, cost);
       const prevOwner = tgt.owner;
       const prevBuilding = tgt.building;
       tgt.owner = wave.fromNation;
+      if (prevOwner > 0 && prevOwner !== wave.fromNation && attacker && defender) {
+        if (!attacker.diplomacy) attacker.diplomacy = {};
+        if (!defender.diplomacy) defender.diplomacy = {};
+        if (attacker.diplomacy[prevOwner]) {
+          attacker.diplomacy[prevOwner].relation = Math.max(-100, (attacker.diplomacy[prevOwner].relation || 0) - 1);
+        }
+        if (defender.diplomacy[wave.fromNation]) {
+          defender.diplomacy[wave.fromNation].relation = Math.max(-100, (defender.diplomacy[wave.fromNation].relation || 0) - 1);
+        }
+      }
       if (attacker && tgt.x === attacker.capitalX && tgt.y === attacker.capitalY && attacker.capitalCaptured) {
         attacker.capitalCaptured = false;
       }
@@ -4709,7 +4878,10 @@ export default function App() {
               if (t && t.owner === wave.fromNation) { src = { x: t.x, y: t.y }; break; }
             }
             const playerSkillBonuses = attacker.isPlayer ? getSkillTreeBonuses(playerProfileRef.current.skillTree) : null;
-            const bossWaveSpd = difficulty === 'EXTREME' ? 1.00 : difficulty === 'HARD' ? 0.90 : difficulty === 'NORMAL' ? 0.80 : 0.70;
+            const isSubBossAttacker = attacker.tier === 'BOSS' && Boolean(attacker.name?.includes('(Đế Quốc)'));
+            const bossWaveSpd = isSubBossAttacker
+              ? (difficulty === 'EXTREME' ? 0.88 : difficulty === 'HARD' ? 0.80 : difficulty === 'NORMAL' ? 0.72 : 0.62)
+              : (difficulty === 'EXTREME' ? 0.96 : difficulty === 'HARD' ? 0.86 : difficulty === 'NORMAL' ? 0.78 : 0.68);
             const botWaveSpd = difficulty === 'EXTREME' ? 0.80 : difficulty === 'HARD' ? 0.72 : difficulty === 'NORMAL' ? 0.65 : 0.55;
             wave.speed = attacker.isPlayer ? (1.1 * (playerSkillBonuses?.marchSpeedMult || 1.0)) : (attacker.tier === 'BOSS' ? bossWaveSpd : botWaveSpd);
             wave.sourceX = src.x;
@@ -4717,7 +4889,9 @@ export default function App() {
             wave.targetX = next.x;
             wave.targetY = next.y;
             wave.progress = 0;
-            const bossBurst = difficulty === 'EXTREME' ? 7 : difficulty === 'HARD' ? 6 : difficulty === 'NORMAL' ? 4 : 3;
+            const bossBurst = isSubBossAttacker
+              ? (difficulty === 'EXTREME' ? 5 : difficulty === 'HARD' ? 4 : difficulty === 'NORMAL' ? 3 : 3)
+              : (difficulty === 'EXTREME' ? 6 : difficulty === 'HARD' ? 5 : difficulty === 'NORMAL' ? 4 : 3);
             const botBurst = difficulty === 'EXTREME' ? 4 : difficulty === 'HARD' ? 3 : difficulty === 'NORMAL' ? 3 : 2;
             const burst = attacker.isPlayer ? (12 + (playerSkillBonuses?.burstCaptureBonus || 0)) : (attacker.tier === 'BOSS' ? bossBurst : botBurst);
             continued = true;
@@ -4855,11 +5029,12 @@ export default function App() {
         return;
       }
       const superCost = BUILDING_INFO[buildingType].baseCost;
-      player.gold -= superCost;
+      if (player.gold < superCost) return;
       if (buildingType === 'GRAND_ARSENAL') {
         player.grandArsenalDestroyed = false;
       }
       initSuperBuildingOnTile(chosenTile, buildingType);
+      player.gold -= superCost;
       data.stats.buildingsCount += 1;
       soundManager.playBuild();
       setIsBuildOpen(false);
@@ -4902,6 +5077,24 @@ export default function App() {
     if (player.techLevels?.economy >= 2) discount *= 0.92;
     if (player.techLevels?.economy === 3 && player.techChoices?.economy === 'B') discount *= 0.80;
     const isPort = buildingType === 'PORT';
+
+    // Nếu người chơi chọn trực tiếp 1 ô trống nhưng ô đó đứng sát công trình khác -> từ chối ngay, không trừ vàng
+    if (
+      targetTile &&
+      targetTile.owner === myNation &&
+      targetTile.building === 'NONE' &&
+      !isPort &&
+      !isSpacingExempt(buildingType) &&
+      hasBuildingNearby(data.tiles, targetTile.x, targetTile.y)
+    ) {
+      pushFeedbackText(data.particles, {
+        x: targetTile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        y: targetTile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        color: '#ef4444',
+        text: '⚠️ Không thể xây gần công trình khác (cần cách ít nhất 1 ô)!'
+      }, 30);
+      return;
+    }
 
     const size = data.tiles.length;
     const eligibleTiles: Tile[] = [];
@@ -4962,83 +5155,111 @@ export default function App() {
 
     let totalCost = 0;
     let totalMineralCost = 0;
-    let actualBuiltCount = 0;
+    let placedCount = 0;
+    let primaryBuiltTile: Tile | null = null;
 
-    for (let i = 0; i < count; i++) {
-      const singleCost = Math.floor(baseCost * Math.pow(1.15, currentExistingCount + i) * discount);
-      const singleMin = getBuildingMineralCost(buildingType, currentExistingCount + i);
-      if (player.gold >= totalCost + singleCost && (player.minerals || 0) >= totalMineralCost + singleMin) {
-        totalCost += singleCost;
-        totalMineralCost += singleMin;
-        actualBuiltCount++;
-      } else {
-        break;
-      }
-    }
+    const nextCostForIndex = (idx: number) => ({
+      gold: Math.floor(baseCost * Math.pow(1.15, currentExistingCount + idx) * discount),
+      minerals: getBuildingMineralCost(buildingType, currentExistingCount + idx),
+    });
 
-    if (actualBuiltCount === 0) {
-      pushFeedbackText(data.particles, {
-        x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
-        y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
-        color: '#ef4444',
-        text: 'Không đủ Vàng hoặc Khoáng sản để xây / nâng cấp!'
-      }, 30);
-      return;
-    }
+    const canAffordNext = (idx: number) => {
+      const c = nextCostForIndex(idx);
+      return {
+        ok: player.gold >= totalCost + c.gold && (player.minerals || 0) >= totalMineralCost + c.minerals,
+        c,
+      };
+    };
 
-    // Trừ vàng & khoáng sản
-    player.gold -= totalCost;
-    player.minerals = (player.minerals || 0) - totalMineralCost;
-
-    // Phân bổ xây mới hoặc xây chồng tăng cấp
-    let remainingToPlace = actualBuiltCount;
-    for (let i = 0; i < eligibleTiles.length && remainingToPlace > 0; i++) {
+    // Chỉ đặt từng công trình hợp lệ và chỉ cộng chi phí khi công trình thực sự được đặt
+    for (let i = 0; i < eligibleTiles.length && placedCount < count; i++) {
       const t = eligibleTiles[i];
       if (t.building === buildingType) {
-        // Tăng cấp xây chồng công trình
-        const stacksToAdd = remainingToPlace;
-        t.buildingLevel = (t.buildingLevel || 1) + stacksToAdd;
-        remainingToPlace = 0;
-      } else {
-        // Đặt công trình mới
+        while (placedCount < count) {
+          const { ok, c } = canAffordNext(placedCount);
+          if (!ok) break;
+          t.buildingLevel = (t.buildingLevel || 1) + 1;
+          totalCost += c.gold;
+          totalMineralCost += c.minerals;
+          placedCount++;
+          if (!primaryBuiltTile) primaryBuiltTile = t;
+          if (isPort) player.hasPort = true;
+        }
+        break;
+      } else if (t.building === 'NONE') {
+        // Kiểm tra lại khoảng cách tại thời điểm đặt thực tế (tránh đặt 2 ô trống sát nhau trong cùng batch)
+        if (!isPort && !isSpacingExempt(buildingType) && hasBuildingNearby(data.tiles, t.x, t.y)) {
+          continue;
+        }
+        const firstCheck = canAffordNext(placedCount);
+        if (!firstCheck.ok) break;
+
         t.building = buildingType;
         t.buildingLevel = 1;
         t.isAdvancedExtractor = false;
         if (buildingType === 'AIR_DEFENSE') {
           t.inactiveTimer = 3;
         }
-        remainingToPlace--;
+        if (isPort) player.hasPort = true;
 
-        if (remainingToPlace > 0 && t === targetTile) {
-          t.buildingLevel += remainingToPlace;
-          remainingToPlace = 0;
+        totalCost += firstCheck.c.gold;
+        totalMineralCost += firstCheck.c.minerals;
+        placedCount++;
+        if (!primaryBuiltTile) primaryBuiltTile = t;
+
+        if (t === targetTile) {
+          while (placedCount < count) {
+            const { ok, c } = canAffordNext(placedCount);
+            if (!ok) break;
+            t.buildingLevel = (t.buildingLevel || 1) + 1;
+            totalCost += c.gold;
+            totalMineralCost += c.minerals;
+            placedCount++;
+          }
         }
       }
-      if (isPort) player.hasPort = true;
     }
 
-    data.stats.buildingsCount += actualBuiltCount;
+    if (placedCount === 0) {
+      const firstNeed = nextCostForIndex(0);
+      const notEnoughFunds = player.gold < firstNeed.gold || (player.minerals || 0) < firstNeed.minerals;
+      pushFeedbackText(data.particles, {
+        x: (cameraRef.current.x * -1) / cameraRef.current.zoom + 120,
+        y: (cameraRef.current.y * -1) / cameraRef.current.zoom + 120,
+        color: '#ef4444',
+        text: notEnoughFunds
+          ? 'Không đủ Vàng hoặc Khoáng sản để xây / nâng cấp!'
+          : (isPort ? 'Không có ô giáp biển thuộc sở hữu!' : 'Không có chỗ xây: cần ô trống cách công trình khác ít nhất 1 ô!')
+      }, 30);
+      return;
+    }
+
+    // Chỉ trừ vàng & khoáng sản sau khi các công trình thực sự đã được đặt thành công
+    player.gold -= totalCost;
+    player.minerals = Math.max(0, (player.minerals || 0) - totalMineralCost);
+
+    data.stats.buildingsCount += placedCount;
     soundManager.playBuild();
     setIsBuildOpen(false);
     offscreenTerritoryDirtyRef.current = true;
 
     // Gửi thông báo xây dựng qua WebSocket cho các người chơi khác
-    if (isMultiplayerRef.current && (targetTile || eligibleTiles[0])) {
-      const builtOn = targetTile || eligibleTiles[0];
-      multiplayerClient.sendBuild(builtOn.x, builtOn.y, buildingType, actualBuiltCount);
+    if (isMultiplayerRef.current && primaryBuiltTile) {
+      multiplayerClient.sendBuild(primaryBuiltTile.x, primaryBuiltTile.y, buildingType, placedCount);
     }
 
-    if (targetTile) {
-      const targetLvl = targetTile.buildingLevel || 1;
-      setSelectedTile({ ...targetTile, buildingLevel: targetLvl });
-      selectedTileRef.current = { ...targetTile, buildingLevel: targetLvl };
+    const feedbackTile = primaryBuiltTile || targetTile;
+    if (feedbackTile) {
+      const targetLvl = feedbackTile.buildingLevel || 1;
+      setSelectedTile({ ...feedbackTile, buildingLevel: targetLvl });
+      selectedTileRef.current = { ...feedbackTile, buildingLevel: targetLvl };
 
       data.particles.push({
-        x: targetTile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-        y: targetTile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        x: feedbackTile.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+        y: feedbackTile.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
         color: '#fbbf24', size: 0, life: 40, maxLife: 40, vx: 0, vy: -0.7,
         type: 'FLOAT_TEXT',
-        text: `🏢 +x${actualBuiltCount} ${BUILDING_INFO[buildingType as Exclude<BuildingType, 'NONE'>].name} (Cấp ${targetLvl})!`
+        text: `🏢 +x${placedCount} ${BUILDING_INFO[buildingType as Exclude<BuildingType, 'NONE'>].name} (Cấp ${targetLvl})!`
       });
     }
 
@@ -5175,7 +5396,7 @@ export default function App() {
 
           {/* Hộp thư liên minh cho người chơi */}
           {gameState === 'PLAYING' && gameDataRef.current?.nations?.[1]?.allianceInvites && gameDataRef.current.nations[1].allianceInvites.length > 0 && (
-            <div className="absolute top-20 right-4 z-40 max-w-xs w-full bg-slate-900/95 border border-emerald-500/50 rounded-lg p-3 shadow-xl backdrop-blur-md flex flex-col gap-2 pointer-events-auto">
+            <div className="absolute top-14 left-2 right-auto z-40 max-w-[calc(100%-6rem)] md:left-auto md:top-20 md:right-4 md:max-w-xs w-full bg-slate-900/95 border border-emerald-500/50 rounded-lg p-2.5 md:p-3 shadow-xl backdrop-blur-md flex flex-col gap-1.5 md:gap-2 pointer-events-auto">
               <div className="text-xs font-bold text-emerald-400 flex items-center gap-1.5 border-b border-emerald-500/30 pb-1.5">
                 <span>🤝</span> Hộp Thư Kết Minh ({gameDataRef.current.nations[1].allianceInvites.length})
               </div>
@@ -5435,46 +5656,7 @@ export default function App() {
                 text: res.message,
               });
             }}
-            onProposeTruce={(id) => {
-              const data = gameDataRef.current;
-              const player = data.nations[1];
-              const targetNat = data.nations[id];
-              if (!player || !targetNat) return;
-
-              showMeme('TRUCE');
-
-              player.diplomacy[id] = { status: 'TRUCE', relation: 30, truceTimer: 45 };
-              targetNat.diplomacy[1] = { status: 'TRUCE', relation: 30, truceTimer: 45 };
-              if (Array.isArray(targetNat.allianceInvites)) {
-                targetNat.allianceInvites = targetNat.allianceInvites.filter(inv => inv.senderNationId !== 1);
-              }
-              if (Array.isArray(player.allianceInvites)) {
-                player.allianceInvites = player.allianceInvites.filter(inv => inv.senderNationId !== id);
-              }
-
-              data.attackWaves = data.attackWaves.filter(w => 
-                !( (w.fromNation === 1 && w.toNation === id) || (w.fromNation === id && w.toNation === 1) )
-              );
-              syncBalancedTradeRoutes(data, collectPortList(data.tiles, data.nations));
-
-              soundManager.playTruce();
-              data.particles.push({
-                x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                color: '#38bdf8', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.8,
-                type: 'FLOAT_TEXT',
-                text: `🕊️ ĐÌNH CHIẾN 45 GIÂY: Đóng băng giao tranh!`
-              });
-
-              data.events.unshift({
-                id: Math.random().toString(),
-                title: '🕊️ Hiệp Ước Đình Chiến (45 Giây)',
-                description: `Đã ký hiệp ước đình chiến 45 giây với ${targetNat.name}! Giao tranh được đóng băng tạm thời để bạn dồn toàn lực mở rộng lãnh thổ hướng khác.`,
-                type: 'DIPLOMACY',
-                targetNationId: id,
-                timestamp: formatGameTime(data.gameTimeSeconds),
-              });
-            }}
+            onProposeTruce={handleProposeTruce}
             onProposeAlliance={(id) => {
               const data = gameDataRef.current;
               const player = data.nations[1];
@@ -5559,60 +5741,7 @@ export default function App() {
                 timestamp: formatGameTime(data.gameTimeSeconds),
               });
             }}
-            onDeclareWar={(id) => {
-              const data = gameDataRef.current;
-              const player = data.nations[1];
-              const targetNat = data.nations[id];
-              if (!player || !targetNat) return;
-
-              const wasAlly = player.diplomacy[id]?.status === 'ALLIANCE';
-              showMeme(warMemeFor(player, targetNat, wasAlly));
-
-              if (wasAlly) {
-                player.traitorTimer = 120; // 120 giây bị gắn nhãn Kẻ Phản Bội
-              }
-
-              player.diplomacy[id] = { status: 'WAR', relation: -50, truceTimer: 0 };
-              targetNat.diplomacy[1] = { status: 'WAR', relation: -50, truceTimer: 0 };
-              if (Array.isArray(targetNat.allianceInvites)) {
-                targetNat.allianceInvites = targetNat.allianceInvites.filter(inv => inv.senderNationId !== 1);
-              }
-              if (Array.isArray(player.allianceInvites)) {
-                player.allianceInvites = player.allianceInvites.filter(inv => inv.senderNationId !== id);
-              }
-
-              if (data.tradeRoutes) {
-                data.tradeRoutes = data.tradeRoutes.filter(r => 
-                  !( (r.fromNation === 1 && r.toNation === id) || (r.fromNation === id && r.toNation === 1) )
-                );
-              }
-              if (data.tradeShips) {
-                data.tradeShips = data.tradeShips.filter(s => 
-                  !( (s.fromNation === 1 && s.toNation === id) || (s.fromNation === id && s.toNation === 1) )
-                );
-              }
-              syncBalancedTradeRoutes(data, collectPortList(data.tiles, data.nations));
-
-              soundManager.playAttack();
-              data.particles.push({
-                x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                color: '#ef4444', size: 0, life: 50, maxLife: 50, vx: 0, vy: -0.8,
-                type: 'FLOAT_TEXT',
-                text: wasAlly ? `🗡️ PHẢN BỘI LIÊN MINH (${targetNat.name})!` : `⚔️ TUYÊN CHIẾN: ${targetNat.name}!`
-              });
-
-              data.events.unshift({
-                id: Math.random().toString(),
-                title: wasAlly ? '🗡️ Phản Bội Liên Minh' : '⚔️ Tuyên Chiến',
-                description: wasAlly
-                  ? `Bạn đơn phương huỷ liên minh với ${targetNat.name}. Các quốc gia khác sẽ từ chối kết minh với bạn trong 120 giây.`
-                  : `Đã tuyên chiến với ${targetNat.name}! Mối quan hệ ngoại giao sụp đổ.`,
-                type: 'DIPLOMACY',
-                targetNationId: id,
-                timestamp: formatGameTime(data.gameTimeSeconds),
-              });
-            }}
+            onDeclareWar={handleDeclareWar}
             onSendGoldAid={handleSendGoldAid}
             onSendTroopAid={handleSendTroopAid}
           />
@@ -5726,48 +5855,8 @@ export default function App() {
         onSendGoldAid={handleSendGoldAid}
         onSendTroopAid={handleSendTroopAid}
         onRequestAid={handleRequestAid}
-        onProposeTruce={(id) => {
-          const data = gameDataRef.current;
-          const player = data.nations[1];
-          const targetNat = data.nations[id];
-          if (!player || !targetNat) return;
-
-          showMeme('TRUCE');
-
-          // Thiết lập Hiệp Ước Đình Chiến 45 giây cho cả hai bên (Đóng băng giao tranh)
-          player.diplomacy[id] = { status: 'TRUCE', relation: 30, truceTimer: 45 };
-          targetNat.diplomacy[1] = { status: 'TRUCE', relation: 30, truceTimer: 45 };
-          if (Array.isArray(targetNat.allianceInvites)) {
-            targetNat.allianceInvites = targetNat.allianceInvites.filter(inv => inv.senderNationId !== 1);
-          }
-          if (Array.isArray(player.allianceInvites)) {
-            player.allianceInvites = player.allianceInvites.filter(inv => inv.senderNationId !== id);
-          }
-
-          // Xóa ngay bất kỳ đợt quân tấn công nào đang di chuyển giữa 2 bên
-          data.attackWaves = data.attackWaves.filter(w => 
-            !( (w.fromNation === 1 && w.toNation === id) || (w.fromNation === id && w.toNation === 1) )
-          );
-          syncBalancedTradeRoutes(data, collectPortList(data.tiles, data.nations));
-
-          soundManager.playTruce();
-          data.particles.push({
-            x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-            y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-            color: '#38bdf8', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.8,
-            type: 'FLOAT_TEXT',
-            text: `🕊️ ĐÌNH CHIẾN 45 GIÂY: Đóng băng giao tranh!`
-          });
-
-          data.events.unshift({
-            id: Math.random().toString(),
-            title: '🕊️ Hiệp Ước Đình Chiến (45 Giây)',
-            description: `Đã ký hiệp ước đình chiến 45 giây với ${targetNat.name}! Giao tranh được đóng băng tạm thời để bạn dồn toàn lực mở rộng lãnh thổ hướng khác.`,
-            type: 'DIPLOMACY',
-            targetNationId: id,
-            timestamp: formatGameTime(data.gameTimeSeconds),
-          });
-        }}
+        gameTimeSeconds={gameDataRef.current.gameTimeSeconds || 0}
+        onProposeTruce={handleProposeTruce}
         onProposeAlliance={(id) => {
           const data = gameDataRef.current;
           const player = data.nations[1];
@@ -5852,59 +5941,7 @@ export default function App() {
             timestamp: formatGameTime(data.gameTimeSeconds),
           });
         }}
-        onDeclareWar={(id) => {
-          const data = gameDataRef.current;
-          const player = data.nations[1];
-          const targetNat = data.nations[id];
-          if (!player || !targetNat) return;
-
-          const wasAlly = player.diplomacy[id]?.status === 'ALLIANCE';
-          showMeme(warMemeFor(player, targetNat, wasAlly));
-
-          if (wasAlly) {
-            player.traitorTimer = 120; // 120 giây bị gắn nhãn Kẻ Phản Bội
-          }
-
-          player.diplomacy[id] = { status: 'WAR', relation: -50, truceTimer: 0 };
-          targetNat.diplomacy[1] = { status: 'WAR', relation: -50, truceTimer: 0 };
-          if (Array.isArray(targetNat.allianceInvites)) {
-            targetNat.allianceInvites = targetNat.allianceInvites.filter(inv => inv.senderNationId !== 1);
-          }
-          if (Array.isArray(player.allianceInvites)) {
-            player.allianceInvites = player.allianceInvites.filter(inv => inv.senderNationId !== id);
-          }
-
-          // Hủy bỏ các tuyến đường giao thương giữa 2 nước
-          if (data.tradeRoutes) {
-            data.tradeRoutes = data.tradeRoutes.filter(r => 
-              !( (r.fromNation === 1 && r.toNation === id) || (r.fromNation === id && r.toNation === 1) )
-            );
-          }
-          if (data.tradeShips) {
-            data.tradeShips = data.tradeShips.filter(s => 
-              !( (s.fromNation === 1 && s.toNation === id) || (s.fromNation === id && s.toNation === 1) )
-            );
-          }
-          syncBalancedTradeRoutes(data, collectPortList(data.tiles, data.nations));
-
-          soundManager.playAttack();
-          data.particles.push({
-            x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-            y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-            color: '#ef4444', size: 0, life: 50, maxLife: 50, vx: 0, vy: -0.8,
-            type: 'FLOAT_TEXT',
-            text: `⚔️ TUYÊN CHIẾN: ${targetNat.name}!`
-          });
-
-          data.events.unshift({
-            id: Math.random().toString(),
-            title: '⚔️ Tuyên Chiến',
-            description: `Đã tuyên chiến với ${targetNat.name}! Mối quan hệ ngoại giao sụp đổ.`,
-            type: 'DIPLOMACY',
-            targetNationId: id,
-            timestamp: formatGameTime(data.gameTimeSeconds),
-          });
-        }}
+        onDeclareWar={handleDeclareWar}
       />
 
       <EventLogModal

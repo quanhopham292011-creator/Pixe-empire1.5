@@ -65,12 +65,25 @@ import {
   produceAirUnit,
 } from '../utils/aircraftSystem';
 import { AIR_SYSTEM_CONFIG } from '../data/gameData';
+import {
+  TRUCE_DURATION,
+  TRUCE_MAX_PER_PAIR,
+  TRUCE_MAX_TOTAL_AI,
+  ensureTruceState,
+  getTruceAvailability,
+  applyTruceAgreement,
+} from '../utils/truceSystem';
+import {
+  buildLandAdjacencyMap,
+  evaluateAllianceDecision,
+  selectBetrayalTarget,
+  shouldBotBuildPort,
+} from '../utils/diplomacyAI';
 
 const DX = [1, -1, 0, 0];
 const DY = [0, 0, 1, -1];
 
-const AUTO_TRUCE_DURATION = 45;
-const AUTO_TRUCE_WAR_COOLDOWN = 180; // Chờ thêm 180s chiến tranh sau khi hết đình chiến mới được xét lại
+const AUTO_TRUCE_DURATION = TRUCE_DURATION;
 const AUTO_TRUCE_MIN_GOLD = 80;
 
 export interface AutoTruceContext {
@@ -110,19 +123,7 @@ export function processBotAutoTruce(ctx: AutoTruceContext): boolean {
   if (!bot || bot.isEliminated || bot.id <= 1 || bot.colonyCategory === 'FOREST') return false;
   if (!bot.diplomacy) bot.diplomacy = {};
 
-  if (!bot.autoTruceState) {
-    bot.autoTruceState = {
-      dangerTicks: {},
-      cooldownUntil: {},
-      truceCounts: {},
-      prevTerritory: bot.territoryCount || 0,
-      recentLoss: 0,
-    };
-  }
-  const truceState = bot.autoTruceState;
-  if (!truceState.dangerTicks) truceState.dangerTicks = {};
-  if (!truceState.cooldownUntil) truceState.cooldownUntil = {};
-  if (!truceState.truceCounts) truceState.truceCounts = {};
+  const truceState = ensureTruceState(bot);
 
   const currentTer = bot.territoryCount || 0;
   const prevTer = typeof truceState.prevTerritory === 'number' ? truceState.prevTerritory : currentTer;
@@ -132,6 +133,14 @@ export function processBotAutoTruce(ctx: AutoTruceContext): boolean {
     truceState.recentLoss = Math.max(0, (truceState.recentLoss || 0) - 0.25);
   }
   truceState.prevTerritory = currentTer;
+
+  // Ngăn AI spam đình chiến liên tục hoặc vượt quá giới hạn kích hoạt toàn trận
+  if ((truceState.totalTrucesUsed || 0) >= TRUCE_MAX_TOTAL_AI || gameTime < (truceState.globalCooldownUntil || 0)) {
+    Object.keys(truceState.dangerTicks).forEach((k) => {
+      truceState.dangerTicks[Number(k)] = 0;
+    });
+    return false;
+  }
 
   // Thu thập toàn bộ đối thủ đang tiếp giáp hoặc đang tấn công
   const candidateIds = new Set<number>(adjacentEnemyIds);
@@ -198,17 +207,21 @@ export function processBotAutoTruce(ctx: AutoTruceContext): boolean {
     const outgoingTroops = waveByPair.get(`${bot.id}->${enemyId}`) || 0;
     const capitalAdjacent = capitalAdjacentEnemyIds.has(enemyId);
 
-    // 1. Chặn đình chiến liên tục hoặc khi đối thủ / người chơi vượt trội rõ rệt
-    const cooldownUntil = truceState.cooldownUntil[enemyId] || 0;
-    const usedCount = truceState.truceCounts[enemyId] || 0;
-    const maxAllowedTruces = powerRatio >= 2.0 ? 1 : 2;
+    // 1. Chặn đình chiến liên tục (hồi chiêu 2 chiều + giới hạn kích hoạt) hoặc khi đối thủ vượt trội rõ rệt
+    const maxAllowedTruces = powerRatio >= 2.0 ? 1 : TRUCE_MAX_PER_PAIR;
     const isOverwhelmingEnemy =
       powerRatio >= 2.6 ||
       (enemyTerritory >= botTerritory * 2.5 && enemyTroops >= botTroops * 2.0) ||
       (enemyId === 1 && playerLandPct >= 0.35) ||
       (botTerritory <= 3 && enemyTerritory >= 12);
 
-    if (isOverwhelmingEnemy || gameTime < cooldownUntil || usedCount >= maxAllowedTruces) {
+    const truceCheck = getTruceAvailability(bot, enemyNat, gameTime, {
+      maxPerPair: maxAllowedTruces,
+      maxTotal: TRUCE_MAX_TOTAL_AI,
+      checkIncomingAiCooldown: true,
+    });
+
+    if (isOverwhelmingEnemy || !truceCheck.ok) {
       truceState.dangerTicks[enemyId] = 0;
       return;
     }
@@ -268,24 +281,8 @@ export function processBotAutoTruce(ctx: AutoTruceContext): boolean {
   bot.gold -= tribute;
   enemyNat.gold = (enemyNat.gold || 0) + tribute;
 
-  // Cập nhật đồng bộ 2 chiều
-  bot.diplomacy[enemyId] = { status: 'TRUCE', relation: 30, truceTimer: AUTO_TRUCE_DURATION };
-  if (!enemyNat.diplomacy) enemyNat.diplomacy = {};
-  enemyNat.diplomacy[bot.id] = { status: 'TRUCE', relation: 30, truceTimer: AUTO_TRUCE_DURATION };
-
-  // Xóa các đợt quân đang di chuyển giữa 2 nước để không đánh chồng lên trạng thái đình chiến
-  if (Array.isArray(data.attackWaves)) {
-    data.attackWaves = data.attackWaves.filter(
-      (w: any) => !((w.fromNation === bot.id && w.toNation === enemyId) || (w.fromNation === enemyId && w.toNation === bot.id))
-    );
-  }
-
-  truceState.cooldownUntil[enemyId] = gameTime + AUTO_TRUCE_DURATION + AUTO_TRUCE_WAR_COOLDOWN;
-  truceState.truceCounts[enemyId] = (truceState.truceCounts[enemyId] || 0) + 1;
-  truceState.dangerTicks[enemyId] = 0;
-  if (enemyNat.autoTruceState?.dangerTicks) {
-    enemyNat.autoTruceState.dangerTicks[bot.id] = 0;
-  }
+  // Cập nhật đồng bộ 2 chiều trạng thái ngoại giao, hồi chiêu và giới hạn kích hoạt
+  applyTruceAgreement(bot, enemyNat, data, gameTime, true);
 
   if (enemyId === 1) {
     if (!Array.isArray(data.events)) data.events = [];
@@ -484,6 +481,9 @@ export function useBotAI({
       }
     });
 
+    const coalitionThreshold = difficulty === 'EXTREME' ? 0.22 : difficulty === 'HARD' ? 0.28 : difficulty === 'NORMAL' ? 0.35 : 0.45;
+    const adjacentByNation = buildLandAdjacencyMap(tiles);
+
     nations.forEach((bot: Nation) => {
       if (bot.id <= 1 || bot.isEliminated || humanNationIds.has(bot.id)) return;
       if (bot.colonyCategory === 'FOREST') return;
@@ -491,29 +491,37 @@ export function useBotAI({
       // 1. Dùng kỹ năng Tướng
       botUseGeneralSkill(bot);
 
-      // --- 1B. Bot chủ động xin liên minh ---
-      if ((bot.id + gameTime) % 15 === 0 && bot.traitorTimer <= 0 && countActiveAlliances(bot, nations) < 3) {
-        const diffInviteProb = difficulty === 'EXTREME' ? 0.40 : difficulty === 'HARD' ? 0.35 : difficulty === 'NORMAL' ? 0.25 : 0.15;
-        const persInviteMult = bot.personality === 'AGGRESSIVE' ? 0.3 : bot.personality === 'MERCHANT' ? 1.5 : 1.0;
+      const botLandAdj = adjacentByNation.get(bot.id) || new Set<number>();
+
+      // --- 1B. Bot chủ động xin liên minh (đánh giá sức mạnh, quan hệ và tình hình chiến tranh) ---
+      if ((bot.id + gameTime) % 15 === 0 && (bot.traitorTimer || 0) <= 0 && countActiveAlliances(bot, nations) < 3) {
+        const diffInviteProb = difficulty === 'EXTREME' ? 0.42 : difficulty === 'HARD' ? 0.35 : difficulty === 'NORMAL' ? 0.26 : 0.16;
+        const persInviteMult = bot.personality === 'AGGRESSIVE' ? 0.45 : bot.personality === 'MERCHANT' ? 1.4 : 1.0;
         if (Math.random() < diffInviteProb * persInviteMult) {
-          const candidates: Nation[] = [];
+          const scoredCandidates: { nation: Nation; score: number }[] = [];
           nations.forEach((other: Nation) => {
             if (!other || other.id === bot.id || other.isEliminated || other.colonyCategory === 'FOREST') return;
-            reconcileNationAlliances(bot, nations);
-            reconcileNationAlliances(other, nations);
-            if (bot.diplomacy?.[other.id]?.status === 'ALLIANCE') return;
-            if (countActiveAlliances(other, nations) >= 3) return;
             if ((bot.lastRejectedInviteTimer?.[other.id] || 0) > 0) return;
             if (other.allianceInvites?.some((inv: any) => inv.senderNationId === bot.id)) return;
-            candidates.push(other);
-          });
-          if (candidates.length > 0) {
-            candidates.sort((a, b) => {
-              const relA = bot.diplomacy?.[a.id]?.relation || 0;
-              const relB = bot.diplomacy?.[b.id]?.relation || 0;
-              return relB - relA;
+            const evalRes = evaluateAllianceDecision(bot, other, {
+              nations,
+              tiles,
+              waveByPair,
+              adjacentByNation,
+              adjacentEnemyIds: botLandAdj,
+              difficulty,
+              superpowerId,
+              maxLandRatio,
+              coalitionThreshold,
+              isProposal: true,
             });
-            const target = candidates[0];
+            if (evalRes.ok) {
+              scoredCandidates.push({ nation: other, score: evalRes.score });
+            }
+          });
+          if (scoredCandidates.length > 0) {
+            scoredCandidates.sort((a, b) => b.score - a.score);
+            const target = scoredCandidates[0].nation;
             target.allianceInvites = target.allianceInvites || [];
             target.allianceInvites.push({
               senderNationId: bot.id,
@@ -539,56 +547,77 @@ export function useBotAI({
         }
       }
 
-      // --- 1C. Bot phản bội liên minh ---
-      if (gameTime > 180 && (bot.id + gameTime) % 10 === 0 && bot.traitorTimer <= 0 && difficulty !== 'EASY' && bot.personality !== 'MERCHANT' && (bot.nextBetrayalAt || 0) <= gameTime) {
-        const diffBetrayProb = difficulty === 'EXTREME' ? 0.06 : difficulty === 'HARD' ? 0.035 : 0.015;
-        const persBetrayMult = bot.personality === 'AGGRESSIVE' ? 2.0 : bot.personality === 'OPPORTUNIST' ? 1.5 : 0.7;
-        if (Math.random() < diffBetrayProb * persBetrayMult) {
-          const botPower = (bot.troops || 0) + (bot.territoryCount || 0) * 10;
-          let activeWars = 0;
-          Object.values(bot.diplomacy || {}).forEach((d: any) => {
-            if (d?.status === 'WAR') activeWars++;
-          });
+      // --- 1C. Bot phản bội liên minh (dựa trên quan hệ, lợi ích và tình hình chiến tranh; tránh ngẫu nhiên/liên tục) ---
+      if (
+        gameTime > 180 &&
+        (bot.id + gameTime) % 10 === 0 &&
+        (bot.traitorTimer || 0) <= 0 &&
+        difficulty !== 'EASY' &&
+        bot.personality !== 'MERCHANT' &&
+        (bot.nextBetrayalAt || 0) <= gameTime
+      ) {
+        const betrayalPick = selectBetrayalTarget(bot, {
+          nations,
+          tiles,
+          waveByPair,
+          adjacentEnemyIds: botLandAdj,
+          difficulty,
+          gameTime,
+          totalLand,
+          tradeRoutes: data.tradeRoutes,
+        });
 
-          if (activeWars <= 1) {
-            for (const [otherIdStr, dipInfo] of Object.entries(bot.diplomacy || {})) {
-              const otherId = Number(otherIdStr);
-              if ((dipInfo as any)?.status === 'ALLIANCE') {
-                const ally = nations[otherId];
-                if (!ally || ally.isEliminated) continue;
-                const allyPower = (ally.troops || 0) + (ally.territoryCount || 0) * 10;
-                if (botPower > allyPower * 1.3) {
-                  bot.traitorTimer = 120;
-                  bot.nextBetrayalAt = gameTime + 120;
-                  bot.diplomacy[otherId] = { status: 'WAR', relation: 0, truceTimer: 0 };
-                  if (!ally.diplomacy) ally.diplomacy = {};
-                  ally.diplomacy[bot.id] = { status: 'WAR', relation: 0, truceTimer: 0 };
+        if (betrayalPick) {
+          const diffBetrayProb = difficulty === 'EXTREME' ? 0.28 : difficulty === 'HARD' ? 0.20 : 0.12;
+          const persBetrayMult = bot.personality === 'AGGRESSIVE' ? 1.35 : bot.personality === 'OPPORTUNIST' ? 1.15 : 0.65;
+          const scoreBoost = Math.min(1.5, 0.8 + (betrayalPick.score - 28) / 70);
+          if (Math.random() < diffBetrayProb * persBetrayMult * scoreBoost) {
+            const ally = betrayalPick.target;
+            const otherId = ally.id;
+            bot.traitorTimer = 120;
+            bot.nextBetrayalAt = gameTime + 240; // Giãn cách tối thiểu 4 phút giữa các lần phản bội
+            bot.diplomacy[otherId] = { status: 'WAR', relation: -50, truceTimer: 0 };
+            if (!ally.diplomacy) ally.diplomacy = {};
+            ally.diplomacy[bot.id] = { status: 'WAR', relation: -50, truceTimer: 0 };
 
-                  data.attackWaves = (data.attackWaves || []).filter((w: any) => 
-                    !((w.fromNation === bot.id && w.toNation === otherId) || (w.fromNation === otherId && w.toNation === bot.id))
-                  );
-                  syncBalancedTradeRoutes(data, collectPortList(tiles, nations));
+            if (Array.isArray(ally.allianceInvites)) {
+              ally.allianceInvites = ally.allianceInvites.filter((inv: any) => inv.senderNationId !== bot.id);
+            }
+            if (Array.isArray(bot.allianceInvites)) {
+              bot.allianceInvites = bot.allianceInvites.filter((inv: any) => inv.senderNationId !== otherId);
+            }
 
-                  if (otherId === 1 || bot.id === 1) {
-                    showMeme('BETRAY');
-                    data.particles.push({
-                      x: bot.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                      y: bot.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-                      color: '#ef4444', size: 0, life: 75, maxLife: 75, vx: 0, vy: -0.8,
-                      type: 'FLOAT_TEXT', text: `⚡ ${bot.name} PHẢN BỘI LIÊN MINH!`
-                    });
-                    data.events.unshift({
-                      id: Math.random().toString(),
-                      title: '⚡ PHẢN BỘI ĐỘNG TRỜI!',
-                      description: `${bot.name} đã xé bỏ hiệp ước liên minh và tuyên chiến bất ngờ với bạn!`,
-                      type: 'DIPLOMACY',
-                      targetNationId: bot.id,
-                      timestamp: formatGameTime(gameTime),
-                    });
-                  }
-                  break;
-                }
-              }
+            data.attackWaves = (data.attackWaves || []).filter((w: any) =>
+              !((w.fromNation === bot.id && w.toNation === otherId) || (w.fromNation === otherId && w.toNation === bot.id))
+            );
+            if (Array.isArray(data.tradeRoutes)) {
+              data.tradeRoutes = data.tradeRoutes.filter((r: any) =>
+                !((r.fromNation === bot.id && r.toNation === otherId) || (r.fromNation === otherId && r.toNation === bot.id))
+              );
+            }
+            if (Array.isArray(data.tradeShips)) {
+              data.tradeShips = data.tradeShips.filter((s: any) =>
+                !((s.fromNation === bot.id && s.toNation === otherId) || (s.fromNation === otherId && s.toNation === bot.id))
+              );
+            }
+            syncBalancedTradeRoutes(data, collectPortList(tiles, nations));
+
+            if (otherId === 1 || bot.id === 1) {
+              showMeme('BETRAY');
+              data.particles.push({
+                x: bot.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                y: bot.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                color: '#ef4444', size: 0, life: 75, maxLife: 75, vx: 0, vy: -0.8,
+                type: 'FLOAT_TEXT', text: `⚡ ${bot.name} PHẢN BỘI LIÊN MINH!`
+              });
+              data.events.unshift({
+                id: Math.random().toString(),
+                title: '⚡ PHẢN BỘI ĐỘNG TRỜI!',
+                description: `${bot.name} đã xé bỏ hiệp ước liên minh và tuyên chiến bất ngờ với bạn! (${bot.name} bị phạt -20% phòng thủ trong 120s)`,
+                type: 'DIPLOMACY',
+                targetNationId: bot.id,
+                timestamp: formatGameTime(gameTime),
+              });
             }
           }
         }
@@ -796,30 +825,35 @@ export function useBotAI({
         capitalAdjacentEnemyIds,
       });
 
-      if ((bot.id + gameTime) % 4 === 0) {
+      if ((bot.id + gameTime) % 4 === 0 && (bot.traitorTimer || 0) <= 0) {
         if (!bot.diplomacy) bot.diplomacy = {};
         if (!bot.allianceInvites) bot.allianceInvites = [];
 
         // 4a. Khối liên minh chống Bá quyền (Anti-Superpower Coalition)
-        const coalitionThreshold = difficulty === 'EXTREME' ? 0.22 : difficulty === 'HARD' ? 0.28 : difficulty === 'NORMAL' ? 0.35 : 0.45;
         const coalitionChance = difficulty === 'EXTREME' ? 0.55 : difficulty === 'HARD' ? 0.40 : difficulty === 'NORMAL' ? 0.25 : 0.15;
         if (maxLandRatio >= coalitionThreshold && superpowerId > 0 && superpowerId !== bot.id) {
           const superDip = bot.diplomacy[superpowerId];
           if (!superDip || superDip.status === 'WAR') {
             nations.forEach((other: Nation) => {
-              if (other && !other.isEliminated && other.id !== bot.id && other.id !== superpowerId && other.id > 0) {
-                const dipWithOther = bot.diplomacy[other.id];
-                if (!dipWithOther || dipWithOther.status !== 'WAR') {
-                  reconcileNationAlliances(bot, nations);
-                  const currentAllies = countActiveAlliances(bot, nations);
-                  if (currentAllies < 3 && Math.random() < coalitionChance) {
-                    if (!other.allianceInvites) other.allianceInvites = [];
-                    const alreadyInvited = other.allianceInvites.some(inv => inv.senderNationId === bot.id);
-                    if (!alreadyInvited) {
-                      other.allianceInvites.push({ senderNationId: bot.id, expiryTimer: 20 });
-                    }
-                  }
-                }
+              if (!other || other.isEliminated || other.id === bot.id || other.id === superpowerId || other.id <= 0 || other.colonyCategory === 'FOREST') return;
+              if ((bot.lastRejectedInviteTimer?.[other.id] || 0) > 0) return;
+              if (other.allianceInvites?.some(inv => inv.senderNationId === bot.id)) return;
+              if (other.diplomacy?.[superpowerId]?.status === 'ALLIANCE') return;
+              const evalRes = evaluateAllianceDecision(bot, other, {
+                nations,
+                tiles,
+                waveByPair,
+                adjacentByNation,
+                adjacentEnemyIds: botLandAdj,
+                difficulty,
+                superpowerId,
+                maxLandRatio,
+                coalitionThreshold,
+                isProposal: true,
+              });
+              if (evalRes.ok && Math.random() < coalitionChance) {
+                if (!other.allianceInvites) other.allianceInvites = [];
+                other.allianceInvites.push({ senderNationId: bot.id, expiryTimer: 20 });
               }
             });
           }
@@ -911,13 +945,27 @@ export function useBotAI({
         }
       }
 
-      // 6a2. AI xây 1 Cảng ở ô ven biển để có thể đổ bộ
-      if (!bot.hasPort && (gameTime >= 120 || (neutralTargets.length === 0 && ownedList.length >= 5)) && (ownedList.length >= 12 || neutralTargets.length === 0) && (bot.id + gameTime) % 7 === 0 &&
-          bot.gold >= BUILDING_INFO.PORT.baseCost + 200) {
-        const portSpot = ownedList.find(t =>
-          t.terrain !== 'WATER' && t.hasHarborAccess && t.building === 'NONE' &&
-          !(t.x === bot.capitalX && t.y === bot.capitalY)
-        );
+      // 6a2. AI xây Cảng thông minh (chỉ chọn ô thông biển mở, an toàn, ưu tiên gần mỏ dầu biển/cách biệt hợp lý)
+      if ((bot.id + gameTime) % 5 === 0) {
+        let openPortsCount = 0;
+        for (let oi = 0; oi < ownedList.length; oi++) {
+          const ot = ownedList[oi];
+          if (ot.building === 'PORT') {
+            const acc = getPortWaterAccess(tiles, ot.x, ot.y);
+            if (!acc.isEnclosed && acc.openCompIds.length > 0) openPortsCount++;
+          }
+        }
+        const isUnderCapitalSiege = borderThreats.some(b => b.isCapital && b.threatScore >= 35);
+        const portSpot = shouldBotBuildPort({
+          bot,
+          tiles,
+          ownedList,
+          openPortsCount,
+          hasLandExpansion: neutralTargets.length > 0 || adjacentEnemyIds.size > 0,
+          isUnderCapitalSiege,
+          gameTime,
+          difficulty,
+        });
         if (portSpot) {
           bot.gold -= BUILDING_INFO.PORT.baseCost;
           portSpot.building = 'PORT';

@@ -9,7 +9,7 @@ export const SUPER_BUILDING_TYPES: SuperBuildingType[] = [
 ];
 
 export const SUPER_BUILDING_CONFIG = {
-  BUILD_TIME_SECONDS: 45,
+  BUILD_TIME_SECONDS: 41,
   MAX_PER_TYPE: 1,
   MAX_TOTAL_PER_NATION: 2,
   MAX_HP: 100,

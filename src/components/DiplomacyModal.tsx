@@ -7,6 +7,7 @@ import {
   createMarket,
 } from '../utils/resources';
 import { Handshake, Swords, Shield, X, ArrowLeftRight, Lock, ChevronLeft } from 'lucide-react';
+import { getTruceAvailability } from '../utils/truceSystem';
 
 interface DiplomacyModalProps {
   isOpen: boolean;
@@ -29,6 +30,7 @@ interface DiplomacyModalProps {
   onSendGoldAid?: (botId: number) => void;
   onSendTroopAid?: (botId: number) => void;
   onRequestAid?: (botId: number) => void;
+  gameTimeSeconds?: number;
 }
 
 const TRADE_QUANTITIES = [10, 50, 100, 200] as const;
@@ -45,6 +47,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
   onProposeTruce,
   onProposeAlliance,
   onDeclareWar,
+  gameTimeSeconds = 0,
 }) => {
   const [tradeBotId, setTradeBotId] = useState<number | null>(null);
   const [tradeQty, setTradeQty] = useState<number>(50);
@@ -247,7 +250,15 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                 >
                   <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                     <span className="font-bold text-white text-base">{nation.name}</span>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {(nation.traitorTimer || 0) > 0 && (
+                        <span
+                          className="text-xs px-2 py-0.5 rounded border bg-red-950 text-red-200 border-red-500 font-bold"
+                          title="Hình phạt phản bội: -20% phòng thủ"
+                        >
+                          ⚠️ Phản bội (-20% thủ · {Math.ceil(nation.traitorTimer)}s)
+                        </span>
+                      )}
                       {!isSelf && (
                         <span className={`text-sm px-2 py-0.5 rounded border ${pers.color}`}>
                           {pers.text}
@@ -279,12 +290,34 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
 
                       {dip.status === 'WAR' ? (
                         <>
-                          <button
-                            onClick={() => onProposeTruce(nation.id)}
-                            className="min-h-[44px] px-3 py-2 bg-blue-950 hover:bg-blue-900 active:scale-95 text-blue-100 border border-blue-400 rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-sm"
-                          >
-                            <Shield className="w-4 h-4 text-blue-300" /> Đình Chiến
-                          </button>
+                          {(() => {
+                            const truceCheck = getTruceAvailability(playerNation, nation, gameTimeSeconds);
+                            const remUses = Math.max(0, truceCheck.maxAllowed - truceCheck.usedCount);
+                            const truceLabel = truceCheck.ok
+                              ? `Đình Chiến (${remUses}/${truceCheck.maxAllowed})`
+                              : truceCheck.reason === 'LIMIT'
+                                ? `Hết Đình Chiến (${truceCheck.usedCount}/${truceCheck.maxAllowed})`
+                                : `Hồi ${truceCheck.cooldownRemaining}s`;
+                            return (
+                              <button
+                                onClick={() => onProposeTruce(nation.id)}
+                                title={
+                                  truceCheck.ok
+                                    ? `Ký Đình Chiến 45s (còn ${remUses}/${truceCheck.maxAllowed} lần với nước này)`
+                                    : truceCheck.reason === 'LIMIT'
+                                      ? `Đã đạt giới hạn Đình Chiến (${truceCheck.usedCount}/${truceCheck.maxAllowed})`
+                                      : `Đang hồi chiêu Đình Chiến (${truceCheck.cooldownRemaining}s)`
+                                }
+                                className={`min-h-[44px] px-3 py-2 rounded-xl text-sm font-semibold flex items-center gap-1.5 shadow-sm border transition-all ${
+                                  truceCheck.ok
+                                    ? 'bg-blue-950 hover:bg-blue-900 active:scale-95 text-blue-100 border-blue-400'
+                                    : 'bg-slate-900 text-slate-300 border-slate-600 opacity-75'
+                                }`}
+                              >
+                                <Shield className={`w-4 h-4 ${truceCheck.ok ? 'text-blue-300' : 'text-slate-400'}`} /> {truceLabel}
+                              </button>
+                            );
+                          })()}
                           <button
                             onClick={() => onProposeAlliance(nation.id)}
                             className="min-h-[44px] px-3 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 shadow-md"

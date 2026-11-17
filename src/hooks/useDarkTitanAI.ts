@@ -157,7 +157,9 @@ export function stepDarkTitanSystem({
       const diff = difficultyRef.current || 'EASY';
       const threat = computeThreat(data);
       const tier = threat >= 0.66 ? 3 : threat >= 0.33 ? 2 : 1;
-      const scaledHp = Math.round(DARK_TITAN_CONFIG.MAX_HP * (1 + threat * (DARK_TITAN_CONFIG.HP_GROW[diff] ?? 2)));
+      const tierHpMult = tier === 1 ? 0.85 : tier === 2 ? 0.95 : 1.0;
+      const tierDmgMult = tier === 1 ? 0.85 : tier === 2 ? 0.95 : 1.0;
+      const scaledHp = Math.round(DARK_TITAN_CONFIG.MAX_HP * (1 + threat * (DARK_TITAN_CONFIG.HP_GROW[diff] ?? 1.8)) * tierHpMult);
       const warnSec = DARK_TITAN_CONFIG.SPAWN_WARNING_SECONDS;
 
       const pending: PendingTitanSpawn = {
@@ -168,8 +170,8 @@ export function stepDarkTitanSystem({
         totalSeconds: warnSec,
         tier,
         hp: scaledHp,
-        dmgScale: 1 + threat * (DARK_TITAN_CONFIG.DMG_GROW[diff] ?? 0.5),
-        cdScale: tier >= 3 ? 1.2 : 1,
+        dmgScale: (1 + threat * (DARK_TITAN_CONFIG.DMG_GROW[diff] ?? 0.45)) * tierDmgMult,
+        cdScale: tier >= 3 ? 1.15 : tier === 2 ? 1.05 : 0.95,
         moveBonus: tier >= 2 ? 1 : 0,
         ultBonus: tier >= 3 ? 2 : tier >= 2 ? 1 : 0,
       };
