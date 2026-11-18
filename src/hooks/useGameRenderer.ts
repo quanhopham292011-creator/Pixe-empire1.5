@@ -873,6 +873,59 @@ export function useGameRenderer({
         }
       }
 
+      // 4.3. Cảnh báo biên giới người chơi bị tấn công (chỉ vẽ ô bị đánh & vài ô xung quanh trong vùng nhìn thấy, không đổ bóng/gradient)
+      const localPlayerId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+      if (attackWaves.length > 0 && localPlayerId > 0) {
+        const alertTiles = new Map<number, boolean>();
+        const ALERT_DIRS = [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]];
+        for (let wi = 0; wi < attackWaves.length; wi++) {
+          const w = attackWaves[wi];
+          if (!w || w.troops <= 0 || w.fromNation <= 0 || w.fromNation === localPlayerId) continue;
+          const tx = w.targetX;
+          const ty = w.targetY;
+          const tgt = tiles[ty]?.[tx];
+          if (!tgt || tgt.owner !== localPlayerId) continue;
+          if (tx + 1 < minTileX || tx - 1 > maxTileX || ty + 1 < minTileY || ty - 1 > maxTileY) continue;
+
+          for (let di = 0; di < ALERT_DIRS.length; di++) {
+            const nx = tx + ALERT_DIRS[di][0];
+            const ny = ty + ALERT_DIRS[di][1];
+            if (nx < minTileX || nx > maxTileX || ny < minTileY || ny > maxTileY) continue;
+            const nt = tiles[ny]?.[nx];
+            if (!nt || nt.owner !== localPlayerId) continue;
+            const key = ny * size + nx;
+            if (di === 0) {
+              alertTiles.set(key, true);
+            } else if (!alertTiles.has(key)) {
+              alertTiles.set(key, false);
+            }
+          }
+        }
+
+        if (alertTiles.size > 0) {
+          const pulse = 0.5 + 0.5 * Math.sin(timestamp * 0.012);
+          const centerFill = `rgba(239, 68, 68, ${(0.20 + 0.24 * pulse).toFixed(3)})`;
+          const nearFill = `rgba(239, 68, 68, ${(0.10 + 0.14 * pulse).toFixed(3)})`;
+          const borderStroke = `rgba(248, 113, 113, ${(0.55 + 0.35 * pulse).toFixed(3)})`;
+
+          ctx.save();
+          alertTiles.forEach((isCenter, key) => {
+            const ax = key % size;
+            const ay = (key - ax) / size;
+            const px = ax * TILE_PIXEL_SIZE;
+            const py = ay * TILE_PIXEL_SIZE;
+            ctx.fillStyle = isCenter ? centerFill : nearFill;
+            ctx.fillRect(px, py, TILE_PIXEL_SIZE, TILE_PIXEL_SIZE);
+            if (isCenter) {
+              ctx.strokeStyle = borderStroke;
+              ctx.lineWidth = 1.5;
+              ctx.strokeRect(px + 0.75, py + 0.75, TILE_PIXEL_SIZE - 1.5, TILE_PIXEL_SIZE - 1.5);
+            }
+          });
+          ctx.restore();
+        }
+      }
+
       // 4.5. Vẽ Vùng Chọn Ô Đất (Selection Highlight) sắc nét, định vị 4 góc & Vòng tròn hiệu lực Pháo Đài
       if (selectedTileRef.current) {
         const st = selectedTileRef.current;

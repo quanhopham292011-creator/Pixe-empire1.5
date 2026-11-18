@@ -391,6 +391,33 @@ class SoundSystem {
       oscSub.stop(now + 1.05);
     } catch {}
   }
+
+  playBorderAlert() {
+    if (!this.enabled) return;
+    this.initContext();
+    if (!this.ctx) return;
+
+    try {
+      const now = this.ctx.currentTime;
+      const notes = [660, 520];
+      notes.forEach((freq, idx) => {
+        if (!this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.12);
+
+        gain.gain.setValueAtTime(0.08, now + idx * 0.12);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.11);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+
+        osc.start(now + idx * 0.12);
+        osc.stop(now + idx * 0.12 + 0.11);
+      });
+    } catch {}
+  }
 }
 
 export const soundManager = new SoundSystem();

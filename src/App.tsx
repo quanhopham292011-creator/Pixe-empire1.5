@@ -311,6 +311,7 @@ export default function App() {
   const tapRipplesRef = useRef<{x: number, y: number, startTime: number}[]>([]);
   const captureFlashRef = useRef<{x: number, y: number, color: string, startTime: number}[]>([]);
   const lastTapRef = useRef({ x: -1, y: -1, time: 0 });
+  const lastBorderAlertAtRef = useRef<Record<number, number>>({});
 
   // Nhiệm vụ trong game
   const [currentQuest, setCurrentQuest] = useState<QuestStep>(1);
@@ -1231,6 +1232,7 @@ export default function App() {
     fogBaseDirtyRef.current = true;
     dirtyTerritoryTilesRef.current = [];
     coalitionFormedRef.current = false;
+    lastBorderAlertAtRef.current = {};
     unlockedAchievementsRef.current.clear();
     victoryAwardedRef.current = false;
     setVictoryReward(null);
@@ -4051,6 +4053,15 @@ export default function App() {
       focusY: target.y,
     });
 
+    const localPlayerId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+    if (from > 0 && from !== localPlayerId && (to === localPlayerId || target.owner === localPlayerId)) {
+      const nowMs = Date.now();
+      if (nowMs - (lastBorderAlertAtRef.current[from] || 0) >= 8000) {
+        lastBorderAlertAtRef.current[from] = nowMs;
+        soundManager.playBorderAlert();
+      }
+    }
+
     if ((from === 1 || from === myNationIdRef.current) && !hasGeneral) soundManager.playAttack();
     return true;
   };
@@ -4889,6 +4900,14 @@ export default function App() {
             wave.targetX = next.x;
             wave.targetY = next.y;
             wave.progress = 0;
+            const localPlayerId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+            if (wave.fromNation > 0 && wave.fromNation !== localPlayerId && data.tiles[next.y]?.[next.x]?.owner === localPlayerId) {
+              const nowMs = Date.now();
+              if (nowMs - (lastBorderAlertAtRef.current[wave.fromNation] || 0) >= 8000) {
+                lastBorderAlertAtRef.current[wave.fromNation] = nowMs;
+                soundManager.playBorderAlert();
+              }
+            }
             const bossBurst = isSubBossAttacker
               ? (difficulty === 'EXTREME' ? 5 : difficulty === 'HARD' ? 4 : difficulty === 'NORMAL' ? 3 : 3)
               : (difficulty === 'EXTREME' ? 6 : difficulty === 'HARD' ? 5 : difficulty === 'NORMAL' ? 4 : 3);
@@ -5557,17 +5576,32 @@ export default function App() {
               showMissileToast(msg);
             }}
             onNotify={(msg) => showMissileToast(msg)}
-            minimapNode={
-              <Minimap
-                tiles={gameDataRef.current.tiles}
-                nations={gameDataRef.current.nations}
-                mapSize={mapSize}
-                camera={cameraRef.current}
-                darkTitan={gameDataRef.current.darkTitan}
-                darkTitans={gameDataRef.current.darkTitans}
-                pendingTitanSpawn={gameDataRef.current.pendingTitanSpawn}
-                fogOfWarEnabled={fogOfWarEnabled}
-                playerNationId={isMultiplayer ? myPlayerNationId : 1}
+            minimapNode={(() => {
+              const activeWaves = gameDataRef.current.attackWaves || [];
+              const localPlayerId = isMultiplayer ? myPlayerNationId : 1;
+              let borderAlertKey = '';
+              for (let wi = 0; wi < activeWaves.length; wi++) {
+                const w = activeWaves[wi];
+                if (w && w.troops > 0 && w.fromNation > 0 && w.fromNation !== localPlayerId) {
+                  const tgtTile = gameDataRef.current.tiles?.[w.targetY]?.[w.targetX];
+                  if (tgtTile && tgtTile.owner === localPlayerId) {
+                    borderAlertKey += `${w.targetX},${w.targetY};`;
+                  }
+                }
+              }
+              return (
+                <Minimap
+                  tiles={gameDataRef.current.tiles}
+                  nations={gameDataRef.current.nations}
+                  mapSize={mapSize}
+                  camera={cameraRef.current}
+                  darkTitan={gameDataRef.current.darkTitan}
+                  darkTitans={gameDataRef.current.darkTitans}
+                  pendingTitanSpawn={gameDataRef.current.pendingTitanSpawn}
+                  attackWaves={activeWaves}
+                  borderAlertKey={borderAlertKey}
+                  fogOfWarEnabled={fogOfWarEnabled}
+                  playerNationId={localPlayerId}
                 onNavigate={(mapX, mapY) => {
                   const vpW = viewportSizeRef.current.width || 360;
                   const vpH = viewportSizeRef.current.height || 560;
@@ -5577,8 +5611,9 @@ export default function App() {
                   const clamped = clampCamera(rawX, rawY, curZoom);
                   cameraRef.current = { x: clamped.x, y: clamped.y, zoom: curZoom };
                 }}
-              />
-            }
+                />
+              );
+            })()}
             onToggleAirAiming={(type) => {
               const isSameBomber = type === 'BOMBER' && (airAimingMode === 'BOMBER_START' || airAimingMode === 'BOMBER_END');
               if (airAimingMode === type || isSameBomber) {

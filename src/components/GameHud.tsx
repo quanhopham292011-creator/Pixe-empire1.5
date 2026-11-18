@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Tile, Nation, PlayerProfile, GeneralStyle, DiplomacyStatus, AirUnitType, MissileType, TradeOffer, InspectedShipRef, NavalShip, SeaTradeShip, NavalAimingState } from '../types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Tile, Nation, PlayerProfile, GeneralStyle, DiplomacyStatus, AirUnitType, MissileType, TradeOffer, InspectedShipRef, NavalShip, SeaTradeShip, NavalAimingState, GameEvent } from '../types';
 import { formatPopulation, BUILDING_INFO, GENERAL_ROSTER, AIR_SYSTEM_CONFIG, AIR_UNIT_SPECS, MISSILE_CONFIG, TILE_PIXEL_SIZE } from '../utils/constants';
 import { isLandConnected } from '../utils/landConnectivity';
 import { pushFeedbackText } from '../utils/floatFeedback';
@@ -94,7 +94,7 @@ interface GameHudProps {
   questDismissed?: boolean;
   onDismissQuest?: () => void;
   activeSeasonEvent?: { name: string; remainingTime: number } | null;
-  incomingMissileWarning?: { missileName: string; targetX: number; targetY: number; secondsLeft: number } | null;
+  incomingMissileWarning?: { id?: string; missileName: string; targetX: number; targetY: number; secondsLeft: number } | null;
   missileFeedbackToast?: string | null;
   loadErrorToast?: string | null;
   pendingTradeOffer?: TradeOffer | null;
@@ -112,6 +112,125 @@ interface GameHudProps {
   onOpenNavalManager?: () => void;
   onStartNavalAiming?: (aim: NavalAimingState) => void;
   onNotify?: (msg: string) => void;
+}
+
+type BannerTone = 'danger' | 'alliance' | 'truce' | 'boss' | 'quest' | 'season' | 'info';
+
+interface TopBannerItem {
+  uid: string;
+  dedupKey: string;
+  text: string;
+  tone: BannerTone;
+  count: number;
+  createdAt: number;
+  kind?: 'EVENT' | 'QUEST' | 'SEASON' | 'MISSILE' | 'ATTACK' | 'BOMBER' | 'ERROR';
+  questStep?: number;
+  seasonName?: string;
+}
+
+const TOP_BANNER_DURATION_MS = 3500;
+const TOP_BANNER_DEDUP_MS = 10000;
+
+function getQuestObjectiveText(q: number): string {
+  return q === 1 ? 'Chiếm 12 ô đất xung quanh Việt Nam' :
+    q === 2 ? 'Xây dựng 1 Doanh Trại (Barracks)' :
+    q === 3 ? 'Chinh phục 25 ô đất thế giới' :
+    q === 4 ? 'Mở bảng Công Nghệ & nâng cấp' :
+    'Tiếp tục mở rộng đế quốc!';
+}
+
+function classifyImportantEvent(
+  evt: GameEvent,
+  playerNationId: number
+): { dedupKey: string; tone: BannerTone; text: string } | null {
+  const title = evt?.title || '';
+  const desc = evt?.description || '';
+  if (!title) return null;
+
+  // 1. Chiến tranh / Tuyên chiến / Phản bội
+  if (title.includes('Phản Bội') || title.includes('PHẢN BỘI')) {
+    return {
+      dedupKey: `BETRAY_${evt.targetNationId ?? 0}`,
+      tone: 'danger',
+      text: `${title}: ${desc}`,
+    };
+  }
+  if (
+    title.includes('Tuyên Chiến') ||
+    title.includes('TUYÊN CHIẾN') ||
+    title.includes('LIÊN MINH TOÀN CẦU')
+  ) {
+    return {
+      dedupKey: `WAR_${evt.targetNationId ?? 0}_${title.includes('TOÀN CẦU') ? 'COALITION' : 'DECL'}`,
+      tone: 'danger',
+      text: `${title}: ${desc}`,
+    };
+  }
+
+  // 2. Liên minh (thành lập hoặc lời mời nhận được; bỏ qua tin gửi lời mời/viện trợ nhỏ)
+  if (
+    title.includes('Liên Minh Thành Lập') ||
+    title.includes('Liên Minh Sắt Son Thành Lập') ||
+    (title.includes('Lời Mời Kết Minh') && !title.includes('Đã Gửi'))
+  ) {
+    return {
+      dedupKey: `ALLY_${evt.targetNationId ?? 0}_${title.includes('Mời') ? 'INV' : 'OK'}`,
+      tone: 'alliance',
+      text: `${title}: ${desc}`,
+    };
+  }
+
+  // 3. Đình chiến (ký kết / đề nghị / hết hạn)
+  if (title.includes('Đình Chiến') || title.includes('ĐÌNH CHIẾN')) {
+    return {
+      dedupKey: `TRUCE_${evt.targetNationId ?? 0}_${title.includes('Hết Hạn') ? 'END' : 'START'}`,
+      tone: 'truce',
+      text: `${title}: ${desc}`,
+    };
+  }
+
+  // 4. Người chơi bị bắn tên lửa (chỉ hiện nếu nhắm tới người chơi; bỏ qua bot bắn nhau)
+  if (title.includes('CẢNH BÁO TÊN LỬA')) {
+    if (evt.targetNationId !== playerNationId) return null;
+    return {
+      dedupKey: 'MISSILE_INCOMING',
+      tone: 'danger',
+      text: `${title}: ${desc}`,
+    };
+  }
+
+  // 5. Boss thế giới xuất hiện
+  if (title.includes('CỔNG TÀ THẦN MỞ RA')) {
+    return {
+      dedupKey: 'TITAN_PORTAL',
+      tone: 'boss',
+      text: `${title}: ${desc}`,
+    };
+  }
+  if (title.includes('TÀ THẦN GIÁNG LÂM')) {
+    return {
+      dedupKey: 'TITAN_ARRIVAL',
+      tone: 'boss',
+      text: `${title}: ${desc}`,
+    };
+  }
+
+  // 6. Thắng hoặc Thua (nếu có event ghi nhận)
+  if (
+    title.includes('CHIẾN THẮNG') ||
+    title.includes('ĐẠI THỐNG NHẤT') ||
+    title.includes('THẤT BẠI') ||
+    title.includes('ĐẾ CHẾ SỤP ĐỔ')
+  ) {
+    return {
+      dedupKey: `GAME_END_${title}`,
+      tone: title.includes('THẤT BẠI') || title.includes('SỤP ĐỔ') ? 'danger' : 'alliance',
+      text: `${title}: ${desc}`,
+    };
+  }
+
+  // Các tin ít quan trọng: vẫn nằm trong data.events (Nhật ký), không hiện banner màn hình
+  return null;
 }
 
 export const GameHud: React.FC<GameHudProps> = ({
@@ -186,23 +305,279 @@ export const GameHud: React.FC<GameHudProps> = ({
   void _hasMetBot;
   void _onToggleAirAiming;
   void _onProduceAirUnit;
+  void missileFeedbackToast;
   const [showReserves, setShowReserves] = useState(false);
   const [showGenInfo, setShowGenInfo] = useState(false);
   const [, setForceUpdate] = useState(0);
-  const [latestEventText, setLatestEventText] = useState<string | null>(null);
   const isOnline = useOnlineStatus();
 
-  // Auto-hide event ticker after 3 seconds when new event arrives
-  useEffect(() => {
-    const events = gameDataRef.current?.events;
-    if (events && events.length > 0) {
-      setLatestEventText(events[0].title + ': ' + events[0].description);
-      const timer = setTimeout(() => {
-        setLatestEventText(null);
-      }, 3000);
-      return () => clearTimeout(timer);
+  const [activeBanner, setActiveBanner] = useState<TopBannerItem | null>(null);
+  const [bannerQueue, setBannerQueue] = useState<TopBannerItem[]>([]);
+  const activeBannerRef = useRef<TopBannerItem | null>(null);
+  activeBannerRef.current = activeBanner;
+  const bannerQueueRef = useRef<TopBannerItem[]>([]);
+  bannerQueueRef.current = bannerQueue;
+  const dedupHistoryRef = useRef<Map<string, number>>(new Map());
+  const lastSeenEventIdRef = useRef<string | null>(null);
+  const seenMissileIdsRef = useRef<Set<string>>(new Set());
+  const shownQuestStepRef = useRef<number | null>(null);
+  const shownSeasonKeyRef = useRef<string | null>(null);
+  const [questBadgeExpanded, setQuestBadgeExpanded] = useState(false);
+  const [seasonBadgeExpanded, setSeasonBadgeExpanded] = useState(false);
+
+  const enqueueBanner = useCallback(
+    (candidate: Omit<TopBannerItem, 'uid' | 'count' | 'createdAt'>) => {
+      const now = Date.now();
+      dedupHistoryRef.current.forEach((ts, k) => {
+        if (now - ts > 30000) dedupHistoryRef.current.delete(k);
+      });
+
+      const curActive = activeBannerRef.current;
+      if (
+        curActive &&
+        curActive.dedupKey === candidate.dedupKey &&
+        now - curActive.createdAt < TOP_BANNER_DEDUP_MS
+      ) {
+        const merged: TopBannerItem = { ...curActive, count: curActive.count + 1 };
+        activeBannerRef.current = merged;
+        setActiveBanner(merged);
+        return;
+      }
+
+      const curQueue = bannerQueueRef.current;
+      const qIdx = curQueue.findIndex(
+        item => item.dedupKey === candidate.dedupKey && now - item.createdAt < TOP_BANNER_DEDUP_MS
+      );
+      if (qIdx >= 0) {
+        const nextQueue = [...curQueue];
+        nextQueue[qIdx] = { ...nextQueue[qIdx], count: nextQueue[qIdx].count + 1 };
+        bannerQueueRef.current = nextQueue;
+        setBannerQueue(nextQueue);
+        return;
+      }
+
+      const lastTs = dedupHistoryRef.current.get(candidate.dedupKey);
+      if (lastTs && now - lastTs < TOP_BANNER_DEDUP_MS) {
+        return;
+      }
+
+      dedupHistoryRef.current.set(candidate.dedupKey, now);
+      const newItem: TopBannerItem = {
+        ...candidate,
+        uid: `${now}_${Math.random().toString(36).slice(2, 8)}`,
+        count: 1,
+        createdAt: now,
+      };
+
+      if (!activeBannerRef.current) {
+        activeBannerRef.current = newItem;
+        setActiveBanner(newItem);
+      } else {
+        const nextQueue = [...bannerQueueRef.current, newItem].slice(0, 8);
+        bannerQueueRef.current = nextQueue;
+        setBannerQueue(nextQueue);
+      }
+    },
+    []
+  );
+
+  const advanceBanner = useCallback(() => {
+    const curQueue = bannerQueueRef.current;
+    if (curQueue.length > 0) {
+      const [nextItem, ...rest] = curQueue;
+      bannerQueueRef.current = rest;
+      setBannerQueue(rest);
+      activeBannerRef.current = nextItem;
+      setActiveBanner(nextItem);
+    } else {
+      activeBannerRef.current = null;
+      setActiveBanner(null);
     }
-  }, [gameDataRef.current?.events?.length]);
+  }, []);
+
+  // Tự ẩn mỗi bảng tin sau 3.5 giây và chuyển sang tin tiếp theo trong hàng đợi
+  useEffect(() => {
+    if (!activeBanner) return;
+    const timer = setTimeout(() => {
+      advanceBanner();
+    }, TOP_BANNER_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, [activeBanner?.uid, advanceBanner]);
+
+  // Theo dõi các sự kiện mới trong data.events (chỉ lọc tin quan trọng đưa lên màn hình; tin nhỏ vẫn lưu nhật ký)
+  const topEventId = gameDataRef.current?.events?.[0]?.id ?? null;
+  const eventsCount = gameDataRef.current?.events?.length ?? 0;
+  useEffect(() => {
+    const events: GameEvent[] = gameDataRef.current?.events || [];
+    if (events.length === 0) {
+      lastSeenEventIdRef.current = null;
+      seenMissileIdsRef.current.clear();
+      shownQuestStepRef.current = null;
+      shownSeasonKeyRef.current = null;
+      dedupHistoryRef.current.clear();
+      activeBannerRef.current = null;
+      bannerQueueRef.current = [];
+      setActiveBanner(null);
+      setBannerQueue([]);
+      return;
+    }
+
+    const prevId = lastSeenEventIdRef.current;
+    const newEvents: GameEvent[] = [];
+    for (let i = 0; i < Math.min(events.length, 8); i++) {
+      if (events[i]?.id === prevId) break;
+      if (events[i]) newEvents.push(events[i]);
+    }
+    lastSeenEventIdRef.current = events[0]?.id ?? null;
+
+    for (let i = newEvents.length - 1; i >= 0; i--) {
+      const classified = classifyImportantEvent(newEvents[i], playerNationId);
+      if (classified) {
+        enqueueBanner({
+          dedupKey: classified.dedupKey,
+          text: classified.text,
+          tone: classified.tone,
+          kind: 'EVENT',
+        });
+      }
+    }
+  }, [topEventId, eventsCount, playerNationId, enqueueBanner]);
+
+  // Cảnh báo người chơi bị tấn công biên giới hoặc bị máy bay ném bom oanh tạc
+  useEffect(() => {
+    const data = gameDataRef.current;
+    if (!data) return;
+    const tiles: Tile[][] = data.tiles || [];
+    const nations: Nation[] = data.nations || [];
+    const waves = data.attackWaves || [];
+
+    const attackers = new Set<number>();
+    for (let i = 0; i < waves.length; i++) {
+      const w = waves[i];
+      if (!w || w.troops <= 0 || w.fromNation <= 0 || w.fromNation === playerNationId) continue;
+      if (w.toNation === playerNationId || tiles[w.targetY]?.[w.targetX]?.owner === playerNationId) {
+        attackers.add(w.fromNation);
+      }
+    }
+    attackers.forEach((attackerId) => {
+      const attackerName = nations[attackerId]?.name || `Quốc gia #${attackerId}`;
+      enqueueBanner({
+        dedupKey: `ATTACK_PLAYER_${attackerId}`,
+        text: `⚔️ ${attackerName} đang tấn công lãnh thổ của bạn!`,
+        tone: 'danger',
+        kind: 'ATTACK',
+      });
+    });
+
+    const airUnits = data.airUnits || [];
+    const bomberAttackers = new Set<number>();
+    for (let i = 0; i < airUnits.length; i++) {
+      const u = airUnits[i];
+      if (!u || u.nationId <= 0 || u.nationId === playerNationId || u.type !== 'BOMBER') continue;
+      if (u.state !== 'EN_ROUTE' && u.state !== 'COMBAT') continue;
+      if (
+        typeof u.bomberStartX === 'number' &&
+        typeof u.bomberStartY === 'number' &&
+        typeof u.bomberEndX === 'number' &&
+        typeof u.bomberEndY === 'number'
+      ) {
+        for (let step = 0; step <= 4; step++) {
+          const t = step / 4;
+          const sx = Math.round(u.bomberStartX + (u.bomberEndX - u.bomberStartX) * t);
+          const sy = Math.round(u.bomberStartY + (u.bomberEndY - u.bomberStartY) * t);
+          if (tiles[sy]?.[sx]?.owner === playerNationId) {
+            bomberAttackers.add(u.nationId);
+            break;
+          }
+        }
+      }
+    }
+    bomberAttackers.forEach((attackerId) => {
+      const attackerName = nations[attackerId]?.name || `Quốc gia #${attackerId}`;
+      enqueueBanner({
+        dedupKey: `BOMBER_PLAYER_${attackerId}`,
+        text: `💣 ${attackerName} đang cho máy bay ném bom lãnh thổ của bạn!`,
+        tone: 'danger',
+        kind: 'BOMBER',
+      });
+    });
+  }, [hudStats, playerNationId, enqueueBanner]);
+
+  // Cảnh báo tên lửa bay vào lãnh thổ người chơi (xếp hàng & gộp trong 10s, không lặp cùng 1 quả)
+  useEffect(() => {
+    if (!incomingMissileWarning) return;
+    const mKey = incomingMissileWarning.id || `${incomingMissileWarning.missileName}_${incomingMissileWarning.targetX}_${incomingMissileWarning.targetY}`;
+    if (seenMissileIdsRef.current.has(mKey)) return;
+    seenMissileIdsRef.current.add(mKey);
+    if (seenMissileIdsRef.current.size > 40) {
+      const first = seenMissileIdsRef.current.values().next().value;
+      if (first) seenMissileIdsRef.current.delete(first);
+    }
+    enqueueBanner({
+      dedupKey: 'MISSILE_INCOMING',
+      text: `🚨 Radar: ${incomingMissileWarning.missileName} đang bay tới (${incomingMissileWarning.targetX}, ${incomingMissileWarning.targetY})!`,
+      tone: 'danger',
+      kind: 'MISSILE',
+    });
+  }, [incomingMissileWarning?.id, incomingMissileWarning?.missileName, incomingMissileWarning?.targetX, incomingMissileWarning?.targetY, enqueueBanner]);
+
+  // Banner nhiệm vụ: chỉ hiện 1 lần khi bắt đầu bước nhiệm vụ mới, sau đó thu nhỏ thành icon
+  useEffect(() => {
+    if (questDismissed || !currentQuest || currentQuest > 5) return;
+    if (shownQuestStepRef.current === currentQuest) return;
+    shownQuestStepRef.current = currentQuest;
+    setQuestBadgeExpanded(false);
+    enqueueBanner({
+      dedupKey: `QUEST_${currentQuest}`,
+      text: `🎯 Nhiệm vụ ${currentQuest}/5: ${getQuestObjectiveText(currentQuest)}`,
+      tone: 'quest',
+      kind: 'QUEST',
+      questStep: currentQuest,
+    });
+  }, [currentQuest, questDismissed, enqueueBanner]);
+
+  // Banner sự kiện mùa: chỉ hiện 1 lần khi bắt đầu, sau đó thu nhỏ thành icon
+  useEffect(() => {
+    if (!activeSeasonEvent) {
+      shownSeasonKeyRef.current = null;
+      setSeasonBadgeExpanded(false);
+      return;
+    }
+    if (shownSeasonKeyRef.current === activeSeasonEvent.name) return;
+    shownSeasonKeyRef.current = activeSeasonEvent.name;
+    setSeasonBadgeExpanded(false);
+    enqueueBanner({
+      dedupKey: `SEASON_${activeSeasonEvent.name}`,
+      text: `${activeSeasonEvent.name} (${activeSeasonEvent.remainingTime}s)`,
+      tone: 'season',
+      kind: 'SEASON',
+      seasonName: activeSeasonEvent.name,
+    });
+  }, [activeSeasonEvent?.name, enqueueBanner]);
+
+  // Lỗi nạp file save (nếu có)
+  useEffect(() => {
+    if (!loadErrorToast) return;
+    enqueueBanner({
+      dedupKey: `ERR_${loadErrorToast}`,
+      text: loadErrorToast,
+      tone: 'danger',
+      kind: 'ERROR',
+    });
+  }, [loadErrorToast, enqueueBanner]);
+
+  // Tự thu gọn tooltip khi người chơi bấm xem lại icon nhiệm vụ / sự kiện mùa
+  useEffect(() => {
+    if (!questBadgeExpanded) return;
+    const t = setTimeout(() => setQuestBadgeExpanded(false), 3500);
+    return () => clearTimeout(t);
+  }, [questBadgeExpanded]);
+
+  useEffect(() => {
+    if (!seasonBadgeExpanded) return;
+    const t = setTimeout(() => setSeasonBadgeExpanded(false), 3500);
+    return () => clearTimeout(t);
+  }, [seasonBadgeExpanded]);
 
   // Auto-hide selected tile card after 4 seconds
   useEffect(() => {
@@ -313,35 +688,60 @@ export const GameHud: React.FC<GameHudProps> = ({
     }
   };
 
-  // Chọn duy nhất 1 thanh trên cùng (không bao giờ chồng lấn, chữ tự xuống dòng, không cắt)
+  // Chọn duy nhất 1 thanh trên cùng tại 1 thời điểm (xếp hàng tuần tự, tự ẩn sau 3.5 giây)
   const renderSingleTopBar = () => {
-    if (loadErrorToast) {
-      return (
-        <div className="pointer-events-none mx-2 mt-1.5 max-w-xl sm:mx-auto bg-rose-700 text-white font-bold px-3.5 py-2 rounded-2xl shadow-2xl text-sm flex items-start gap-2 border border-rose-300">
-          <AlertTriangle className="w-5 h-5 shrink-0 text-white mt-0.5" />
-          <span className="whitespace-normal break-words leading-snug">{loadErrorToast}</span>
-        </div>
-      );
-    }
+    if (activeBanner) {
+      const toneClass =
+        activeBanner.tone === 'danger'
+          ? 'bg-red-950/95 border-red-400 text-red-50'
+          : activeBanner.tone === 'alliance'
+            ? 'bg-emerald-950/95 border-emerald-400 text-emerald-50'
+            : activeBanner.tone === 'truce'
+              ? 'bg-sky-950/95 border-sky-400 text-sky-50'
+              : activeBanner.tone === 'boss'
+                ? 'bg-purple-950/95 border-purple-400 text-purple-50'
+                : activeBanner.tone === 'quest'
+                  ? 'bg-slate-950/95 border-blue-400 text-white'
+                  : activeBanner.tone === 'season'
+                    ? 'bg-indigo-950/95 border-indigo-400 text-amber-100'
+                    : 'bg-slate-950/95 border-amber-400 text-amber-100';
 
-    if (incomingMissileWarning) {
       return (
-        <div className="pointer-events-none mx-2 mt-1.5 max-w-xl sm:mx-auto bg-red-900/95 border-2 border-red-400 px-3 py-2 rounded-2xl flex items-center justify-between gap-2 text-sm text-white shadow-2xl animate-pulse">
-          <span className="font-bold text-white whitespace-normal break-words leading-snug">
-            🚨 Radar: {incomingMissileWarning.missileName} tới ({incomingMissileWarning.targetX}, {incomingMissileWarning.targetY})
-          </span>
-          <span className="font-mono text-amber-200 font-black text-sm shrink-0 bg-slate-950/90 px-2.5 py-1 rounded-lg border border-red-400">
-            💥 {incomingMissileWarning.secondsLeft}s
-          </span>
-        </div>
-      );
-    }
-
-    if (missileFeedbackToast) {
-      return (
-        <div className="pointer-events-none mx-2 mt-1.5 max-w-xl sm:mx-auto bg-slate-950/95 border-2 border-rose-400 text-rose-100 font-bold px-3.5 py-2 rounded-2xl shadow-2xl text-sm flex items-start gap-2 backdrop-blur-md">
-          <Rocket className="w-5 h-5 text-rose-300 shrink-0 mt-0.5" />
-          <span className="whitespace-normal break-words leading-snug">{missileFeedbackToast}</span>
+        <div
+          className={`pointer-events-auto mx-2 mt-1.5 max-w-xl sm:mx-auto w-[calc(100%-1rem)] border rounded-2xl shadow-xl backdrop-blur-md flex items-center justify-between gap-2 pl-3.5 pr-1.5 py-1.5 text-sm font-semibold animate-in fade-in duration-150 ${toneClass}`}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              if (activeBanner.kind === 'EVENT' && onOpenEventLog) {
+                onOpenEventLog();
+              } else {
+                advanceBanner();
+              }
+            }}
+            className="text-left min-w-0 flex-1 whitespace-normal break-words leading-snug"
+          >
+            <span>{activeBanner.text}</span>
+            {activeBanner.count > 1 && (
+              <span className="ml-1.5 px-1.5 py-0.5 rounded-md bg-black/40 text-amber-300 font-mono text-xs font-bold">
+                x{activeBanner.count}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (activeBanner.kind === 'QUEST' && onDismissQuest) {
+                advanceBanner();
+              } else {
+                advanceBanner();
+              }
+            }}
+            className="min-w-[34px] min-h-[34px] p-1.5 text-slate-200 hover:text-white hover:bg-white/10 rounded-xl shrink-0 flex items-center justify-center"
+            aria-label="Đóng thông báo"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       );
     }
@@ -384,60 +784,6 @@ export const GameHud: React.FC<GameHudProps> = ({
       );
     }
 
-    if (activeSeasonEvent) {
-      return (
-        <div className="pointer-events-none mx-2 mt-1.5 max-w-xl sm:mx-auto flex items-center justify-between gap-2 px-3.5 py-2 bg-indigo-950/95 border border-indigo-400 rounded-2xl shadow-lg backdrop-blur-md text-sm text-white">
-          <span className="font-extrabold text-amber-200 whitespace-normal break-words leading-snug">
-            {activeSeasonEvent.name}
-          </span>
-          <span className="font-mono text-cyan-200 font-bold shrink-0">
-            ⏳ {activeSeasonEvent.remainingTime}s
-          </span>
-        </div>
-      );
-    }
-
-    if (latestEventText) {
-      return (
-        <button
-          type="button"
-          onClick={() => onOpenEventLog?.()}
-          className="pointer-events-auto mx-2 mt-1.5 max-w-xl sm:mx-auto w-[calc(100%-1rem)] min-h-[44px] bg-slate-950/95 border border-amber-400 text-amber-100 text-sm font-semibold px-3.5 py-2 rounded-2xl shadow-lg backdrop-blur-md text-left whitespace-normal break-words leading-snug active:scale-98"
-        >
-          {latestEventText}
-        </button>
-      );
-    }
-
-    if (!questDismissed && currentQuest && currentQuest <= 5) {
-      const questText =
-        currentQuest === 1 ? 'Chiếm 12 ô đất xung quanh Việt Nam' :
-        currentQuest === 2 ? 'Xây dựng 1 Doanh Trại (Barracks)' :
-        currentQuest === 3 ? 'Chinh phục 25 ô đất thế giới' :
-        currentQuest === 4 ? 'Mở bảng Công Nghệ & nâng cấp' :
-        'Tiếp tục mở rộng đế quốc!';
-
-      return (
-        <div className="pointer-events-auto mx-2 mt-1.5 max-w-xl sm:mx-auto flex items-center justify-between gap-2 pl-3 pr-1 py-1 bg-slate-950/95 border border-blue-400 rounded-2xl shadow-lg backdrop-blur-md">
-          <div className="flex items-start gap-2 text-sm text-white min-w-0 flex-1 leading-snug py-1">
-            <span className="shrink-0">🎯</span>
-            <span className="whitespace-normal break-words">
-              <strong className="text-amber-300">{currentQuest}/5:</strong> {questText}
-            </span>
-          </div>
-          {onDismissQuest && (
-            <button
-              onClick={onDismissQuest}
-              className="min-w-[44px] min-h-[44px] p-2 text-slate-100 hover:text-white hover:bg-slate-800 rounded-xl shrink-0 flex items-center justify-center"
-              aria-label="Đóng nhiệm vụ"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-      );
-    }
-
     if (!isOnline) {
       return (
         <div className="pointer-events-none mx-2 mt-1.5 max-w-xl sm:mx-auto flex items-center justify-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-950/95 border border-amber-400 text-amber-200 text-sm font-bold shadow-lg">
@@ -449,6 +795,22 @@ export const GameHud: React.FC<GameHudProps> = ({
 
     return null;
   };
+
+  const showQuestCompactBadge = Boolean(
+    !questDismissed &&
+      currentQuest &&
+      currentQuest <= 5 &&
+      !(activeBanner?.kind === 'QUEST' && activeBanner.questStep === currentQuest) &&
+      !bannerQueue.some(b => b.kind === 'QUEST' && b.questStep === currentQuest)
+  );
+
+  const showSeasonCompactBadge = Boolean(
+    activeSeasonEvent &&
+      !(activeBanner?.kind === 'SEASON' && activeBanner.seasonName === activeSeasonEvent.name) &&
+      !bannerQueue.some(b => b.kind === 'SEASON' && b.seasonName === activeSeasonEvent.name)
+  );
+
+  const seasonIcon = activeSeasonEvent ? activeSeasonEvent.name.split(' ')[0] || '🌦️' : '';
 
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between z-20 overflow-hidden">
@@ -553,9 +915,73 @@ export const GameHud: React.FC<GameHudProps> = ({
         {renderSingleTopBar()}
       </div>
 
-      {/* Khu vực giữa màn hình dành cho Bản đồ (Minimap & Meme gọn ở góc trên, không che giữa) */}
+      {/* Khu vực giữa màn hình dành cho Bản đồ (Biểu tượng thu gọn góc trên trái, Minimap góc trên phải) */}
       <div className="flex-1 pointer-events-none relative">
-        <MemeLayer className="absolute top-1.5 left-1.5 md:top-2 md:left-2 max-w-[calc(100%-5.25rem)] md:max-w-[calc(100%-6.5rem)] z-20 pointer-events-none flex flex-col items-start gap-1.5 md:gap-2 animate-in fade-in duration-200" />
+        <div className="absolute top-1.5 left-1.5 md:top-2 md:left-2 max-w-[calc(100%-5.25rem)] md:max-w-[calc(100%-6.5rem)] z-20 pointer-events-none flex flex-col items-start gap-1">
+          {(showQuestCompactBadge || showSeasonCompactBadge) && (
+            <div className="pointer-events-auto flex items-center gap-1 flex-wrap">
+              {showQuestCompactBadge && currentQuest && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSeasonBadgeExpanded(false);
+                      setQuestBadgeExpanded(v => !v);
+                    }}
+                    className="h-7 px-2 rounded-xl bg-slate-950/90 border border-blue-400/80 text-white text-[11px] font-bold flex items-center gap-1 shadow-md backdrop-blur-md active:scale-95"
+                    title={`Nhiệm vụ ${currentQuest}/5: ${getQuestObjectiveText(currentQuest)}`}
+                  >
+                    <span>🎯</span>
+                    <span className="text-amber-300 font-mono">{currentQuest}/5</span>
+                  </button>
+                  {questBadgeExpanded && (
+                    <div className="mt-1 p-2 rounded-xl bg-slate-950/95 border border-blue-400 text-xs text-white shadow-xl flex items-center gap-2 max-w-[230px]">
+                      <span className="leading-snug">
+                        <strong className="text-amber-300">{currentQuest}/5:</strong> {getQuestObjectiveText(currentQuest)}
+                      </span>
+                      {onDismissQuest && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setQuestBadgeExpanded(false);
+                            onDismissQuest();
+                          }}
+                          className="p-1 text-slate-300 hover:text-white rounded-lg shrink-0"
+                          aria-label="Ẩn nhiệm vụ"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showSeasonCompactBadge && activeSeasonEvent && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuestBadgeExpanded(false);
+                      setSeasonBadgeExpanded(v => !v);
+                    }}
+                    className="h-7 px-2 rounded-xl bg-indigo-950/90 border border-indigo-400/80 text-cyan-200 text-[11px] font-bold flex items-center gap-1 shadow-md backdrop-blur-md active:scale-95"
+                    title={activeSeasonEvent.name}
+                  >
+                    <span>{seasonIcon}</span>
+                    <span className="font-mono">{activeSeasonEvent.remainingTime}s</span>
+                  </button>
+                  {seasonBadgeExpanded && (
+                    <div className="mt-1 px-2.5 py-1.5 rounded-xl bg-indigo-950/95 border border-indigo-400 text-xs font-bold text-amber-200 shadow-xl whitespace-nowrap">
+                      {activeSeasonEvent.name} ({activeSeasonEvent.remainingTime}s)
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          <MemeLayer className="flex flex-col items-start gap-1.5 md:gap-2 animate-in fade-in duration-200 pointer-events-none" />
+        </div>
         <div className="absolute top-1.5 right-1.5 md:top-2 md:right-2 z-20 pointer-events-auto flex flex-col items-end gap-1 md:gap-1.5">
           {showMinimap && minimapNode && (
             <div className="animate-in fade-in duration-150">

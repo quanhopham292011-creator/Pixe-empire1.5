@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from 'react';
-import { Tile, Nation, DarkTitan, FlyingMissile, PendingTitanSpawn } from '../types';
+import React, { useRef, useEffect, useState } from 'react';
+import { Tile, Nation, DarkTitan, FlyingMissile, PendingTitanSpawn, AttackWave } from '../types';
 import { getNationColor } from '../utils/buildingSprites';
 import { getDepositTiles } from '../utils/resources';
 
@@ -13,6 +13,8 @@ interface MinimapProps {
   darkTitans?: DarkTitan[];
   pendingTitanSpawn?: PendingTitanSpawn | null;
   flyingMissiles?: FlyingMissile[];
+  attackWaves?: AttackWave[];
+  borderAlertKey?: string;
   fogOfWarEnabled?: boolean;
   playerNationId?: number;
 }
@@ -42,12 +44,26 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
   darkTitans,
   pendingTitanSpawn,
   flyingMissiles = [],
+  attackWaves = [],
+  borderAlertKey = '',
   fogOfWarEnabled = true,
   playerNationId = 1,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const visibleMapRef = useRef<Uint8Array | null>(null);
+  const [alertBlink, setAlertBlink] = useState(true);
+
+  useEffect(() => {
+    if (!borderAlertKey) {
+      setAlertBlink(true);
+      return;
+    }
+    const timer = setInterval(() => {
+      setAlertBlink(prev => !prev);
+    }, 350);
+    return () => clearInterval(timer);
+  }, [borderAlertKey]);
 
   // 1. Offscreen Cache: Chỉ vẽ lại toàn bộ lưới ô vuông khi tiles hoặc nations thay đổi (Fast ImageData)
   useEffect(() => {
@@ -257,6 +273,35 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
       ctx.stroke();
     });
 
+    // Điểm đánh dấu biên giới người chơi đang bị địch tấn công (chấm đỏ nhấp nháy)
+    if (attackWaves.length > 0 && playerNationId > 0) {
+      const drawnAlertCoords = new Set<string>();
+      for (let i = 0; i < attackWaves.length; i++) {
+        const w = attackWaves[i];
+        if (!w || w.troops <= 0 || w.fromNation <= 0 || w.fromNation === playerNationId) continue;
+        const tgt = tiles[w.targetY]?.[w.targetX];
+        if (!tgt || tgt.owner !== playerNationId) continue;
+        const coordKey = `${w.targetX},${w.targetY}`;
+        if (drawnAlertCoords.has(coordKey)) continue;
+        drawnAlertCoords.add(coordKey);
+
+        const ax = w.targetX * tileSize + tileSize / 2;
+        const ay = w.targetY * tileSize + tileSize / 2;
+        ctx.fillStyle = alertBlink ? '#ef4444' : 'rgba(239, 68, 68, 0.45)';
+        ctx.beginPath();
+        ctx.arc(ax, ay, alertBlink ? 3.2 : 2.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (alertBlink) {
+          ctx.strokeStyle = '#fecaca';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.arc(ax, ay, 5.2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+    }
+
     // Khung nhìn Camera thực tế (Viewport Box)
     const TILE_PIXEL_SIZE = 24;
     const vpW = window.innerWidth || 360;
@@ -278,7 +323,7 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
     ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
     ctx.fillRect(boxX, boxY, boxW, boxH);
 
-  }, [camera, darkTitan, darkTitans, pendingTitanSpawn, flyingMissiles, nations, mapSize]);
+  }, [camera, darkTitan, darkTitans, pendingTitanSpawn, flyingMissiles, attackWaves, borderAlertKey, alertBlink, tiles, nations, mapSize, playerNationId]);
 
   const handleInteract = (clientX: number, clientY: number) => {
     const canvas = canvasRef.current;
