@@ -8,7 +8,7 @@ export const TECH_TREE: TechNode[] = [
     level: 1,
     name: 'Khai Khẩn Điền Trang',
     description: 'Tăng 8% sản lượng vàng từ đất đai và thành thị.',
-    cost: 300,
+    cost: 285,
     researchTime: 14,
   },
   {
@@ -17,7 +17,7 @@ export const TECH_TREE: TechNode[] = [
     level: 2,
     name: 'Phường Buôn Phồn Hoa',
     description: 'Tăng 15% thu nhập vàng và giảm 8% chi phí xây dựng.',
-    cost: 900,
+    cost: 855,
     researchTime: 27,
   },
   {
@@ -27,7 +27,7 @@ export const TECH_TREE: TechNode[] = [
     choice: 'A',
     name: 'Thương Nhân',
     description: 'Tổng +25% thu nhập vàng, cộng 3 vàng mỗi ô chiếm (tối đa 30 vàng/s).',
-    cost: 2500,
+    cost: 2375,
     researchTime: 45,
   },
   {
@@ -37,7 +37,7 @@ export const TECH_TREE: TechNode[] = [
     choice: 'B',
     name: 'Thợ Xây',
     description: 'Thu nhập vàng +15%, giảm thêm 20% giá xây mọi công trình, Thành Thị +15% vàng.',
-    cost: 2500,
+    cost: 2375,
     researchTime: 45,
   },
 
@@ -48,7 +48,7 @@ export const TECH_TREE: TechNode[] = [
     level: 1,
     name: 'Hành Quân Thần Tốc',
     description: 'Tăng 10% tốc độ hành quân của quân đội.',
-    cost: 300,
+    cost: 285,
     researchTime: 14,
   },
   {
@@ -57,7 +57,7 @@ export const TECH_TREE: TechNode[] = [
     level: 2,
     name: 'Kỵ Binh Giáp Nặng',
     description: 'Giảm 8% quân tốn khi chiếm ô, tăng +30 quân tối đa.',
-    cost: 900,
+    cost: 855,
     researchTime: 27,
   },
   {
@@ -67,7 +67,7 @@ export const TECH_TREE: TechNode[] = [
     choice: 'A',
     name: 'Phá Núi',
     description: 'Giảm 20% sức phòng thủ ở ô Núi của địch, giảm thêm 5% quân tốn khi chiếm ô.',
-    cost: 2500,
+    cost: 2375,
     researchTime: 45,
   },
   {
@@ -77,7 +77,7 @@ export const TECH_TREE: TechNode[] = [
     choice: 'B',
     name: 'Hậu Cần',
     description: 'Tăng 10% tốc độ hồi quân mỗi giây, tăng +60 quân tối đa.',
-    cost: 2500,
+    cost: 2375,
     researchTime: 45,
   },
 
@@ -88,7 +88,7 @@ export const TECH_TREE: TechNode[] = [
     level: 1,
     name: 'Hào Sâu Cọc Nhọn',
     description: 'Tăng 10% sức phòng thủ cho toàn bộ biên giới.',
-    cost: 300,
+    cost: 285,
     researchTime: 14,
   },
   {
@@ -97,7 +97,7 @@ export const TECH_TREE: TechNode[] = [
     level: 2,
     name: 'Tường Đá Hoa Cương',
     description: 'Tăng 18% sức phòng thủ cho toàn bộ biên giới.',
-    cost: 900,
+    cost: 855,
     researchTime: 27,
   },
   {
@@ -107,7 +107,7 @@ export const TECH_TREE: TechNode[] = [
     choice: 'A',
     name: 'Trường Thành',
     description: 'Tăng 25% sức phòng thủ biên giới khi kẻ địch tiến công.',
-    cost: 2500,
+    cost: 2375,
     researchTime: 45,
   },
   {
@@ -117,7 +117,7 @@ export const TECH_TREE: TechNode[] = [
     choice: 'B',
     name: 'Lá Chắn Trời',
     description: 'Phòng Không (SAM) đánh hạ tên lửa Atom/Hydro 90%, tầm bảo vệ 6 ô, phòng thủ biên giới +18%.',
-    cost: 2500,
+    cost: 2375,
     researchTime: 45,
   },
 ];
@@ -439,17 +439,17 @@ export const RESOURCE_CONFIG = {
 
 export const TECH_RESOURCE_COST: Record<string, { oil: number; minerals: number }> = {
   eco_1: { oil: 0, minerals: 0 },
-  eco_2: { oil: 0, minerals: 40 },
-  eco_3a: { oil: 0, minerals: 120 },
-  eco_3b: { oil: 0, minerals: 120 },
+  eco_2: { oil: 0, minerals: 38 },
+  eco_3a: { oil: 0, minerals: 114 },
+  eco_3b: { oil: 0, minerals: 114 },
   mil_1: { oil: 0, minerals: 0 },
-  mil_2: { oil: 30, minerals: 40 },
-  mil_3a: { oil: 80, minerals: 120 },
-  mil_3b: { oil: 80, minerals: 120 },
+  mil_2: { oil: 29, minerals: 38 },
+  mil_3a: { oil: 76, minerals: 114 },
+  mil_3b: { oil: 76, minerals: 114 },
   def_1: { oil: 0, minerals: 0 },
-  def_2: { oil: 0, minerals: 40 },
-  def_3a: { oil: 0, minerals: 120 },
-  def_3b: { oil: 20, minerals: 120 },
+  def_2: { oil: 0, minerals: 38 },
+  def_3a: { oil: 0, minerals: 114 },
+  def_3b: { oil: 19, minerals: 114 },
 };
 
 export interface SupremeTechItem {
@@ -467,9 +467,9 @@ export interface SupremeTechItem {
 }
 
 const SUPREME_LEVEL_COSTS = {
-  1: { gold: 15_000, oil: 1_500, minerals: 1_500, researchTime: 54 },
-  2: { gold: 25_000, oil: 3_000, minerals: 3_000, researchTime: 68 },
-  3: { gold: 40_000, oil: 5_000, minerals: 5_000, researchTime: 81 },
+  1: { gold: 14_250, oil: 1_425, minerals: 1_425, researchTime: 54 },
+  2: { gold: 23_750, oil: 2_850, minerals: 2_850, researchTime: 68 },
+  3: { gold: 38_000, oil: 4_750, minerals: 4_750, researchTime: 81 },
 } as const;
 
 export const SUPREME_TECH_EFFECTS = {
@@ -750,9 +750,9 @@ export const NAVAL_CONFIG = {
   TRADE_SPEED_TILES_PER_SEC: 2.8,
   EXTRACTOR: {
     NAME: 'Tàu Khai Thác',
-    GOLD_COST: 350,
-    OIL_COST: 30,
-    MINERAL_COST: 25,
+    GOLD_COST: 315,
+    OIL_COST: 27,
+    MINERAL_COST: 22,
     BUILD_TIME_SECONDS: 18,
     CANCEL_REFUND_RATIO: 0.5,
     MAX_PER_PORT: 2,
@@ -765,9 +765,9 @@ export const NAVAL_CONFIG = {
   },
   WARSHIP: {
     NAME: 'Tàu Chiến',
-    GOLD_COST: 900,
-    OIL_COST: 80,
-    MINERAL_COST: 60,
+    GOLD_COST: 810,
+    OIL_COST: 72,
+    MINERAL_COST: 54,
     BUILD_TIME_SECONDS: 36,
     CANCEL_REFUND_RATIO: 0.5,
     MAX_PER_PORT: 3,

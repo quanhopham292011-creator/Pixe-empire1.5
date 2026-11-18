@@ -6,7 +6,7 @@ import { pushFeedbackText } from '../utils/floatFeedback';
 import { canDeployGeneral, getLoyaltyState, appointReserveGeneral, calculateGeneralStats } from '../utils/generalCombat';
 import { GENERAL_STYLE_INFO } from '../utils/generalEvolution';
 import { areResourcesEnabled, formatResource, getRepairCost, repairExtractor, isExtractor, depositName } from '../utils/resources';
-import { issueWarshipOrder, startWarshipSeaRepair, loadTroopsOnWarship, unloadTroopsAtCoast, isShipNearOwnedCoast } from '../utils/navalSystem';
+import { issueWarshipOrder, startWarshipSeaRepair, loadTroopsOnWarship, unloadTroopsAtCoast, isShipNearOwnedCoast, autoExecuteOverseasAttack } from '../utils/navalSystem';
 import { getTruceAvailability } from '../utils/truceSystem';
 import {
   isSuperBuilding,
@@ -305,10 +305,23 @@ export const GameHud: React.FC<GameHudProps> = ({
   void _hasMetBot;
   void _onToggleAirAiming;
   void _onProduceAirUnit;
-  void missileFeedbackToast;
   const [showReserves, setShowReserves] = useState(false);
   const [showGenInfo, setShowGenInfo] = useState(false);
   const [, setForceUpdate] = useState(0);
+  const [smallToast, setSmallToast] = useState<string | null>(null);
+  const lastSmallToastRef = useRef<{ text: string; ts: number }>({ text: '', ts: 0 });
+  useEffect(() => {
+    if (!missileFeedbackToast) return;
+    const now = Date.now();
+    if (
+      lastSmallToastRef.current.text === missileFeedbackToast &&
+      now - lastSmallToastRef.current.ts < 2000
+    ) return;
+    lastSmallToastRef.current = { text: missileFeedbackToast, ts: now };
+    setSmallToast(missileFeedbackToast);
+    const t = setTimeout(() => setSmallToast(null), 2500);
+    return () => clearTimeout(t);
+  }, [missileFeedbackToast]);
   const isOnline = useOnlineStatus();
 
   const [activeBanner, setActiveBanner] = useState<TopBannerItem | null>(null);
@@ -677,12 +690,17 @@ export const GameHud: React.FC<GameHudProps> = ({
         }
       } else {
         if (!isLandConnected(tiles, player.capitalX, player.capitalY, sx, sy)) {
-          pushFeedbackText(gameDataRef.current.particles, {
-            x: sx * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-            y: sy * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-            color: '#f87171',
-            text: '🚢 Cần Tàu Chiến để đưa quân qua biển (Tấn Công → Tàu Thuyền → Đổ bộ)'
-          });
+          const autoOk = autoExecuteOverseasAttack(gameDataRef.current, playerNationId, sx, sy, onNotify);
+          if (autoOk) {
+            soundManager.playAttack();
+          } else {
+            pushFeedbackText(gameDataRef.current.particles, {
+              x: sx * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              y: sy * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+              color: '#f87171',
+              text: 'Cần Tàu Chiến để đưa quân qua biển. Cứ chạm đất muốn đánh, tàu sẽ tự đưa quân.'
+            });
+          }
         }
       }
     }
@@ -814,6 +832,11 @@ export const GameHud: React.FC<GameHudProps> = ({
 
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between z-20 overflow-hidden">
+      {smallToast && (
+        <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-28 z-30 max-w-[85%] px-3 py-1.5 rounded-xl bg-slate-950/90 border border-amber-400/70 text-amber-100 text-xs font-semibold shadow-lg text-center">
+          {smallToast}
+        </div>
+      )}
       
       {/* 1. THANH TRÊN CÙNG + 1 THANH NHIỆM VỤ / THÔNG BÁO DUY NHẤT */}
       <div className="shrink-0 flex flex-col">
@@ -1076,38 +1099,6 @@ export const GameHud: React.FC<GameHudProps> = ({
                     )}
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    {ns.type === 'WARSHIP' && isShipNearOwnedCoast(gameDataRef.current?.tiles || [], playerNationId, ns.x, ns.y, 2.8) && (ns.carriedTroops || 0) < (ns.maxTroopCapacity || 0) && (
-                      <button
-                        onClick={() => {
-                          const res = loadTroopsOnWarship(gameDataRef.current, ns);
-                          if (res.ok) onNotify?.(`${res.reason} Bấm "🏖️ Đổ bộ: chạm vào đất địch"!`);
-                          else onNotify?.(res.reason);
-                          soundManager.playClick();
-                          setForceUpdate(v => v + 1);
-                        }}
-                        className="min-h-[40px] px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-xs"
-                      >
-                        🪖 Nạp quân
-                      </button>
-                    )}
-                    {ns.type === 'WARSHIP' && (
-                      <button
-                        onClick={() => {
-                          const near = isShipNearOwnedCoast(gameDataRef.current?.tiles || [], playerNationId, ns.x, ns.y, 2.8);
-                          if ((ns.carriedTroops || 0) <= 0 && !near) {
-                            onNotify?.('Hãy đưa tàu về gần Cảng/bờ phe mình để nạp quân.');
-                            soundManager.playClick();
-                            return;
-                          }
-                          setInspectedShip?.(null);
-                          onStartNavalAiming?.({ mode: 'LANDING', shipId: ns.id });
-                          soundManager.playClick();
-                        }}
-                        className="min-h-[40px] px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs"
-                      >
-                        {(ns.carriedTroops || 0) > 0 ? '🏖️ Đổ bộ: chạm vào đất địch' : '🏖️ Đổ bộ'}
-                      </button>
-                    )}
                     {ns.type === 'WARSHIP' && isShipNearOwnedCoast(gameDataRef.current?.tiles || [], playerNationId, ns.x, ns.y, 2.8) && (ns.carriedTroops || 0) > 0 && (
                       <button
                         onClick={() => {

@@ -999,16 +999,7 @@ export const MissileModal: React.FC<MissileModalProps> = ({
                         >
                           🛡️ Tuần tra
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onClose();
-                            onStartNavalAiming?.({ mode: 'FLEET_LANDING', fleetId: fid });
-                          }}
-                          className="min-h-[40px] px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-lg"
-                        >
-                          🏖️ Đổ bộ hạm đội
-                        </button>
+
                         <button
                           type="button"
                           onClick={() => {
@@ -1114,34 +1105,7 @@ export const MissileModal: React.FC<MissileModalProps> = ({
                           >
                             ⚔️ Tấn công
                           </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if ((w.carriedTroops || 0) <= 0 && !nearCoast) {
-                                onNotify?.('Hãy đưa tàu về gần Cảng/bờ phe mình để nạp quân.');
-                                return;
-                              }
-                              onClose();
-                              onStartNavalAiming?.({ mode: 'LANDING', shipId: w.id });
-                            }}
-                            className="min-h-[40px] px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-lg"
-                          >
-                            {(w.carriedTroops || 0) > 0 ? '🏖️ Đổ bộ: chạm vào đất địch' : '🏖️ Đổ bộ'}
-                          </button>
 
-                          {nearCoast && (w.carriedTroops || 0) < (w.maxTroopCapacity || 0) && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const res = loadTroopsOnWarship(data, w);
-                                onNotify?.(res.ok ? `${res.reason} Bấm "🏖️ Đổ bộ: chạm vào đất địch"!` : res.reason);
-                                bump();
-                              }}
-                              className="min-h-[40px] px-3 py-1.5 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded-lg"
-                            >
-                              🪖 Nạp quân
-                            </button>
-                          )}
                           {nearCoast && (w.carriedTroops || 0) > 0 && (
                             <button
                               type="button"

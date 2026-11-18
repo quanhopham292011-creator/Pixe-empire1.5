@@ -177,8 +177,7 @@ export const TechModal: React.FC<TechModalProps> = ({
     return choice;
   };
 
-  const territoryCount = playerNation.territoryCount || 0;
-  const getActualCost = (baseCost: number) => Math.round(baseCost * (1 + territoryCount / 150));
+  const getActualCost = (baseCost: number) => baseCost;
   const gold = Math.floor(playerNation.gold || 0);
   const oilStock = Math.floor(playerNation.oil || 0);
   const mineralStock = Math.floor(playerNation.minerals || 0);

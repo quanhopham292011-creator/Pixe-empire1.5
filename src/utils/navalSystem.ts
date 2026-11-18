@@ -2119,3 +2119,82 @@ export function tickNavalSystem(data: any, difficulty: string, _callbacks?: Nava
     }
   }
 }
+
+export function autoExecuteOverseasAttack(
+  data: any,
+  nationId: number,
+  targetLandX: number,
+  targetLandY: number,
+  onNotify?: (msg: string) => void
+): boolean {
+  if (!data || nationId <= 0) return false;
+  const tiles: Tile[][] = data.tiles || [];
+  const nations: Nation[] = data.nations || [];
+  const nation = nations[nationId];
+  const tx = Math.round(targetLandX);
+  const ty = Math.round(targetLandY);
+  const tgtTile = tiles[ty]?.[tx];
+  if (!tgtTile || !nation || nation.isEliminated || tgtTile.terrain === 'WATER' || tgtTile.owner === nationId) {
+    onNotify?.('Mục tiêu tấn công qua biển không hợp lệ.');
+    return false;
+  }
+  if (tgtTile.owner > 0) {
+    const dip = nation.diplomacy?.[tgtTile.owner]?.status;
+    if (dip === 'ALLIANCE' || dip === 'TRUCE') {
+      onNotify?.('Không thể tấn công Đồng Minh hoặc đang Đình Chiến.');
+      return false;
+    }
+  }
+
+  const ships: NavalShip[] = data.navalShips || [];
+  let bestShip: NavalShip | null = null;
+  let bestDist = Infinity;
+
+  for (const s of ships) {
+    if (!s || s.hp <= 0 || s.type !== 'WARSHIP' || s.nationId !== nationId) continue;
+    if (s.order === 'LANDING' || s.state === 'TRANSPORTING' || s.order === 'ATTACK') continue;
+
+    const approach = findLandingApproach(tiles, s.x, s.y, tx, ty, nation);
+    if (!approach) continue;
+
+    const dist = Math.hypot(s.x - tx, s.y - ty);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestShip = s;
+    }
+  }
+
+  if (!bestShip) {
+    onNotify?.('Không có Tàu Chiến rảnh hoặc không tìm được đường biển đến mục tiêu.');
+    return false;
+  }
+
+  if ((bestShip.carriedTroops || 0) <= 0) {
+    if (isShipNearOwnedCoast(tiles, nationId, bestShip.x, bestShip.y, 2.8)) {
+      const loadRes = loadTroopsOnWarship(data, bestShip);
+      if (!loadRes.ok) {
+        onNotify?.(loadRes.reason);
+        return false;
+      }
+    } else {
+      const nearestPort = findNearestOwnedOpenPort(tiles, nationId, bestShip.x, bestShip.y);
+      if (nearestPort) {
+        issueWarshipOrder(data, bestShip, 'MOVE', { x: nearestPort.x, y: nearestPort.y });
+        onNotify?.('🚢 Tàu Chiến đang tự động di chuyển về cảng để nạp quân.');
+        return false;
+      } else {
+        onNotify?.('Tàu Chiến cần ở gần Cảng hoặc bờ biển phe mình để nạp quân.');
+        return false;
+      }
+    }
+  }
+
+  if ((bestShip.carriedTroops || 0) <= 0) {
+    onNotify?.('Không đủ quân hoặc không thể nạp quân lên tàu.');
+    return false;
+  }
+
+  const res = orderAmphibiousLanding(data, bestShip, tx, ty, true);
+  onNotify?.(res.reason);
+  return res.ok;
+}

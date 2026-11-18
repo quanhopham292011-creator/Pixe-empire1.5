@@ -57,7 +57,7 @@ import {
   upgradeAdvancedExtractor,
 } from './utils/supremeTech';
 import { getTradeShipPosition } from './utils/seaPathfinding';
-import { tickNavalSystem, damageNavalShip, isEnemyNavalShip, issueWarshipOrder, orderAmphibiousLanding, issueFleetOrder, isEnemyTradeShipForWarship } from './utils/navalSystem';
+import { tickNavalSystem, damageNavalShip, isEnemyNavalShip, issueWarshipOrder, orderAmphibiousLanding, issueFleetOrder, isEnemyTradeShipForWarship, autoExecuteOverseasAttack } from './utils/navalSystem';
 import {
   AirBaseLocation,
   AirSamLocation,
@@ -3479,7 +3479,11 @@ export default function App() {
     if (!launch) {
       const isConnected = isLandConnected(tiles, player.capitalX, player.capitalY, tile.x, tile.y);
       if (!isConnected) {
-        say('🚢 Cần Tàu Chiến để đưa quân qua biển (Tấn Công → Tàu Thuyền → Đổ bộ)');
+        const autoOk = autoExecuteOverseasAttack(data, 1, tile.x, tile.y, say);
+        if (autoOk) {
+          soundManager.playAttack();
+          return true;
+        }
         return false;
       }
       say(tile.owner === 0 ? 'Đất hoang quá xa biên giới' : 'Chưa giáp biên giới với nước này');
@@ -3941,7 +3945,7 @@ export default function App() {
               x: target.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
               y: target.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
               color: '#f87171',
-              text: '🚢 Cần Tàu Chiến để đưa quân qua biển (Tấn Công → Tàu Thuyền → Đổ bộ)'
+              text: 'Cần Tàu Chiến để đưa quân qua biển. Cứ chạm đất muốn đánh, tàu sẽ tự đưa quân.'
             });
           }
           return false;
@@ -5855,8 +5859,7 @@ export default function App() {
                 }
                 return;
               }
-              const territoryCount = p.territoryCount || 0;
-              const actualCost = Math.round(tech.cost * (1 + territoryCount / 150));
+              const actualCost = tech.cost;
               const rc = getTechResourceCost(tech.id);
               if (p.gold >= actualCost && (p.oil || 0) >= rc.oil && (p.minerals || 0) >= rc.minerals) {
                 p.gold -= actualCost;
