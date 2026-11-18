@@ -23,6 +23,7 @@ interface VictoryModalProps {
   setGameState: (state: 'TITLE' | 'PLAYING' | 'VICTORY' | 'DEFEAT') => void;
   setIsMultiplayerModalOpen: (val: boolean) => void;
   startNewGame: (diff: GameDifficulty, size: MapDimension, name: string, mode: GameMode) => void;
+  onContinuePlaying?: () => void;
 }
 
 export const VictoryModal: React.FC<VictoryModalProps> = ({
@@ -42,6 +43,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   setGameState,
   setIsMultiplayerModalOpen,
   startNewGame,
+  onContinuePlaying,
 }) => {
   if (!isVisible) return null;
 
@@ -152,6 +154,14 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
           />
 
           <div className="flex flex-col gap-2 mt-3">
+            {onContinuePlaying && (
+              <button
+                onClick={onContinuePlaying}
+                className="w-full py-3.5 bg-sky-600 hover:bg-sky-500 text-white font-black rounded-2xl shadow-xl text-sm min-h-[48px] border border-sky-300/60 active:scale-95 transition-all"
+              >
+                Tiếp Tục Chơi
+              </button>
+            )}
             <button
               onClick={() => {
                 if (isMultiplayer) {

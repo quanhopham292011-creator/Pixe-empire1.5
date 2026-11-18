@@ -21,6 +21,7 @@ export interface McLobbyProps {
   playerName?: string;
   selectedGeneral?: GeneralSkillId;
   onGenerals?: () => void;
+  onHandbook?: () => void;
 }
 
 export default function McLobby(p: McLobbyProps) {
@@ -53,6 +54,17 @@ export default function McLobby(p: McLobbyProps) {
         {p.onLeaderboard && (
           <div className="mc-corner" style={{ right: 10 }}>
             <button className="mc-btn" onClick={p.onLeaderboard}>Xếp hạng</button>
+          </div>
+        )}
+        {p.onHandbook && (
+          <div style={{ position: 'fixed', top: 10, right: 10, zIndex: 12 }}>
+            <button
+              className="mc-btn"
+              style={{ width: 'auto', minHeight: 36, padding: '4px 10px', fontSize: 17 }}
+              onClick={p.onHandbook}
+            >
+              📖 Sổ tay
+            </button>
           </div>
         )}
         <McCharacter name={p.playerName} selectedGeneral={p.selectedGeneral} onClick={p.onGenerals} />

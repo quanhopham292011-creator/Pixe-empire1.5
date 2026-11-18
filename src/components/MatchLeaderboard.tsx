@@ -24,16 +24,34 @@ export const MatchLeaderboard: React.FC<MatchLeaderboardProps> = ({
     (n): n is Nation => !!n && typeof n.id === 'number' && n.id > 0
   );
 
-  // Sắp xếp các quốc gia theo số ô lãnh thổ giảm dần, phụ theo quân
-  const sortedNations = [...nationsList].sort((a, b) => {
+  const myNation = nationsList.find(n => n.id === myNationId);
+
+  // Sắp xếp hạng thực tế theo lãnh thổ (để hiển thị huy hiệu # và Thứ hạng của bạn chính xác)
+  const territorySorted = [...nationsList].sort((a, b) => {
+    const diff = (b.territoryCount || 0) - (a.territoryCount || 0);
+    if (diff !== 0) return diff;
+    return (b.troops || 0) - (a.troops || 0);
+  });
+
+  const territoryRankMap = new Map<number, number>();
+  territorySorted.forEach((n, idx) => territoryRankMap.set(n.id, idx));
+
+  const isAlliedWithMe = (n: Nation) =>
+    n.id !== myNationId &&
+    myNation?.diplomacy?.[n.id]?.status === 'ALLIANCE';
+
+  // Ưu tiên các quốc gia đã liên minh lên đầu danh sách, sau đó xếp theo lãnh thổ & quân
+  const sortedNations = [...territorySorted].sort((a, b) => {
+    const aAlly = isAlliedWithMe(a);
+    const bAlly = isAlliedWithMe(b);
+    if (aAlly !== bAlly) return aAlly ? -1 : 1;
     const diff = (b.territoryCount || 0) - (a.territoryCount || 0);
     if (diff !== 0) return diff;
     return (b.troops || 0) - (a.troops || 0);
   });
 
   const safeTotalLand = Math.max(1, totalLand);
-  const myRankIndex = sortedNations.findIndex(n => n.id === myNationId);
-  const myNation = sortedNations[myRankIndex];
+  const myRankIndex = territoryRankMap.get(myNationId) ?? -1;
 
   return (
     <div className="w-full bg-slate-950 border border-slate-700 rounded-2xl p-3 sm:p-4 text-left shadow-inner">
@@ -51,7 +69,7 @@ export const MatchLeaderboard: React.FC<MatchLeaderboardProps> = ({
       </div>
 
       {/* THẺ TÓM TẮT THỨ HẠNG CỦA NGƯỜI CHƠI */}
-      {myNation && (
+      {myNation && myRankIndex >= 0 && (
         <div
           className={`mb-2.5 px-3 py-2 rounded-xl border text-sm font-bold flex items-center justify-between flex-wrap gap-1 ${
             myRankIndex === 0
@@ -81,27 +99,28 @@ export const MatchLeaderboard: React.FC<MatchLeaderboardProps> = ({
           const myDipStatus = myNation?.diplomacy?.[nation.id]?.status || 'WAR';
           const isAlly = !isMe && myDipStatus === 'ALLIANCE';
           const isTraitor = (nation.traitorTimer || 0) > 0;
+          const trueRankIdx = territoryRankMap.get(nation.id) ?? idx;
 
-          // Huy hiệu thứ hạng
+          // Huy hiệu thứ hạng thực tế theo lãnh thổ
           let rankBadge = (
             <span className="min-w-[28px] h-7 px-1 rounded-md bg-slate-800 text-slate-200 text-sm font-mono font-bold flex items-center justify-center shrink-0">
-              #{idx + 1}
+              #{trueRankIdx + 1}
             </span>
           );
 
-          if (idx === 0) {
+          if (trueRankIdx === 0) {
             rankBadge = (
               <span className="min-w-[28px] h-7 px-1 rounded-md bg-amber-500/25 text-amber-300 border border-amber-400/60 text-sm font-black flex items-center justify-center shrink-0">
                 🥇
               </span>
             );
-          } else if (idx === 1) {
+          } else if (trueRankIdx === 1) {
             rankBadge = (
               <span className="min-w-[28px] h-7 px-1 rounded-md bg-slate-300/25 text-slate-100 border border-slate-300/60 text-sm font-black flex items-center justify-center shrink-0">
                 🥈
               </span>
             );
-          } else if (idx === 2) {
+          } else if (trueRankIdx === 2) {
             rankBadge = (
               <span className="min-w-[28px] h-7 px-1 rounded-md bg-amber-700/30 text-amber-300 border border-amber-500/60 text-sm font-black flex items-center justify-center shrink-0">
                 🥉

@@ -1,5 +1,5 @@
 import { GameDifficulty, Nation, Tile } from '../types';
-import { BUILDING_INFO } from '../data/gameData';
+import { BUILDING_INFO, GAMEPLAY_RULES } from '../data/gameData';
 import { getPortWaterAccess } from './seaPathfinding';
 import { getDepositTiles } from './resources';
 import { countActiveAlliances, reconcileNationAlliances } from '../hooks/useTradeRoutes';
@@ -142,7 +142,10 @@ export function evaluateAllianceDecision(
     return { ok: false, score: -999, powerRatio: 1, relation: 80, realActiveWars: 0, sharedStrongEnemy: false };
   }
 
-  if (countActiveAlliances(bot, nations) >= 3 || countActiveAlliances(target, nations) >= 3) {
+  if (
+    countActiveAlliances(bot, nations) >= GAMEPLAY_RULES.MAX_ALLIANCES ||
+    countActiveAlliances(target, nations) >= GAMEPLAY_RULES.MAX_ALLIANCES
+  ) {
     return { ok: false, score: -999, powerRatio: 1, relation: 0, realActiveWars: 0, sharedStrongEnemy: false };
   }
 

@@ -8,14 +8,14 @@ import {
 } from '../utils/resources';
 import { Handshake, Swords, Shield, X, ArrowLeftRight, Lock, ChevronLeft } from 'lucide-react';
 import { getTruceAvailability } from '../utils/truceSystem';
+import { countActiveAlliances } from '../hooks/useTradeRoutes';
+import { GAMEPLAY_RULES } from '../data/gameData';
 
-interface DiplomacyModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+export interface DiplomacyPanelProps {
   playerNation: Nation;
   nations: Nation[];
   totalLandCount: number;
-  tiles?: Tile[][];
+  tiles?: Tile[];
   market?: MarketState;
   onTradeWithAI?: (
     botId: number,
@@ -33,11 +33,15 @@ interface DiplomacyModalProps {
   gameTimeSeconds?: number;
 }
 
+interface DiplomacyModalProps extends Omit<DiplomacyPanelProps, 'tiles'> {
+  isOpen: boolean;
+  onClose: () => void;
+  tiles?: Tile[][];
+}
+
 const TRADE_QUANTITIES = [10, 50, 100, 200] as const;
 
-export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
-  isOpen,
-  onClose,
+export const DiplomacyPanel: React.FC<Omit<DiplomacyPanelProps, 'tiles'> & { tiles?: Tile[][]; embedded?: boolean; onClose?: () => void }> = ({
   playerNation,
   nations,
   totalLandCount,
@@ -48,20 +52,30 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
   onProposeAlliance,
   onDeclareWar,
   gameTimeSeconds = 0,
+  embedded = false,
+  onClose,
 }) => {
   const [tradeBotId, setTradeBotId] = useState<number | null>(null);
   const [tradeQty, setTradeQty] = useState<number>(50);
   const [tradeFeedback, setTradeFeedback] = useState<{ ok: boolean; text: string } | null>(null);
 
-  if (!isOpen) return null;
-
   const resEnabled = areResourcesEnabled();
   const activeMarket = market || createMarket();
   const tradeBot = tradeBotId !== null ? nations.find(n => n.id === tradeBotId) : null;
+  const activeAllyCount = countActiveAlliances(playerNation, nations);
+  const playerAtMaxAlliances = activeAllyCount >= GAMEPLAY_RULES.MAX_ALLIANCES;
 
-  const sortedNations = [...nations.filter(n => n.id > 0)].sort(
-    (a, b) => b.territoryCount - a.territoryCount
-  );
+  const isAllyWithPlayer = (n: Nation) =>
+    n.id !== playerNation.id && playerNation.diplomacy?.[n.id]?.status === 'ALLIANCE';
+
+  const sortedNations = [...nations.filter(n => n && n.id > 0)].sort((a, b) => {
+    const aAlly = isAllyWithPlayer(a);
+    const bAlly = isAllyWithPlayer(b);
+    if (aAlly !== bAlly) return aAlly ? -1 : 1;
+    const diff = (b.territoryCount || 0) - (a.territoryCount || 0);
+    if (diff !== 0) return diff;
+    return (b.troops || 0) - (a.troops || 0);
+  });
 
   const getPersonalityLabel = (personality: string) => {
     switch (personality) {
@@ -76,7 +90,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
   const handleCloseModal = () => {
     setTradeBotId(null);
     setTradeFeedback(null);
-    onClose();
+    onClose?.();
   };
 
   const handleExecuteTrade = (res: DepositType, mode: 'BUY' | 'SELL') => {
@@ -85,41 +99,45 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
     setTradeFeedback({ ok: result.ok, text: result.message });
   };
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-sm p-3"
-      style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
-    >
-      <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom duration-200">
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700 bg-slate-950/95">
-          <div className="flex items-center gap-2 min-w-0">
-            {tradeBot ? (
-              <button
-                onClick={() => {
-                  setTradeBotId(null);
-                  setTradeFeedback(null);
-                }}
-                className="min-w-[44px] min-h-[44px] p-2 -ml-1 text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl flex items-center justify-center active:scale-95"
-                title="Quay lại"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </button>
-            ) : null}
-            <h3 className="font-bold text-white text-base flex items-center gap-2 min-w-0">
-              <span>{tradeBot ? '📦' : '🏛️'}</span>
-              <span className="break-words">
-                {tradeBot ? `Giao thương: ${tradeBot.name}` : 'Hội Nghị Ngoại Giao'}
-              </span>
-            </h3>
-          </div>
+  const headerBar = (
+    <div className={`flex items-center justify-between ${embedded ? 'pb-2 mb-2 border-b border-slate-700' : 'px-4 py-3 border-b border-slate-700 bg-slate-950/95'}`}>
+      <div className="flex items-center gap-2 min-w-0">
+        {tradeBot ? (
           <button
-            onClick={handleCloseModal}
-            className="min-w-[44px] min-h-[44px] p-2 text-slate-100 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center shrink-0"
-            aria-label="Đóng"
+            onClick={() => {
+              setTradeBotId(null);
+              setTradeFeedback(null);
+            }}
+            className="min-w-[44px] min-h-[44px] p-2 -ml-1 text-white bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-xl flex items-center justify-center active:scale-95"
+            title="Quay lại"
           >
-            <X className="w-5 h-5" />
+            <ChevronLeft className="w-5 h-5" />
           </button>
-        </div>
+        ) : null}
+        <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2 min-w-0">
+          <span>{tradeBot ? '📦' : '🤝'}</span>
+          <span className="break-words">
+            {tradeBot
+              ? `Giao thương: ${tradeBot.name}`
+              : `Liên Minh (${activeAllyCount}/${GAMEPLAY_RULES.MAX_ALLIANCES})`}
+          </span>
+        </h3>
+      </div>
+      {!embedded && onClose && (
+        <button
+          onClick={handleCloseModal}
+          className="min-w-[44px] min-h-[44px] p-2 text-slate-100 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600 flex items-center justify-center shrink-0"
+          aria-label="Đóng"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      {headerBar}
 
         {/* BẢNG GIAO THƯƠNG VỚI 1 QUỐC GIA AI */}
         {tradeBot && !tradeBot.isEliminated && resEnabled ? (
@@ -232,24 +250,42 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
             })}
           </div>
         ) : (
-          <div className="p-4 space-y-3 max-h-[65vh] overflow-y-auto">
+          <div className={`${embedded ? 'space-y-2.5' : 'p-4 space-y-3 max-h-[65vh] overflow-y-auto'}`}>
             {sortedNations.map((nation) => {
               const isSelf = nation.id === playerNation.id;
-              const dip = playerNation.diplomacy[nation.id] || { status: 'WAR', relation: 0, truceTimer: 0 };
+              const dip = playerNation.diplomacy?.[nation.id] || { status: 'WAR', relation: 0, truceTimer: 0 };
               const _percent = totalLandCount > 0 ? Math.round((nation.territoryCount / totalLandCount) * 100) : 0;
               void _percent;
               const pers = getPersonalityLabel(nation.personality);
               const isWar = dip.status === 'WAR';
+              const isAlly = !isSelf && dip.status === 'ALLIANCE';
 
               return (
                 <div
                   key={nation.id}
                   className={`p-3.5 rounded-xl border transition-all ${
-                    isSelf ? 'bg-blue-950/60 border-blue-400' : 'bg-slate-800/90 border-slate-600'
+                    isSelf
+                      ? 'bg-blue-950/60 border-blue-400'
+                      : isAlly
+                      ? 'bg-emerald-950/60 border-emerald-400/70'
+                      : 'bg-slate-800/90 border-slate-600'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-                    <span className="font-bold text-white text-base">{nation.name}</span>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/40"
+                        style={{ backgroundColor: nation.color || '#94a3b8' }}
+                      />
+                      <span className={`font-bold text-base ${isAlly ? 'text-emerald-200' : 'text-white'}`}>
+                        {nation.name}
+                      </span>
+                      {isAlly && (
+                        <span className="text-xs px-2 py-0.5 rounded bg-emerald-500/25 border border-emerald-400/60 text-emerald-200 font-bold">
+                          🤝 Đồng minh
+                        </span>
+                      )}
+                    </div>
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {(nation.traitorTimer || 0) > 0 && (
                         <span
@@ -318,13 +354,15 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                               </button>
                             );
                           })()}
-                          <button
-                            onClick={() => onProposeAlliance(nation.id)}
-                            className="min-h-[44px] px-3 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 shadow-md"
-                            title="Gửi lời mời liên minh"
-                          >
-                            <Handshake className="w-4 h-4" /> Kết Minh
-                          </button>
+                          {!playerAtMaxAlliances && (
+                            <button
+                              onClick={() => onProposeAlliance(nation.id)}
+                              className="min-h-[44px] px-3 py-2 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white rounded-xl text-sm font-bold flex items-center gap-1.5 shadow-md"
+                              title="Gửi lời mời liên minh"
+                            >
+                              <Handshake className="w-4 h-4" /> Kết Minh
+                            </button>
+                          )}
                         </>
                       ) : dip.status === 'ALLIANCE' ? (
                         <button
@@ -349,6 +387,24 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
             })}
           </div>
         )}
+    </>
+  );
+};
+
+export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
+  isOpen,
+  onClose,
+  ...rest
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 p-3"
+      style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
+    >
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-bottom duration-200">
+        <DiplomacyPanel {...rest} onClose={onClose} />
       </div>
     </div>
   );

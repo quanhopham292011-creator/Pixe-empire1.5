@@ -227,19 +227,19 @@ export const BUILDING_INFO: Record<Exclude<BuildingType, 'NONE'>, {
   SUPREME_FORTRESS: {
     name: 'Pháo Đài Tối Thượng',
     desc: 'Giảm 80% sát thương tên lửa nhận vào trong bán kính 8 ô (xây 41s, tối đa 1).',
-    baseCost: 25_000,
+    baseCost: 22_500,
     icon: 'Shield',
   },
   GRAND_ACADEMY: {
     name: 'Đại Học Viện',
     desc: 'Tốc độ nghiên cứu công nghệ nhanh gấp đôi khi hoạt động (xây 41s, tối đa 1).',
-    baseCost: 30_000,
+    baseCost: 27_000,
     icon: 'GraduationCap',
   },
   GRAND_ARSENAL: {
     name: 'Đại Công Xưởng',
-    desc: 'Tăng 40% hồi quân & +25% giới hạn quân; tồn tại đủ 60 giây mở vĩnh viễn Máy bay Tiểu đội (Loại 2) & Ném bom (Loại 3).',
-    baseCost: 30_000,
+    desc: 'Tăng 40% hồi quân & +25% giới hạn quân; tồn tại đủ 60 giây kết hợp Quân Sự Tối Thượng 3 để mở Máy bay Tiểu đội (Loại 2) & Ném bom (Loại 3).',
+    baseCost: 27_000,
     icon: 'Factory',
   },
 };
@@ -796,4 +796,24 @@ export const NAVAL_CONFIG = {
   },
   MAX_GLOBAL_NAVAL_SHIPS: 96, // chống lag toàn bản đồ
 } as const;
+
+export const GAMEPLAY_RULES = {
+  VICTORY_LAND_PERCENT: 70,
+  MIN_TERRITORY_FOR_TECH: 15,
+  BASE_TILE_TROOP_COST: 5,
+  MOUNTAIN_TILE_TROOP_COST: 12,
+  SCORCHED_EXTRA_TROOP_COST: 5,
+  ROOKIE_BUFF_DURATION_SECONDS: 180,
+  ROOKIE_BUFF_MAX_DISCOUNT: 0.30,
+  BUILDING_COST_GROWTH: 1.15,
+  FORTRESS_RADIUS: 4,
+  FORTRESS_BASE_COST: 18,
+  FORTRESS_LEVEL_STEP: 8,
+  BUNKER_BASE_COST: 14,
+  BUNKER_LEVEL_STEP: 4,
+  MAX_ALLIANCES: 5,
+  TRAITOR_TIMER_SECONDS: 120,
+  ALLY_AID_RATIO: 0.30,
+} as const;
+
 

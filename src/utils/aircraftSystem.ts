@@ -66,7 +66,7 @@ export function canUseAirType1(nation?: Nation | null): boolean {
 }
 
 export function canUseAirType23(nation?: Nation | null): boolean {
-  return Boolean(nation?.airAdvancedUnlocked);
+  return Boolean(nation?.airAdvancedUnlocked) && canUseAirType1(nation);
 }
 
 export function canUseAirType(nation: Nation | null | undefined, type: AirUnitType): boolean {
@@ -108,7 +108,7 @@ export function getGrandArsenalCountdownState(
   nation?: Nation | null,
   hasArsenalReady?: boolean
 ): GrandArsenalCountdownState {
-  if (!nation || canUseAirType23(nation)) {
+  if (!nation || nation.airAdvancedUnlocked || canUseAirType23(nation)) {
     return { show: false, remainingSeconds: 0, destroyed: false };
   }
   if (nation.grandArsenalDestroyed) {
@@ -275,7 +275,7 @@ export function canProduceAirUnit(
       reason:
         type === 'FIGHTER'
           ? 'Cần Quân Sự Tối Thượng Cấp 3 để mở khóa!'
-          : 'Cần Đại Công Xưởng tồn tại đủ 60 giây để mở khóa!',
+          : 'Cần Đại Công Xưởng tồn tại đủ 60 giây và Quân Sự Tối Thượng Cấp 3 để mở khóa!',
     };
   }
   const summary = getNationAirSummary(airUnits, nation.id);
@@ -711,11 +711,13 @@ export function tickNationAirUnlocksAndSorties(
           n.airAdvancedUnlocked = true;
           n.grandArsenalDestroyed = false;
           if (n.id === localHudNationId) {
+            const fullyUnlocked23 = canUseAirType1(n);
             events.unshift({
               id: Math.random().toString(),
-              title: '✈️ Đã mở khóa Loại 2 & Loại 3',
-              description:
-                'Đã mở khóa Loại 2 & Loại 3! Đại Công Xưởng đã tồn tại đủ 60 giây, mở vĩnh viễn Tiểu Đội & Ném Bom.',
+              title: fullyUnlocked23 ? '✈️ Đã mở khóa Loại 2 & Loại 3' : '🏭 Đại Công Xưởng đủ 60 giây',
+              description: fullyUnlocked23
+                ? 'Đã mở khóa Loại 2 & Loại 3! Đại Công Xưởng đã tồn tại đủ 60 giây và đã đạt Quân Sự Tối Thượng Cấp 3, mở Tiểu Đội & Ném Bom.'
+                : 'Đại Công Xưởng đã tồn tại đủ 60 giây! Hãy đạt Quân Sự Tối Thượng Cấp 3 để mở khóa Tiểu Đội & Ném Bom.',
               type: 'DIPLOMACY',
               targetNationId: n.id,
               timestamp: formatGameTime(gameTimeSeconds),

@@ -8,6 +8,8 @@ import { GENERAL_STYLE_INFO } from '../utils/generalEvolution';
 import { areResourcesEnabled, formatResource, getRepairCost, repairExtractor, isExtractor, depositName } from '../utils/resources';
 import { issueWarshipOrder, startWarshipSeaRepair, loadTroopsOnWarship, unloadTroopsAtCoast, isShipNearOwnedCoast, autoExecuteOverseasAttack } from '../utils/navalSystem';
 import { getTruceAvailability } from '../utils/truceSystem';
+import { GAMEPLAY_RULES } from '../data/gameData';
+import { countActiveAlliances } from '../hooks/useTradeRoutes';
 import {
   isSuperBuilding,
   getSuperBuildingState,
@@ -58,7 +60,7 @@ interface GameHudProps {
   gameDataRef: React.MutableRefObject<any>;
   setIsBuildOpen: (open: boolean) => void;
   setIsTechOpen: (open: boolean) => void;
-  setIsDiplomacyOpen: (open: boolean) => void;
+  setIsDiplomacyOpen?: (open: boolean) => void;
   setIsLeaderboardOpen: (open: boolean) => void;
   setIsMissileOpen: (open: boolean) => void;
   autoExpand: boolean;
@@ -112,6 +114,7 @@ interface GameHudProps {
   onOpenNavalManager?: () => void;
   onStartNavalAiming?: (aim: NavalAimingState) => void;
   onNotify?: (msg: string) => void;
+  onOpenHandbook?: () => void;
 }
 
 type BannerTone = 'danger' | 'alliance' | 'truce' | 'boss' | 'quest' | 'season' | 'info';
@@ -247,7 +250,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   gameDataRef,
   setIsBuildOpen,
   setIsTechOpen,
-  setIsDiplomacyOpen,
+  setIsDiplomacyOpen: _setIsDiplomacyOpen,
   setIsLeaderboardOpen,
   setIsMissileOpen,
   autoExpand,
@@ -301,6 +304,7 @@ export const GameHud: React.FC<GameHudProps> = ({
   onOpenNavalManager,
   onStartNavalAiming,
   onNotify,
+  onOpenHandbook,
 }) => {
   void _hasMetBot;
   void _onToggleAirAiming;
@@ -635,6 +639,9 @@ export const GameHud: React.FC<GameHudProps> = ({
   // Lấy thông tin quốc gia sở hữu ô đất đang chọn
   const targetNation: Nation | null = selectedTile && selectedTile.owner > 1 ? gameDataRef.current?.nations?.[selectedTile.owner] || null : null;
   const dipStatus: DiplomacyStatus = targetNation ? (targetNation.diplomacy?.[1]?.status || 'WAR') : 'WAR';
+  const playerAtMaxAlliances =
+    Boolean(playerNation && Array.isArray(gameDataRef.current?.nations)) &&
+    countActiveAlliances(playerNation, gameDataRef.current.nations) >= GAMEPLAY_RULES.MAX_ALLIANCES;
 
   // Hàm xử lý tấn công ô đất đang chọn
   const handleAttackTile = () => {
@@ -883,18 +890,18 @@ export const GameHud: React.FC<GameHudProps> = ({
             )}
           </div>
 
-          {/* Nút ngoại giao, tốc độ, tạm dừng, cài đặt */}
+          {/* Nút xếp hạng & liên minh, tốc độ, tạm dừng, cài đặt */}
           <div className="flex items-center gap-1 md:gap-1.5 shrink-0 ml-auto">
             <button
               onClick={() => {
                 soundManager.playClick();
-                setIsDiplomacyOpen(true);
+                setIsLeaderboardOpen(true);
               }}
-              className="px-2 py-0.5 md:px-2.5 md:py-1 bg-slate-800 hover:bg-slate-700 text-emerald-200 font-bold rounded-xl text-xs md:text-sm border border-emerald-400/60 min-h-[36px] min-w-[36px] md:min-h-[44px] md:min-w-[44px] flex items-center justify-center gap-1.5 active:scale-95 transition-all"
-              title="Mở Ngoại Giao & Giao thương"
+              className="px-2 py-0.5 md:px-2.5 md:py-1 bg-slate-800 hover:bg-slate-700 text-amber-200 font-bold rounded-xl text-xs md:text-sm border border-amber-400/60 min-h-[36px] min-w-[36px] md:min-h-[44px] md:min-w-[44px] flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+              title="Mở Bảng Xếp Hạng & Liên Minh"
             >
-              <Handshake className="w-4 h-4 text-emerald-300" />
-              <span className="hidden sm:inline">Ngoại Giao</span>
+              <Trophy className="w-4 h-4 text-amber-300" />
+              <span className="hidden sm:inline">Xếp Hạng</span>
             </button>
 
             <button
@@ -941,8 +948,22 @@ export const GameHud: React.FC<GameHudProps> = ({
       {/* Khu vực giữa màn hình dành cho Bản đồ (Biểu tượng thu gọn góc trên trái, Minimap góc trên phải) */}
       <div className="flex-1 pointer-events-none relative">
         <div className="absolute top-1.5 left-1.5 md:top-2 md:left-2 max-w-[calc(100%-5.25rem)] md:max-w-[calc(100%-6.5rem)] z-20 pointer-events-none flex flex-col items-start gap-1">
-          {(showQuestCompactBadge || showSeasonCompactBadge) && (
+          {(onOpenHandbook || showQuestCompactBadge || showSeasonCompactBadge) && (
             <div className="pointer-events-auto flex items-center gap-1 flex-wrap">
+              {onOpenHandbook && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    soundManager.playClick();
+                    onOpenHandbook();
+                  }}
+                  className="h-7 px-2 rounded-xl bg-slate-950/90 border border-amber-400/70 text-amber-200 hover:text-white text-[11px] font-bold flex items-center gap-1 shadow-md backdrop-blur-md active:scale-95"
+                  title="Sổ tay hướng dẫn"
+                >
+                  <span>📖</span>
+                  <span>Sổ tay</span>
+                </button>
+              )}
               {showQuestCompactBadge && currentQuest && (
                 <div className="relative">
                   <button
@@ -1407,13 +1428,15 @@ export const GameHud: React.FC<GameHudProps> = ({
                           <span>Tiểu Đội L2</span>
                         </button>
                       )}
-                      <button
-                        onClick={() => onProposeAlliance?.(selectedTile.owner)}
-                        className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-emerald-100 bg-emerald-900 hover:bg-emerald-800 border border-emerald-400 flex items-center gap-1.5"
-                      >
-                        <Handshake className="w-3.5 h-3.5 text-emerald-300" />
-                        <span>Kết Minh</span>
-                      </button>
+                      {!playerAtMaxAlliances && (
+                        <button
+                          onClick={() => onProposeAlliance?.(selectedTile.owner)}
+                          className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-emerald-100 bg-emerald-900 hover:bg-emerald-800 border border-emerald-400 flex items-center gap-1.5"
+                        >
+                          <Handshake className="w-3.5 h-3.5 text-emerald-300" />
+                          <span>Kết Minh</span>
+                        </button>
+                      )}
                       {(() => {
                         const truceCheck = getTruceAvailability(
                           playerNation,
@@ -1444,13 +1467,15 @@ export const GameHud: React.FC<GameHudProps> = ({
 
                   {dipStatus === 'TRUCE' && (
                     <>
-                      <button
-                        onClick={() => onProposeAlliance?.(selectedTile.owner)}
-                        className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-emerald-100 bg-emerald-900 hover:bg-emerald-800 border border-emerald-400 flex items-center gap-1.5"
-                      >
-                        <Handshake className="w-3.5 h-3.5 text-emerald-300" />
-                        <span>Kết Minh</span>
-                      </button>
+                      {!playerAtMaxAlliances && (
+                        <button
+                          onClick={() => onProposeAlliance?.(selectedTile.owner)}
+                          className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-emerald-100 bg-emerald-900 hover:bg-emerald-800 border border-emerald-400 flex items-center gap-1.5"
+                        >
+                          <Handshake className="w-3.5 h-3.5 text-emerald-300" />
+                          <span>Kết Minh</span>
+                        </button>
+                      )}
                       <button
                         onClick={() => onDeclareWar?.(selectedTile.owner)}
                         className="min-h-[40px] px-3 py-1.5 font-bold rounded-xl text-xs text-red-100 bg-red-900 hover:bg-red-800 border border-red-400 flex items-center gap-1.5"
@@ -1767,8 +1792,8 @@ export const GameHud: React.FC<GameHudProps> = ({
           )}
         </div>
 
-        {/* 7. THANH DƯỚI CÙNG: 5 hoặc 6 nút */}
-        <div className={`grid ${gameMode === 'CREATIVE' ? 'grid-cols-6' : 'grid-cols-5'} gap-1 shrink-0`}>
+        {/* 7. THANH DƯỚI CÙNG: 4 hoặc 5 nút */}
+        <div className={`grid ${gameMode === 'CREATIVE' ? 'grid-cols-5' : 'grid-cols-4'} gap-1 shrink-0`}>
           {/* Nút 1: Tấn Công */}
           <button
             onClick={() => setIsMissileOpen(true)}
@@ -1806,18 +1831,6 @@ export const GameHud: React.FC<GameHudProps> = ({
           >
             <Cpu className="w-3 h-3 text-blue-300 mb-0 shrink-0" />
             <span className="text-[10px] md:text-[11px] font-bold leading-none text-center whitespace-nowrap">Công Nghệ</span>
-          </button>
-
-          {/* Nút 4: Xếp Hạng */}
-          <button
-            onClick={() => {
-              soundManager.playClick();
-              setIsLeaderboardOpen(true);
-            }}
-            className="flex flex-col items-center justify-center py-0.5 md:py-1 px-0.5 bg-amber-950/90 hover:bg-amber-900 active:scale-95 border border-amber-400/80 rounded-xl text-white transition-all min-h-[36px] md:min-h-[40px]"
-          >
-            <Trophy className="w-3 h-3 text-amber-300 mb-0 shrink-0" />
-            <span className="text-[10px] md:text-[11px] font-bold leading-none text-center whitespace-nowrap">Xếp Hạng</span>
           </button>
 
           {/* Nút Sáng Tạo (Chỉ hiển thị khi gameMode === 'CREATIVE') */}

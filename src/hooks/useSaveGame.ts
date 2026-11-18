@@ -59,6 +59,7 @@ interface UseSaveGameParams {
   needsCenterCameraRef: React.MutableRefObject<boolean>;
   initWeatherParticles: (dimension: MapDimension, type: WeatherType) => void;
   victoryAwardedRef: React.MutableRefObject<boolean>;
+  victoryContinuedRef?: React.MutableRefObject<boolean>;
   setVictoryReward: (reward: VictoryReward | null) => void;
   setGameState: (state: 'TITLE' | 'PLAYING' | 'VICTORY' | 'DEFEAT') => void;
   setIsPaused: (paused: boolean) => void;
@@ -105,6 +106,7 @@ export function useSaveGame({
   needsCenterCameraRef,
   initWeatherParticles,
   victoryAwardedRef,
+  victoryContinuedRef,
   setVictoryReward,
   setGameState,
   setIsPaused,
@@ -141,6 +143,8 @@ export function useSaveGame({
         autoExpand,
         playerGeneralDeployMode,
         hudStats,
+        victoryAwarded: victoryAwardedRef.current,
+        victoryContinued: victoryContinuedRef ? victoryContinuedRef.current : false,
         gameData: {
           tiles: data.tiles,
           nations: data.nations,
@@ -182,7 +186,7 @@ export function useSaveGame({
   }, [
     isMultiplayerRef, gameDataRef, difficulty, mapSize, gameModeRef, 
     playerName, weatherRef, godModeLockedRef, currentQuest, questDismissed, 
-    hasMetBot, attackPercent, autoExpand, playerGeneralDeployMode, hudStats
+    hasMetBot, attackPercent, autoExpand, playerGeneralDeployMode, hudStats, victoryAwardedRef, victoryContinuedRef
   ]);
 
   const loadGame = useCallback(() => {
@@ -341,7 +345,10 @@ export function useSaveGame({
       selectedTileRef.current = null;
       needsCenterCameraRef.current = true;
       initWeatherParticles(payload.mapSize || 96, weatherRef.current);
-      victoryAwardedRef.current = false;
+      victoryAwardedRef.current = Boolean(payload.victoryAwarded);
+      if (victoryContinuedRef) {
+        victoryContinuedRef.current = Boolean(payload.victoryContinued);
+      }
       setVictoryReward(null);
 
       setGameState('PLAYING');
@@ -359,7 +366,7 @@ export function useSaveGame({
     setAutoExpand, setPlayerGeneralDeployMode, setHudStats, playerProfileRef, 
     gameDataRef, totalLandCountRef, offscreenTerrainDirtyRef, offscreenTerritoryDirtyRef, 
     fogBaseDirtyRef, dirtyTerritoryTilesRef, setSelectedTile, selectedTileRef, 
-    needsCenterCameraRef, initWeatherParticles, victoryAwardedRef, setVictoryReward, 
+    needsCenterCameraRef, initWeatherParticles, victoryAwardedRef, victoryContinuedRef, setVictoryReward, 
     setGameState, setIsPaused
   ]);
 

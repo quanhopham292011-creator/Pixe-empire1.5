@@ -1,14 +1,11 @@
 import { useCallback } from 'react';
 import { AIR_SYSTEM_CONFIG } from '../data/gameData';
 import { Nation, SeaTradeRoute, SeaTradeShip, Tile } from '../types';
-import { soundManager } from '../utils/audio';
-import { TILE_PIXEL_SIZE, formatGameTime } from '../utils/constants';
 import {
   computePolylineLength,
   findSeaPath,
   getPortWaterAccess,
   getShipPopulationScale,
-  getTradeShipPosition,
 } from '../utils/seaPathfinding';
 import { convertEliminatedNationShipsToDerelict } from '../utils/navalSystem';
 
@@ -525,79 +522,5 @@ export function useTradeRoutes(gameDataRef: React.MutableRefObject<any>) {
     syncBalancedTradeRoutes(data, portList);
   }, [gameDataRef]);
 
-  const lootTradeShip = useCallback((mapX: number, mapY: number): boolean => {
-    const data = gameDataRef.current;
-    if (!data || !data.tradeShips || data.tradeShips.length === 0) return false;
-
-    const routeMap = new Map<string, SeaTradeRoute>();
-    if (Array.isArray(data.tradeRoutes)) {
-      data.tradeRoutes.forEach((r: SeaTradeRoute) => {
-        if (r?.id) routeMap.set(r.id, r);
-      });
-    }
-
-    let lootedShipIdx = -1;
-    let lootShipPos = { x: 0, y: 0 };
-    for (let i = 0; i < data.tradeShips.length; i++) {
-      const ship: SeaTradeShip = data.tradeShips[i];
-      if (!ship || ship.isEnclosedLocal || (ship.cargoGold || 0) <= 0) continue;
-      const pos = getTradeShipPosition(ship, routeMap);
-      const dist = Math.hypot(pos.x - mapX, pos.y - mapY);
-      if (dist <= 1.8) {
-        lootedShipIdx = i;
-        lootShipPos = { x: pos.x, y: pos.y };
-        break;
-      }
-    }
-
-    if (lootedShipIdx >= 0) {
-      const ship: SeaTradeShip = data.tradeShips[lootedShipIdx];
-      const player = data.nations[1];
-      if (!player) return false;
-
-      const lootGold = Math.round((ship.cargoGold || 0) * 1.0);
-      player.gold += lootGold;
-
-      soundManager.playCapture();
-
-      const curShipX = lootShipPos.x;
-      const curShipY = lootShipPos.y;
-
-      data.particles.push({
-        x: curShipX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-        y: curShipY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-        color: '#fbbf24',
-        size: 0, life: 55, maxLife: 55, vx: 0, vy: -0.7,
-        type: 'FLOAT_TEXT',
-        text: `🏴‍☠️ CƯỚP TÀU BUÔN! +${lootGold} Vàng`
-      });
-
-      for (let p = 0; p < 8; p++) {
-        data.particles.push({
-          x: curShipX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-          y: curShipY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-          color: '#fbbf24',
-          size: 3, life: 25, maxLife: 25,
-          vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 3,
-          type: 'SPARK'
-        });
-      }
-
-      data.events.unshift({
-        id: Math.random().toString(),
-        title: '🏴‍☠️ Cướp Biển Tấn Công',
-        description: `Đã cướp bóc thành công tàu buôn hải cảng, thu giữ ${lootGold} Vàng!`,
-        type: 'HARVEST',
-        targetNationId: 1,
-        timestamp: formatGameTime(data.gameTimeSeconds),
-      });
-
-      data.tradeShips.splice(lootedShipIdx, 1);
-      return true;
-    }
-
-    return false;
-  }, [gameDataRef]);
-
-  return { updateTradeRoutes, lootTradeShip };
+  return { updateTradeRoutes };
 }

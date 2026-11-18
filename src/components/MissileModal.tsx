@@ -207,7 +207,7 @@ const SeaOverviewMiniCanvas: React.FC<{
       ctx.arc((s.x + 0.5) * step, (s.y + 0.5) * step, s.type === 'WARSHIP' ? 2.6 : 2.0, 0, Math.PI * 2);
       ctx.fill();
     }
-  });
+  }, [data, playerNationId, fogOfWarEnabled, fogGrid, showSeaControl, size]);
 
   if (size === 0) return null;
 
@@ -255,7 +255,7 @@ export const MissileModal: React.FC<MissileModalProps> = ({
 }) => {
   const [openInfo, setOpenInfo] = useState<string | null>(null);
   const arsenalCountdown = getGrandArsenalCountdownState(playerNation, hasArsenalReady);
-  const airUnlocked = hasAnyAirUnlocked(playerNation) || arsenalCountdown.show;
+  const airUnlocked = hasAnyAirUnlocked(playerNation) || arsenalCountdown.show || Boolean(playerNation?.airAdvancedUnlocked);
   const [activeTab, setActiveTab] = useState<'PLANES' | 'MISSILES' | 'NAVAL'>(airUnlocked ? 'PLANES' : 'MISSILES');
   const [selectedPortKey, setSelectedPortKey] = useState<string>('');
   const [selectedForFleet, setSelectedForFleet] = useState<string[]>([]);
@@ -270,7 +270,7 @@ export const MissileModal: React.FC<MissileModalProps> = ({
         onClearRequestedTab?.();
       } else {
         const countdown = getGrandArsenalCountdownState(playerNation, hasArsenalReady);
-        const unlocked = hasAnyAirUnlocked(playerNation) || countdown.show;
+        const unlocked = hasAnyAirUnlocked(playerNation) || countdown.show || Boolean(playerNation?.airAdvancedUnlocked);
         setActiveTab(unlocked ? 'PLANES' : 'MISSILES');
       }
       setSelectedForFleet([]);
@@ -347,12 +347,12 @@ export const MissileModal: React.FC<MissileModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/85 p-2 sm:p-4"
       style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
     >
-      <div className="w-full max-w-lg bg-slate-900 border border-rose-400/60 rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col text-left">
+      <div className="w-full max-w-lg bg-slate-900 border border-rose-400/70 rounded-3xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col text-left transform-gpu overscroll-contain">
         {/* HEADER */}
-        <div className="flex items-center justify-between px-4 py-3 bg-slate-950/95 border-b border-slate-700 gap-2">
+        <div className="flex items-center justify-between px-4 py-3 bg-slate-950 border-b border-slate-700 gap-2">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-10 h-10 rounded-xl bg-rose-500/25 border border-rose-400 text-rose-300 flex items-center justify-center shrink-0">
               {activeTab === 'NAVAL' ? <Anchor className="w-5 h-5 text-sky-300" /> : <Rocket className="w-5 h-5" />}
@@ -432,7 +432,7 @@ export const MissileModal: React.FC<MissileModalProps> = ({
 
         {/* Mẹo (chỉ hiện khi bấm "!" ở header) */}
         {openInfo === 'tip' && (
-          <div className="px-4 py-2.5 bg-amber-950/70 border-b border-amber-400/50 text-sm text-amber-100 leading-snug">
+          <div className="px-4 py-2.5 bg-amber-950 border-b border-amber-400/60 text-sm text-amber-100 leading-snug">
             {activeTab === 'PLANES'
               ? 'Sản xuất và xuất kích máy bay chiến đấu, tiểu đội hoặc ném bom tấn công mục tiêu đối phương.'
               : activeTab === 'NAVAL'
@@ -443,8 +443,8 @@ export const MissileModal: React.FC<MissileModalProps> = ({
 
         {/* NỘI DUNG TAB MÁY BAY */}
         {activeTab === 'PLANES' && (
-          <div className="p-3 overflow-y-auto space-y-3 flex-1">
-            <div className="bg-sky-950/75 p-3 rounded-2xl border border-sky-400/60 space-y-2.5">
+          <div className="p-3 overflow-y-auto space-y-3 flex-1 bg-slate-900">
+            <div className="bg-sky-950 p-3 rounded-2xl border border-sky-400/60 space-y-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2 text-sm font-bold text-sky-100">
                 <div className="flex flex-wrap items-center gap-2">
                   <span>⚡ Lượt xuất kích: <strong className="text-amber-300">{playerNation.airSorties ?? AIR_SYSTEM_CONFIG.MAX_SORTIES}/{AIR_SYSTEM_CONFIG.MAX_SORTIES}</strong></span>
@@ -466,26 +466,62 @@ export const MissileModal: React.FC<MissileModalProps> = ({
                   </div>
                 ) : (
                   <div className="px-3 py-2 rounded-xl bg-amber-950/80 border border-amber-400 text-sm text-amber-200 font-bold font-mono">
-                    ⏳ Mở khóa Loại 2 &amp; 3 sau: {arsenalCountdown.remainingSeconds} giây
+                    {canUseAirType1(playerNation)
+                      ? `⏳ Mở khóa Loại 2 & 3 sau: ${arsenalCountdown.remainingSeconds} giây`
+                      : `⏳ Đại Công Xưởng: còn ${arsenalCountdown.remainingSeconds} giây (cần thêm Quân Sự Tối Thượng 3)`}
                   </div>
                 )
               )}
 
-              {!canUseAirType1(playerNation) && !canUseAirType23(playerNation) && (
+              {!canUseAirType23(playerNation) && (
                 <div className="text-sm text-slate-100 px-1 pt-0.5 leading-snug">
-                  {arsenalCountdown.destroyed
-                    ? 'Hãy xây lại Đại Công Xưởng và bảo vệ đủ 60 giây để mở khóa Máy Bay Tiểu Đội (Loại 2) & Ném Bom (Loại 3).'
-                    : 'Đang chờ Đại Công Xưởng hoàn tất thời gian kích hoạt để mở khóa Máy Bay Tiểu Đội (Loại 2) & Ném Bom (Loại 3).'}
+                  {playerNation.airAdvancedUnlocked
+                    ? 'Đại Công Xưởng đã tồn tại đủ 60 giây. Cần Quân Sự Tối Thượng Cấp 3 để mở khóa Máy Bay Tiểu Đội (Loại 2) & Ném Bom (Loại 3).'
+                    : arsenalCountdown.destroyed
+                    ? 'Hãy xây lại Đại Công Xưởng, tồn tại đủ 60 giây và đạt Quân Sự Tối Thượng Cấp 3 để mở khóa Máy Bay Tiểu Đội (Loại 2) & Ném Bom (Loại 3).'
+                    : 'Cần Đại Công Xưởng tồn tại đủ 60 giây và Quân Sự Tối Thượng Cấp 3 để mở khóa Máy Bay Tiểu Đội (Loại 2) & Ném Bom (Loại 3).'}
                 </div>
               )}
 
               <div className="space-y-2.5 pt-1">
                 {(['FIGHTER', 'SQUADRON', 'BOMBER'] as AirUnitType[]).map((uType) => {
                   const unlocked = uType === 'FIGHTER' ? canUseAirType1(playerNation) : canUseAirType23(playerNation);
-                  if (!unlocked) return null;
+                  if (!unlocked && uType === 'FIGHTER') return null;
                   const spec = AIR_UNIT_SPECS[uType];
                   const resOn = areResourcesEnabled();
                   const cost = getAirProduceCost(uType, resOn);
+                  if (!unlocked) {
+                    const hasArsenal60s = Boolean(playerNation?.airAdvancedUnlocked);
+                    const hasSupMil3 = canUseAirType1(playerNation);
+                    const remainingArsenalSec = Math.max(
+                      0,
+                      AIR_SYSTEM_CONFIG.GRAND_ARSENAL_UNLOCK_SECONDS - Math.floor(playerNation?.grandArsenalTimer || 0)
+                    );
+                    return (
+                      <div key={uType} className="p-3 bg-slate-950/75 border border-slate-700/80 rounded-2xl space-y-1.5 opacity-60">
+                        <div className="flex flex-wrap items-center gap-1.5 font-bold text-slate-200 text-sm">
+                          <span>🔒 {spec.name}</span>
+                        </div>
+                        <div className="text-sm text-amber-300/80 font-mono font-bold flex flex-wrap items-center gap-x-2">
+                          <span>💰 {formatPopulation(cost.goldCost)}</span>
+                          {cost.oilCost > 0 && <span className="text-sky-200/80">🛢️ {cost.oilCost} Dầu</span>}
+                          <span className="text-slate-300">Biên chế {cost.troopCost}q</span>
+                        </div>
+                        <div className="pt-1 space-y-0.5 text-xs sm:text-sm font-semibold">
+                          <div className={hasArsenal60s ? 'text-emerald-300' : 'text-rose-300'}>
+                            {hasArsenal60s
+                              ? 'Đại Công Xưởng: ✔'
+                              : `Đại Công Xưởng: ✘ (còn ${remainingArsenalSec} giây)`}
+                          </div>
+                          <div className={hasSupMil3 ? 'text-emerald-300' : 'text-rose-300'}>
+                            {hasSupMil3
+                              ? 'Quân Sự Tối Thượng 3: ✔'
+                              : 'Quân Sự Tối Thượng 3: ✘'}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
                   const canProd = canProduceAirUnit(playerNation, airUnits, uType, resOn);
                   const readyCount = uType === 'FIGHTER' ? airSummary.fighterReady : uType === 'SQUADRON' ? airSummary.squadronReady : airSummary.bomberReady;
                   const recCount = uType === 'FIGHTER' ? airSummary.fighterRecovering : uType === 'SQUADRON' ? airSummary.squadronRecovering : airSummary.bomberRecovering;
@@ -599,8 +635,8 @@ export const MissileModal: React.FC<MissileModalProps> = ({
 
         {/* NỘI DUNG TAB TÊN LỬA */}
         {activeTab === 'MISSILES' && (
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className="px-4 py-2 bg-slate-950/90 border-b border-slate-700 flex flex-wrap items-center justify-between text-sm font-bold gap-2 shrink-0">
+          <div className="flex-1 flex flex-col min-h-0 bg-slate-900">
+            <div className="px-4 py-2 bg-slate-950 border-b border-slate-700 flex flex-wrap items-center justify-between text-sm font-bold gap-2 shrink-0">
               <div className="flex items-center gap-3 flex-wrap">
                 <span className="text-slate-100">Bệ: <strong className="text-white font-mono">{totalSilos}</strong></span>
                 <span className="flex items-center gap-1 text-emerald-300">
@@ -624,7 +660,7 @@ export const MissileModal: React.FC<MissileModalProps> = ({
 
             <div className="p-3 overflow-y-auto space-y-2.5 flex-1">
               {totalSilos === 0 && (
-                <div className="p-3 bg-rose-950/70 border border-rose-400 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-sm">
+                <div className="p-3 bg-rose-950 border border-rose-400 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span className="font-bold text-rose-100">Chưa có bệ phóng tên lửa</span>
                   <button
                     onClick={() => { onClose(); onOpenBuildModal(); }}
@@ -663,12 +699,12 @@ export const MissileModal: React.FC<MissileModalProps> = ({
                     key={m.id}
                     className={`p-3 rounded-2xl border ${
                       m.id === 'MIRV'
-                        ? 'bg-gradient-to-r from-pink-950/60 via-slate-900 to-purple-950/60 border-pink-400/70'
+                        ? 'bg-gradient-to-r from-pink-950 via-slate-900 to-purple-950 border-pink-400/70'
                         : m.id === 'HYDRO'
-                        ? 'bg-gradient-to-r from-orange-950/60 via-slate-900 to-amber-950/60 border-orange-400/70'
+                        ? 'bg-gradient-to-r from-orange-950 via-slate-900 to-amber-950 border-orange-400/70'
                         : isUpgradedAtom
-                        ? 'bg-gradient-to-r from-emerald-950/60 via-slate-900 to-amber-950/60 border-emerald-400/70'
-                        : 'bg-slate-900 border-amber-400/60'
+                        ? 'bg-gradient-to-r from-emerald-950 via-slate-900 to-amber-950 border-emerald-400/70'
+                        : 'bg-slate-950 border-amber-400/60'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">

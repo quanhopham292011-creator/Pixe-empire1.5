@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { BuildingType, Tile, Nation } from '../types';
 import { BUILDING_INFO, formatPopulation } from '../utils/constants';
-import { RESOURCE_CONFIG } from '../data/gameData';
+import { RESOURCE_CONFIG, GAMEPLAY_RULES } from '../data/gameData';
 import { areResourcesEnabled, getBuildingMineralCost, getExtractorBuildCost, extractorFor, isExtractor } from '../utils/resources';
 import {
   SUPER_BUILDING_TYPES,
@@ -21,7 +21,9 @@ interface BuildModalProps {
   selectedTile: Tile | null;
   playerNation: Nation;
   existingBuildingCounts: Record<BuildingType, number>;
+  emptyMatchingDepositCount?: number;
   onBuild: (type: BuildingType, count: number) => void;
+  onBulkBuildExtractors?: (type: 'OIL_RIG' | 'MINE') => void;
 }
 
 type BatchOption = 1 | 2 | 5 | 10 | 20 | 50 | 100 | 'MAX';
@@ -53,9 +55,29 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   selectedTile,
   playerNation,
   existingBuildingCounts,
+  emptyMatchingDepositCount = 0,
   onBuild,
+  onBulkBuildExtractors,
 }) => {
   const [selectedBatch, setSelectedBatch] = useState<BatchOption>(1);
+  const tapTimerRef = useRef<number | null>(null);
+  const lastTapRef = useRef<{ type: BuildableType | null; ts: number }>({ type: null, ts: 0 });
+
+  useEffect(() => {
+    if (!isOpen) {
+      if (tapTimerRef.current !== null) {
+        clearTimeout(tapTimerRef.current);
+        tapTimerRef.current = null;
+      }
+      lastTapRef.current = { type: null, ts: 0 };
+    }
+    return () => {
+      if (tapTimerRef.current !== null) {
+        clearTimeout(tapTimerRef.current);
+        tapTimerRef.current = null;
+      }
+    };
+  }, [isOpen]);
 
   if (!isOpen || !selectedTile) return null;
 
@@ -85,7 +107,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       : rawLimit;
 
     for (let i = 0; i < limit; i++) {
-      const singleCost = Math.floor(base * Math.pow(1.15, currentCount + i) * discount);
+      const singleCost = Math.floor(base * Math.pow(GAMEPLAY_RULES.BUILDING_COST_GROWTH, currentCount + i) * discount);
       const singleMin = getBuildingMineralCost(type, currentCount + i);
       if (goal !== 'MAX') {
         totalCost += singleCost;
@@ -102,7 +124,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
 
     if (goal === 'MAX' && actualCount === 0) {
       actualCount = 1;
-      totalCost = Math.floor(base * Math.pow(1.15, currentCount) * discount);
+      totalCost = Math.floor(base * Math.pow(GAMEPLAY_RULES.BUILDING_COST_GROWTH, currentCount) * discount);
       totalMinerals = getBuildingMineralCost(type, currentCount);
     }
 
@@ -151,6 +173,11 @@ export const BuildModal: React.FC<BuildModalProps> = ({
               THAY THẾ nó.
             </p>
           )}
+          {extractorType && onBulkBuildExtractors && (
+            <p className="text-xs text-sky-200 mt-1">
+              💡 Nhấn đúp {SHORT_NAME[extractorType]} để xây tất cả mỏ còn trống ({emptyMatchingDepositCount})
+            </p>
+          )}
         </div>
 
         <div className="relative w-full" style={{ aspectRatio: '1 / 1' }}>
@@ -174,10 +201,20 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             const top = 50 + RADIUS * Math.sin(angle);
 
             const { totalCost, totalMinerals, actualCount } = calculateBatchCost(type, selectedBatch);
-            const atMaxExtractor = isExtractor(type) && selectedTile.building === type && (selectedTile.buildingLevel || 1) >= RESOURCE_CONFIG.MAX_EXTRACTOR_LEVEL;
+            const extractorBtn = isExtractor(type);
+            const atMaxExtractor = extractorBtn && selectedTile.building === type && (selectedTile.buildingLevel || 1) >= RESOURCE_CONFIG.MAX_EXTRACTOR_LEVEL;
             const bunkerCount = existingBuildingCounts.BUNKER || 0;
             const atMaxBunker = type === 'BUNKER' && bunkerCount >= MAX_BUNKERS_PER_NATION;
             const canAfford = gold >= totalCost && minerals >= totalMinerals && !atMaxExtractor && !atMaxBunker && actualCount > 0;
+            const baseEmptyGold = BUILDING_INFO[type].baseCost;
+            const baseEmptyMinerals = resOn ? Math.ceil(RESOURCE_CONFIG.EXTRACTOR_MINERAL_COST) : 0;
+            const canBulkEmpty =
+              extractorBtn &&
+              !!onBulkBuildExtractors &&
+              emptyMatchingDepositCount > 0 &&
+              gold >= baseEmptyGold &&
+              minerals >= baseEmptyMinerals;
+            const isButtonEnabled = canAfford || canBulkEmpty;
             const isCurrent = selectedTile.building === type;
 
             let badge: string | null = null;
@@ -186,17 +223,46 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             else if (isCurrent) badge = `Lv${selectedTile.buildingLevel || 1}+${actualCount}`;
             else if (actualCount > 1) badge = `x${actualCount}`;
 
+            const handleButtonClick = () => {
+              if (extractorBtn && onBulkBuildExtractors) {
+                const now = Date.now();
+                if (lastTapRef.current.type === type && now - lastTapRef.current.ts <= 340) {
+                  if (tapTimerRef.current !== null) {
+                    clearTimeout(tapTimerRef.current);
+                    tapTimerRef.current = null;
+                  }
+                  lastTapRef.current = { type: null, ts: 0 };
+                  onBulkBuildExtractors(type as 'OIL_RIG' | 'MINE');
+                  onClose();
+                  return;
+                }
+                lastTapRef.current = { type, ts: now };
+                if (tapTimerRef.current !== null) {
+                  clearTimeout(tapTimerRef.current);
+                }
+                tapTimerRef.current = window.setTimeout(() => {
+                  tapTimerRef.current = null;
+                  lastTapRef.current = { type: null, ts: 0 };
+                  if (canAfford) {
+                    onBuild(type, actualCount);
+                    onClose();
+                  }
+                }, 260);
+                return;
+              }
+              if (!canAfford) return;
+              onBuild(type, actualCount);
+              onClose();
+            };
+
             return (
               <button
                 key={type}
-                disabled={!canAfford}
-                onClick={() => {
-                  onBuild(type, actualCount);
-                  onClose();
-                }}
+                disabled={!isButtonEnabled}
+                onClick={handleButtonClick}
                 style={{ left: `${left}%`, top: `${top}%` }}
                 className={`absolute -translate-x-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] flex flex-col items-center gap-1 transition-transform active:scale-95 ${
-                  canAfford ? '' : 'opacity-50 grayscale'
+                  isButtonEnabled ? '' : 'opacity-50 grayscale'
                 }`}
               >
                 <span

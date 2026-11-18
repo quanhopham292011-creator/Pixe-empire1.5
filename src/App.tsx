@@ -15,14 +15,14 @@ import {
   setResourcesEnabled, areResourcesEnabled, createMarket, tickResources, getBuildingMineralCost,
   buildOrUpgradeExtractor, isExtractor, canAffordMissileResources, payMissileResources,
   getMissileResourceCost, getTechResourceCost, ensureNationResources,
-  tradeWithAI, getAITradePrices
+  tradeWithAI, getAITradePrices, getDepositTiles, depositName
 } from './utils/resources';
 import { soundManager } from './utils/audio';
 import { 
   TILE_PIXEL_SIZE, BUILDING_INFO, TECH_TREE, formatPopulation, DARK_TITAN_CONFIG, formatGameTime,
   MISSILE_CONFIG, MISSILE_SETTINGS, GENERAL_ROSTER, getSkillPower, AIR_SYSTEM_CONFIG, AIR_UNIT_SPECS
 } from './utils/constants';
-import { SUPREME_TECH_CONFIG } from './data/gameData';
+import { SUPREME_TECH_CONFIG, GAMEPLAY_RULES } from './data/gameData';
 import {
   SUPER_BUILDING_CONFIG,
   isSuperBuilding,
@@ -72,6 +72,7 @@ import {
   isEnemyTradeShipForNation,
   ensureNationAirFields,
   getSavedBomberRoute,
+  canUseAirType23,
 } from './utils/aircraftSystem';
 import { hasBuildingNearby, isSpacingExempt } from './utils/buildingSpacing';
 import { damageDarkTitan } from './utils/titanCombat';
@@ -98,7 +99,6 @@ import { BuildModal } from './components/BuildModal';
 import { TechModal } from './components/TechModal';
 import { MissileModal } from './components/MissileModal';
 import { MarketModal } from './components/MarketModal';
-import { DiplomacyModal } from './components/DiplomacyModal';
 import { Minimap } from './components/Minimap';
 import { EventTicker, EventLogModal } from './components/EventTicker';
 import { SettingsModal } from './components/SettingsModal';
@@ -120,6 +120,7 @@ import { DefeatModal } from './components/modals/DefeatModal';
 import { ConfirmNewGameModal } from './components/modals/ConfirmNewGameModal';
 import { StartLocationModal } from './components/modals/StartLocationModal';
 import { TitleMenu } from './components/TitleMenu';
+import { HandbookModal } from './components/HandbookModal';
 import McLobby from './McLobby';
 import { GameHud } from './components/GameHud';
 import { MemeLayer } from './components/MemeLayer';
@@ -206,6 +207,7 @@ export default function App() {
   playerProfileRef.current = playerProfile;
   const [victoryReward, setVictoryReward] = useState<VictoryReward | null>(null);
   const victoryAwardedRef = useRef<boolean>(false);
+  const victoryContinuedRef = useRef<boolean>(false);
 
   // Lắng nghe đăng nhập Firebase và đồng bộ tiến trình tự động
   useEffect(() => {
@@ -262,6 +264,7 @@ export default function App() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
+  const [isHandbookOpen, setIsHandbookOpen] = useState<boolean>(false);
 
   // Đổi tên Người chơi
   const [playerName, setPlayerName] = useState<string>('Việt Nam');
@@ -283,7 +286,6 @@ export default function App() {
   // Modals
   const [isBuildOpen, setIsBuildOpen] = useState<boolean>(false);
   const [isTechOpen, setIsTechOpen] = useState<boolean>(false);
-  const [isDiplomacyOpen, setIsDiplomacyOpen] = useState<boolean>(false);
   const [isEventLogOpen, setIsEventLogOpen] = useState<boolean>(false);
   const [isMissileOpen, setIsMissileOpen] = useState<boolean>(false);
   const [missileModalInitialTab, setMissileModalInitialTab] = useState<'PLANES' | 'MISSILES' | 'NAVAL' | null>(null);
@@ -625,12 +627,12 @@ export default function App() {
     const playerAllies = countActiveAlliances(player, data.nations);
     const senderAllies = countActiveAlliances(sender, data.nations);
 
-    if (playerAllies >= 3) {
-      showMissileToast('⚠️ Bạn đã đạt tối đa 3 đồng minh!');
+    if (playerAllies >= GAMEPLAY_RULES.MAX_ALLIANCES) {
+      showMissileToast(`⚠️ Bạn đã đạt tối đa ${GAMEPLAY_RULES.MAX_ALLIANCES} đồng minh!`);
       return;
     }
-    if (senderAllies >= 3) {
-      showMissileToast(`⚠️ ${sender.name} đã có đủ 3 đồng minh!`);
+    if (senderAllies >= GAMEPLAY_RULES.MAX_ALLIANCES) {
+      showMissileToast(`⚠️ ${sender.name} đã có đủ ${GAMEPLAY_RULES.MAX_ALLIANCES} đồng minh!`);
       return;
     }
 
@@ -831,7 +833,7 @@ export default function App() {
     showMeme(warMemeFor(player, targetNat, wasAlly));
 
     if (wasAlly) {
-      player.traitorTimer = 120; // 120 giây bị gắn nhãn Kẻ Phản Bội
+      player.traitorTimer = GAMEPLAY_RULES.TRAITOR_TIMER_SECONDS;
     }
 
     player.diplomacy[id] = { status: 'WAR', relation: -50, truceTimer: 0 };
@@ -1235,6 +1237,7 @@ export default function App() {
     lastBorderAlertAtRef.current = {};
     unlockedAchievementsRef.current.clear();
     victoryAwardedRef.current = false;
+    victoryContinuedRef.current = false;
     setVictoryReward(null);
     setSelectedTile(null);
     selectedTileRef.current = null;
@@ -1314,12 +1317,13 @@ export default function App() {
     needsCenterCameraRef,
     initWeatherParticles,
     victoryAwardedRef,
+    victoryContinuedRef,
     setVictoryReward,
     setGameState,
     setIsPaused,
   });
 
-  const { updateTradeRoutes, lootTradeShip } = useTradeRoutes(gameDataRef);
+  const { updateTradeRoutes } = useTradeRoutes(gameDataRef);
   const difficultyRef = useRef(difficulty);
   difficultyRef.current = difficulty;
   const syncTitanStateNow = useCallback(() => {
@@ -1920,7 +1924,9 @@ export default function App() {
               maxLandRatio: curMaxRatio,
               isProposal: false,
             });
-            const shouldAccept = evalRes.ok;
+            const receiverAtCap = countActiveAlliances(n, nations) >= GAMEPLAY_RULES.MAX_ALLIANCES;
+            const senderAtCap = countActiveAlliances(sender, nations) >= GAMEPLAY_RULES.MAX_ALLIANCES;
+            const shouldAccept = evalRes.ok && !receiverAtCap && !senderAtCap;
 
             if (shouldAccept) {
               // CHẤP NHẬN LIÊN MINH
@@ -2549,7 +2555,11 @@ export default function App() {
           } else if (supTech) {
             const player = nations[myResearchNationId];
             if (player) {
+              const wasType23Unlocked = canUseAirType23(player);
               applySupremeResearchCompletion(player, supTech.id);
+              if (!wasType23Unlocked && canUseAirType23(player)) {
+                showMissileToast('✈️ Đã mở khóa Loại 2 & Loại 3!');
+              }
               if (supTech.id === 'sup_def_3') {
                 const autoPlaced = deployInitialBorderBunkers(tiles, player);
                 if (autoPlaced.length > 0) {
@@ -2806,6 +2816,7 @@ export default function App() {
       if (!isMultiplayerRef.current || myNationIdRef.current === 1) {
         const localId = isMultiplayerRef.current ? myNationIdRef.current : 1;
         const wasAdvUnlocked = Boolean(nations[localId]?.airAdvancedUnlocked);
+        const wasType23Unlocked = canUseAirType23(nations[localId]);
         const airCtx: CachedAirContext = {
           basesByNation: airBasesByNation,
           sams: airSams,
@@ -2822,8 +2833,10 @@ export default function App() {
           playExplosionSound: () => soundManager.playThunder(),
           localHudNationId: localId,
         });
-        if (!wasAdvUnlocked && nations[localId]?.airAdvancedUnlocked) {
+        if (!wasType23Unlocked && canUseAirType23(nations[localId])) {
           showMissileToast('✈️ Đã mở khóa Loại 2 & Loại 3!');
+        } else if (!wasAdvUnlocked && nations[localId]?.airAdvancedUnlocked) {
+          showMissileToast('🏭 Đại Công Xưởng đủ 60 giây! Cần Quân Sự Tối Thượng 3 để mở Loại 2 & 3.');
         }
       }
 
@@ -3284,7 +3297,7 @@ export default function App() {
         });
       }
 
-      if (landPercent >= 70) {
+      if (landPercent >= GAMEPLAY_RULES.VICTORY_LAND_PERCENT && !victoryContinuedRef.current) {
         setGameState('VICTORY');
         soundManager.playVictory();
         if (!victoryAwardedRef.current) {
@@ -3787,13 +3800,7 @@ export default function App() {
       }
     }
 
-    // Kiểm tra cướp bóc Tàu Buôn Hải Cảng nếu chạm vào vị trí tàu đang giăng buồm trên biển
-    if (lootTradeShip(mapX, mapY)) {
-      setInspectedShip(null);
-      return;
-    }
-
-    // Nếu chạm vào tàu thương không thể cướp (vd: tàu nội địa hồ kín), mở thẻ xem thông tin cơ bản
+    // Nếu chạm vào tàu thương, mở thẻ xem thông tin cơ bản (không cướp bằng thao tác chạm)
     if (Array.isArray(data.tradeShips) && data.tradeShips.length > 0) {
       const routeMap = new Map<string, SeaTradeRoute>();
       if (Array.isArray(data.tradeRoutes)) {
@@ -4195,14 +4202,19 @@ export default function App() {
           ensureNationAirFields(n);
           const prevArsenalTimer = n.grandArsenalTimer || 0;
           const prevAdvUnlocked = Boolean(n.airAdvancedUnlocked);
+          const prevType23Unlocked = canUseAirType23(n);
           if (typeof nSync.airSorties === 'number') n.airSorties = nSync.airSorties;
           if (typeof nSync.airSortieRegenTimer === 'number') n.airSortieRegenTimer = nSync.airSortieRegenTimer;
           if (typeof nSync.grandArsenalTimer === 'number') n.grandArsenalTimer = nSync.grandArsenalTimer;
           if (typeof nSync.airAdvancedUnlocked === 'boolean') n.airAdvancedUnlocked = nSync.airAdvancedUnlocked;
           if (n.airAdvancedUnlocked) {
             n.grandArsenalDestroyed = false;
-            if (!prevAdvUnlocked && n.id === myNationIdRef.current) {
-              showMissileToast('✈️ Đã mở khóa Loại 2 & Loại 3!');
+            if (n.id === myNationIdRef.current) {
+              if (!prevType23Unlocked && canUseAirType23(n)) {
+                showMissileToast('✈️ Đã mở khóa Loại 2 & Loại 3!');
+              } else if (!prevAdvUnlocked) {
+                showMissileToast('🏭 Đại Công Xưởng đủ 60 giây! Cần Quân Sự Tối Thượng 3 để mở Loại 2 & 3.');
+              }
             }
           } else if ((n.grandArsenalTimer || 0) > 0) {
             n.grandArsenalDestroyed = false;
@@ -4394,11 +4406,13 @@ export default function App() {
     // Kiểm tra kỹ năng "Đột Kích Bóng Đêm" của Đại Tướng Dạ Ảnh (bỏ qua phòng thủ địch, tốn ít hơn 50% quân)
     const attackerHasShadowRaid = attacker?.general?.skillId === 'SHADOW_RAID' && (attacker.general.skillActiveTimer || 0) > 0;
 
-    let cost = tgt.terrain === 'MOUNTAIN' ? 12 : 5;
+    let cost: number = tgt.terrain === 'MOUNTAIN'
+      ? GAMEPLAY_RULES.MOUNTAIN_TILE_TROOP_COST
+      : GAMEPLAY_RULES.BASE_TILE_TROOP_COST;
     if (tgt.building === 'FORTRESS' && !(tgt.inactiveTimer && tgt.inactiveTimer > 0)) {
-      cost = 18 + ((tgt.buildingLevel || 1) - 1) * 8;
+      cost = GAMEPLAY_RULES.FORTRESS_BASE_COST + ((tgt.buildingLevel || 1) - 1) * GAMEPLAY_RULES.FORTRESS_LEVEL_STEP;
     } else if (tgt.building === 'BUNKER' && !(tgt.inactiveTimer && tgt.inactiveTimer > 0)) {
-      cost = 14 + ((tgt.buildingLevel || 1) - 1) * 4;
+      cost = GAMEPLAY_RULES.BUNKER_BASE_COST + ((tgt.buildingLevel || 1) - 1) * GAMEPLAY_RULES.BUNKER_LEVEL_STEP;
     } else if (isSuperBuilding(tgt.building) && !(tgt.inactiveTimer && tgt.inactiveTimer > 0)) {
       const sSt = getSuperBuildingState(tgt);
       if (sSt === 'ACTIVE' || sSt === 'DAMAGED') {
@@ -4411,7 +4425,16 @@ export default function App() {
     }
 
     if (tgt.scorchedTimer && tgt.scorchedTimer > 0) {
-      cost += 5;
+      cost += GAMEPLAY_RULES.SCORCHED_EXTRA_TROOP_COST;
+    }
+
+    // Buff tân thủ: Giảm tổn thất quân khi chiếm đất hoang (owner === 0) cho người chơi trong 3 phút đầu (180 giây)
+    if (attacker?.isPlayer && tgt.owner === 0) {
+      const gameTime = data.gameTimeSeconds || 0;
+      if (gameTime < GAMEPLAY_RULES.ROOKIE_BUFF_DURATION_SECONDS) {
+        const rookieDiscount = (1 - (gameTime / GAMEPLAY_RULES.ROOKIE_BUFF_DURATION_SECONDS)) * GAMEPLAY_RULES.ROOKIE_BUFF_MAX_DISCOUNT;
+        cost = Math.max(1, Math.round(cost * (1 - rookieDiscount)));
+      }
     }
 
     // Hiệu ứng Pháo Đài (FORTRESS) xung quanh trong bán kính 4 ô & Lô Cốt (BUNKER) kề bên 1.5 ô
@@ -4419,7 +4442,7 @@ export default function App() {
       const fortressBonuses: number[] = [];
       let hasNearbyBunker = false;
       const size = data.tiles.length;
-      const fortressRadius = 4.0;
+      const fortressRadius = GAMEPLAY_RULES.FORTRESS_RADIUS;
 
       const scanR = Math.ceil(fortressRadius);
       const yStart = Math.max(0, tgt.y - scanR);
@@ -4967,6 +4990,71 @@ export default function App() {
 
   // Pointer Handlers provided by useMapCamera hook
 
+  const executeBulkBuildExtractors = (buildingType: 'OIL_RIG' | 'MINE') => {
+    const data = gameDataRef.current;
+    const myNation = isMultiplayerRef.current ? myNationIdRef.current : 1;
+    const player = data?.nations?.[myNation];
+    if (!data || !player || !Array.isArray(data.tiles)) return;
+    ensureNationResources(player);
+
+    const depositTarget: DepositType = buildingType === 'OIL_RIG' ? 'OIL' : 'MINERAL';
+    const refX = selectedTile?.x ?? player.capitalX;
+    const refY = selectedTile?.y ?? player.capitalY;
+
+    const emptyTiles = getDepositTiles(data.tiles)
+      .filter((t) =>
+        t &&
+        t.owner === myNation &&
+        t.terrain !== 'WATER' &&
+        t.deposit === depositTarget &&
+        t.discovered &&
+        (t.reserve || 0) > 0 &&
+        t.building === 'NONE'
+      )
+      .sort((a, b) => Math.hypot(a.x - refX, a.y - refY) - Math.hypot(b.x - refX, b.y - refY));
+
+    if (emptyTiles.length === 0) {
+      showMissileToast(`Không còn ${depositName(depositTarget)} trống nào để xây!`);
+      return;
+    }
+
+    let builtCount = 0;
+    let lastFailMessage = '';
+    for (const tile of emptyTiles) {
+      const res = buildOrUpgradeExtractor(tile, player);
+      if (!res.ok) {
+        lastFailMessage = res.message;
+        break;
+      }
+      builtCount++;
+      data.stats.buildingsCount += 1;
+      dirtyTerritoryTilesRef.current.push({ x: tile.x, y: tile.y });
+    }
+
+    if (builtCount === 0) {
+      showMissileToast(lastFailMessage || 'Không đủ tài nguyên để xây thêm mỏ!');
+      return;
+    }
+
+    offscreenTerritoryDirtyRef.current = true;
+    fogBaseDirtyRef.current = true;
+    soundManager.playBuild();
+    if (selectedTile) {
+      const updated = data.tiles[selectedTile.y]?.[selectedTile.x];
+      if (updated) {
+        const cloned = { ...updated };
+        setSelectedTile(cloned);
+        selectedTileRef.current = cloned;
+      }
+    }
+    const builtName = BUILDING_INFO[buildingType].name;
+    showMissileToast(
+      builtCount < emptyTiles.length && lastFailMessage
+        ? `Đã xây ${builtCount}/${emptyTiles.length} ${builtName} (${lastFailMessage})`
+        : `Đã xây ${builtCount} ${builtName} trên tất cả mỏ còn trống!`
+    );
+  };
+
   // Xây dựng công trình gộp & xây chồng tăng cấp (Building Stacking & Level Up)
   const executeBuild = (targetTile: Tile | null, buildingType: BuildingType, count: number = 1) => {
     if (buildingType === 'NONE') return;
@@ -5304,7 +5392,7 @@ export default function App() {
   };
 
   const canBuild = hudStats.gold >= 90;
-  const canTech = hudStats.territoryCount >= 15;
+  const canTech = hudStats.territoryCount >= GAMEPLAY_RULES.MIN_TERRITORY_FOR_TECH;
 
   // Tính số quân thực tế sẽ xuất trận theo Thanh trượt Slider
   const actualAttackTroops = Math.max(1, Math.floor((hudStats.troops * attackPercent) / 100));
@@ -5324,9 +5412,9 @@ export default function App() {
           ]}
           difficulties={[
             { id: 'EASY', label: 'Dễ', desc: 'Dành cho người mới, bot thân thiện, khởi đầu dễ dàng.' },
-            { id: 'NORMAL', label: 'Thường', desc: 'Trải nghiệm cân bằng giữa mở rộng và phòng thủ.' },
-            { id: 'HARD', label: 'Khó', desc: 'Bot thông minh hơn, tấn công dồn dập, đòi hỏi chiến thuật cao.' },
-            { id: 'EXTREME', label: 'Cực Khó', desc: 'Thử thách tối thượng cho các bậc thầy chiến lược.' }
+            { id: 'NORMAL', label: 'Thường', desc: 'Trải nghiệm cân bằng giữa mở rộng và phòng thủ. Có Boss (yếu hơn).' },
+            { id: 'HARD', label: 'Khó', desc: 'Bot thông minh hơn, tấn công dồn dập, đòi hỏi chiến thuật cao. Có Boss.' },
+            { id: 'EXTREME', label: 'Cực Khó', desc: 'Thử thách tối thượng cho các bậc thầy chiến lược. Có Boss.' }
           ]}
           saves={savedGameInfo ? [{ id: 'autosave', name: 'Ván chơi đã lưu', info: `${savedGameInfo.playerName} • ${savedGameInfo.timestamp} (${savedGameInfo.gameTimeStr})` }] : []}
           onContinue={(_saveId) => {
@@ -5344,6 +5432,10 @@ export default function App() {
           onProfile={() => setIsAuthModalOpen(true)}
           onFriends={() => setIsMultiplayerModalOpen(true)}
           onLeaderboard={() => setIsLeaderboardOpen(true)}
+          onHandbook={() => {
+            soundManager.playClick();
+            setIsHandbookOpen(true);
+          }}
           playerName={currentUser?.displayName || playerName}
           selectedGeneral={playerProfile.selectedGeneral}
           onGenerals={() => {
@@ -5477,7 +5569,6 @@ export default function App() {
             gameDataRef={gameDataRef}
             setIsBuildOpen={setIsBuildOpen}
             setIsTechOpen={setIsTechOpen}
-            setIsDiplomacyOpen={setIsDiplomacyOpen}
             setIsLeaderboardOpen={setIsLeaderboardOpen}
             setIsMissileOpen={setIsMissileOpen}
             autoExpand={autoExpand}
@@ -5551,6 +5642,7 @@ export default function App() {
             })()}
             onRespondTradeOffer={handleRespondTradeOffer}
             onOpenEventLog={() => setIsEventLogOpen(true)}
+            onOpenHandbook={() => setIsHandbookOpen(true)}
             showMinimap={showMinimap}
             showSeaControl={showSeaControl}
             onToggleSeaControl={() => setShowSeaControl(v => !v)}
@@ -5721,25 +5813,25 @@ export default function App() {
               }
 
               const playerAllyCount = countActiveAlliances(player, data.nations);
-              if (playerAllyCount >= 3) {
+              if (playerAllyCount >= GAMEPLAY_RULES.MAX_ALLIANCES) {
                 data.particles.push({
                   x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
                   y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
                   color: '#ef4444', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
                   type: 'FLOAT_TEXT',
-                  text: '⚠️ Bạn đã đạt tối đa 3 đồng minh!'
+                  text: `⚠️ Bạn đã đạt tối đa ${GAMEPLAY_RULES.MAX_ALLIANCES} đồng minh!`
                 });
                 return;
               }
 
               const targetAllyCount = countActiveAlliances(targetNat, data.nations);
-              if (targetAllyCount >= 3) {
+              if (targetAllyCount >= GAMEPLAY_RULES.MAX_ALLIANCES) {
                 data.particles.push({
                   x: targetNat.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
                   y: targetNat.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
                   color: '#ef4444', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
                   type: 'FLOAT_TEXT',
-                  text: `⚠️ ${targetNat.name} đã có đủ 3 đồng minh!`
+                  text: `⚠️ ${targetNat.name} đã có đủ ${GAMEPLAY_RULES.MAX_ALLIANCES} đồng minh!`
                 });
                 return;
               }
@@ -5788,14 +5880,111 @@ export default function App() {
       )}
 
       {/* MODALS */}
-      <LeaderboardModal
-        isOpen={isLeaderboardOpen}
-        onClose={() => setIsLeaderboardOpen(false)}
-        nations={gameDataRef.current.nations}
-        myNationId={1}
-        totalLand={totalLandCountRef.current || 1}
-        onFocusNation={focusOnNation}
-      />
+      {(() => {
+        const myId = isMultiplayerRef.current ? myNationIdRef.current : 1;
+        const player = gameDataRef.current.nations[myId];
+        return (
+          <LeaderboardModal
+            isOpen={isLeaderboardOpen}
+            onClose={() => setIsLeaderboardOpen(false)}
+            nations={gameDataRef.current.nations}
+            myNationId={myId}
+            totalLand={totalLandCountRef.current || 1}
+            onFocusNation={focusOnNation}
+            playerNation={player}
+            tiles={gameDataRef.current.tiles}
+            market={gameDataRef.current.market}
+            onTradeWithAI={handleTradeWithAI}
+            gameTimeSeconds={gameDataRef.current.gameTimeSeconds || 0}
+            onProposeTruce={handleProposeTruce}
+            onProposeAlliance={(id) => {
+              const data = gameDataRef.current;
+              const p = data.nations[myId];
+              const targetNat = data.nations[id];
+              if (!p || !targetNat || targetNat.isEliminated) return;
+
+              const rejectTimer = targetNat.lastRejectedInviteTimer?.[myId] || 0;
+              if (rejectTimer > 0) {
+                data.particles.push({
+                  x: targetNat.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  y: targetNat.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  color: '#ef4444', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
+                  type: 'FLOAT_TEXT',
+                  text: `⚠️ ${targetNat.name} từ chối gần đây, cần chờ ${rejectTimer}s!`
+                });
+                return;
+              }
+
+              reconcileNationAlliances(p, data.nations);
+              reconcileNationAlliances(targetNat, data.nations);
+              if (p.diplomacy?.[id]?.status === 'ALLIANCE' && targetNat.diplomacy?.[myId]?.status === 'ALLIANCE') {
+                return;
+              }
+
+              const playerAllyCount = countActiveAlliances(p, data.nations);
+              if (playerAllyCount >= GAMEPLAY_RULES.MAX_ALLIANCES) {
+                data.particles.push({
+                  x: p.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  y: p.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  color: '#ef4444', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
+                  type: 'FLOAT_TEXT',
+                  text: `⚠️ Bạn đã đạt tối đa ${GAMEPLAY_RULES.MAX_ALLIANCES} đồng minh!`
+                });
+                return;
+              }
+
+              const targetAllyCount = countActiveAlliances(targetNat, data.nations);
+              if (targetAllyCount >= GAMEPLAY_RULES.MAX_ALLIANCES) {
+                data.particles.push({
+                  x: targetNat.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  y: targetNat.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  color: '#ef4444', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
+                  type: 'FLOAT_TEXT',
+                  text: `⚠️ ${targetNat.name} đã có đủ ${GAMEPLAY_RULES.MAX_ALLIANCES} đồng minh!`
+                });
+                return;
+              }
+
+              if (targetNat.allianceInvites?.some((inv: any) => inv.senderNationId === myId)) {
+                data.particles.push({
+                  x: targetNat.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  y: targetNat.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  color: '#f59e0b', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
+                  type: 'FLOAT_TEXT',
+                  text: '⚠️ Đã gửi lời mời, đang chờ trả lời!'
+                });
+                return;
+              }
+
+              targetNat.allianceInvites = targetNat.allianceInvites || [];
+              targetNat.allianceInvites.push({
+                senderNationId: myId,
+                expiryTimer: 20
+              });
+
+              showMeme(allianceMemeFor(p, targetNat));
+              soundManager.playCapture();
+
+              data.particles.push({
+                x: targetNat.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                y: targetNat.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                color: '#10b981', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.5,
+                type: 'FLOAT_TEXT', text: '🤝 Đã gửi lời mời liên minh!'
+              });
+
+              data.events.unshift({
+                id: Math.random().toString(),
+                title: '🤝 Đã Gửi Lời Mời Kết Minh',
+                description: `Đã gửi lời mời kết minh tới ${targetNat.name} (hiệu lực 20s).`,
+                type: 'DIPLOMACY',
+                targetNationId: id,
+                timestamp: formatGameTime(data.gameTimeSeconds),
+              });
+            }}
+            onDeclareWar={handleDeclareWar}
+          />
+        );
+      })()}
       {(() => {
         const myId = isMultiplayerRef.current ? myNationIdRef.current : 1;
         const player = gameDataRef.current.nations[myId];
@@ -5803,6 +5992,7 @@ export default function App() {
           (player ? gameDataRef.current.tiles[player.capitalY]?.[player.capitalX] : null);
 
         const buildingCounts: Record<BuildingType, number> = createEmptyBuildingCounts();
+        let emptyMatchingDepositCount = 0;
         if (isBuildOpen) {
           const tiles = gameDataRef.current.tiles;
           for (let r = 0; r < tiles.length; r++) {
@@ -5814,6 +6004,18 @@ export default function App() {
               }
             }
           }
+          if (activeBuildTarget?.deposit) {
+            emptyMatchingDepositCount = getDepositTiles(tiles).filter(
+              (dt) =>
+                dt &&
+                dt.owner === myId &&
+                dt.terrain !== 'WATER' &&
+                dt.deposit === activeBuildTarget.deposit &&
+                dt.discovered &&
+                (dt.reserve || 0) > 0 &&
+                dt.building === 'NONE'
+            ).length;
+          }
         }
 
         return (
@@ -5823,7 +6025,9 @@ export default function App() {
             selectedTile={activeBuildTarget}
             playerNation={player || {}}
             existingBuildingCounts={buildingCounts}
+            emptyMatchingDepositCount={emptyMatchingDepositCount}
             onBuild={(type, count) => executeBuild(activeBuildTarget, type, count)}
+            onBulkBuildExtractors={executeBulkBuildExtractors}
           />
         );
       })()}
@@ -5878,108 +6082,6 @@ export default function App() {
         isOpen={isMarketOpen}
         onClose={() => setIsMarketOpen(false)}
         gameDataRef={gameDataRef}
-      />
-
-      <DiplomacyModal
-        isOpen={isDiplomacyOpen}
-        onClose={() => setIsDiplomacyOpen(false)}
-        playerNation={gameDataRef.current.nations[1] || {}}
-        nations={gameDataRef.current.nations}
-        totalLandCount={totalLandCountRef.current || 1}
-        tiles={gameDataRef.current.tiles}
-        market={gameDataRef.current.market}
-        onTradeWithAI={handleTradeWithAI}
-        onFocusNation={focusOnNation}
-        onSendGoldAid={handleSendGoldAid}
-        onSendTroopAid={handleSendTroopAid}
-        onRequestAid={handleRequestAid}
-        gameTimeSeconds={gameDataRef.current.gameTimeSeconds || 0}
-        onProposeTruce={handleProposeTruce}
-        onProposeAlliance={(id) => {
-          const data = gameDataRef.current;
-          const player = data.nations[1];
-          const targetNat = data.nations[id];
-          if (!player || !targetNat || targetNat.isEliminated) return;
-
-          const rejectTimer = targetNat.lastRejectedInviteTimer?.[1] || 0;
-          if (rejectTimer > 0) {
-            data.particles.push({
-              x: targetNat.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              y: targetNat.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              color: '#ef4444', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
-              type: 'FLOAT_TEXT',
-              text: `⚠️ ${targetNat.name} từ chối gần đây, cần chờ ${rejectTimer}s!`
-            });
-            return;
-          }
-
-          reconcileNationAlliances(player, data.nations);
-          reconcileNationAlliances(targetNat, data.nations);
-          if (player.diplomacy?.[id]?.status === 'ALLIANCE' && targetNat.diplomacy?.[1]?.status === 'ALLIANCE') {
-            return;
-          }
-
-          const playerAllyCount = countActiveAlliances(player, data.nations);
-          if (playerAllyCount >= 3) {
-            data.particles.push({
-              x: player.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              y: player.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              color: '#ef4444', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
-              type: 'FLOAT_TEXT',
-              text: '⚠️ Bạn đã đạt tối đa 3 đồng minh!'
-            });
-            return;
-          }
-
-          const targetAllyCount = countActiveAlliances(targetNat, data.nations);
-          if (targetAllyCount >= 3) {
-            data.particles.push({
-              x: targetNat.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              y: targetNat.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              color: '#ef4444', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
-              type: 'FLOAT_TEXT',
-              text: `⚠️ ${targetNat.name} đã có đủ 3 đồng minh!`
-            });
-            return;
-          }
-
-          if (targetNat.allianceInvites?.some((inv: any) => inv.senderNationId === 1)) {
-            data.particles.push({
-              x: targetNat.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              y: targetNat.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-              color: '#f59e0b', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
-              type: 'FLOAT_TEXT',
-              text: '⚠️ Đã gửi lời mời, đang chờ trả lời!'
-            });
-            return;
-          }
-
-          targetNat.allianceInvites = targetNat.allianceInvites || [];
-          targetNat.allianceInvites.push({
-            senderNationId: 1,
-            expiryTimer: 20
-          });
-
-          showMeme(allianceMemeFor(player, targetNat));
-          soundManager.playCapture();
-
-          data.particles.push({
-            x: targetNat.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-            y: targetNat.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
-            color: '#10b981', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.5,
-            type: 'FLOAT_TEXT', text: '🤝 Đã gửi lời mời liên minh!'
-          });
-
-          data.events.unshift({
-            id: Math.random().toString(),
-            title: '🤝 Đã Gửi Lời Mời Kết Minh',
-            description: `Đã gửi lời mời kết minh tới ${targetNat.name} (hiệu lực 20s).`,
-            type: 'DIPLOMACY',
-            targetNationId: id,
-            timestamp: formatGameTime(data.gameTimeSeconds),
-          });
-        }}
-        onDeclareWar={handleDeclareWar}
       />
 
       <EventLogModal
@@ -6084,6 +6186,12 @@ export default function App() {
         setGameState={setGameState}
         setIsMultiplayerModalOpen={setIsMultiplayerModalOpen}
         startNewGame={startNewGame}
+        onContinuePlaying={() => {
+          victoryContinuedRef.current = true;
+          setIsPaused(false);
+          setGameState('PLAYING');
+          soundManager.playClick();
+        }}
       />
 
       <DefeatModal
@@ -6360,6 +6468,12 @@ export default function App() {
       />
 
       {/* HỆ THỐNG STICKER MEME MÈO PIXEL (CHỈ DÙNG NGOÀI MÀN HÌNH CHƠI; TRONG TRẬN ĐÃ GẮN TRONG GAMEHUD) */}
+      {/* SỔ TAY HƯỚNG DẪN ĐẾ CHẾ */}
+      <HandbookModal
+        isOpen={isHandbookOpen}
+        onClose={() => setIsHandbookOpen(false)}
+      />
+
       {gameState === 'TITLE' && <MemeLayer />}
     </div>
   );

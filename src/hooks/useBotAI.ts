@@ -19,7 +19,7 @@ import {
   startSuperRepair,
   getAcademyResearchSpeedMult,
 } from '../utils/superBuildings';
-import { NAVAL_CONFIG, SUPREME_TECH_CONFIG } from '../data/gameData';
+import { GAMEPLAY_RULES, NAVAL_CONFIG, SUPREME_TECH_CONFIG } from '../data/gameData';
 import { areResourcesEnabled, getDepositTiles, isExtractor, hasActiveMineralMine, getBuildingMineralCost } from '../utils/resources';
 import {
   assignExtractorDeposit,
@@ -151,7 +151,7 @@ export function processBotAutoTruce(ctx: AutoTruceContext): boolean {
     }
   });
 
-  const isBoss = bot.tier === 'BOSS';
+  const isBoss: boolean = bot.tier === 'BOSS' && (difficulty === 'HARD' || difficulty === 'EXTREME');
   const botTroops = bot.troops || 0;
   const botMaxTroops = Math.max(1, bot.maxTroops || 1);
   const troopRatio = botTroops / botMaxTroops;
@@ -494,7 +494,7 @@ export function useBotAI({
       const botLandAdj = adjacentByNation.get(bot.id) || new Set<number>();
 
       // --- 1B. Bot chủ động xin liên minh (đánh giá sức mạnh, quan hệ và tình hình chiến tranh) ---
-      if ((bot.id + gameTime) % 15 === 0 && (bot.traitorTimer || 0) <= 0 && countActiveAlliances(bot, nations) < 3) {
+      if ((bot.id + gameTime) % 15 === 0 && (bot.traitorTimer || 0) <= 0 && countActiveAlliances(bot, nations) < GAMEPLAY_RULES.MAX_ALLIANCES) {
         const diffInviteProb = difficulty === 'EXTREME' ? 0.42 : difficulty === 'HARD' ? 0.35 : difficulty === 'NORMAL' ? 0.26 : 0.16;
         const persInviteMult = bot.personality === 'AGGRESSIVE' ? 0.45 : bot.personality === 'MERCHANT' ? 1.4 : 1.0;
         if (Math.random() < diffInviteProb * persInviteMult) {
@@ -503,6 +503,7 @@ export function useBotAI({
             if (!other || other.id === bot.id || other.isEliminated || other.colonyCategory === 'FOREST') return;
             if ((bot.lastRejectedInviteTimer?.[other.id] || 0) > 0) return;
             if (other.allianceInvites?.some((inv: any) => inv.senderNationId === bot.id)) return;
+            if (countActiveAlliances(other, nations) >= GAMEPLAY_RULES.MAX_ALLIANCES) return;
             const evalRes = evaluateAllianceDecision(bot, other, {
               nations,
               tiles,
@@ -626,7 +627,7 @@ export function useBotAI({
       const ownedList = ownedByNation[bot.id] || [];
 
       // --- 2. TỰ ĐỘNG PHÁT TRIỂN KINH TẾ, DÂN SỐ & CÔNG NGHỆ (Dynamic Economy & Tech) ---
-      const isBoss = bot.tier === 'BOSS';
+      const isBoss: boolean = bot.tier === 'BOSS' && (difficulty === 'HARD' || difficulty === 'EXTREME');
 
       // 2a. Nâng cấp công nghệ theo tính cách quốc gia & độ khó (Đại Học Viện tăng tốc nghiên cứu cho Bot)
       const baseTechMod = difficulty === 'EXTREME' ? 2 : difficulty === 'HARD' ? 3 : difficulty === 'NORMAL' ? 6 : 12;
@@ -831,7 +832,12 @@ export function useBotAI({
 
         // 4a. Khối liên minh chống Bá quyền (Anti-Superpower Coalition)
         const coalitionChance = difficulty === 'EXTREME' ? 0.55 : difficulty === 'HARD' ? 0.40 : difficulty === 'NORMAL' ? 0.25 : 0.15;
-        if (maxLandRatio >= coalitionThreshold && superpowerId > 0 && superpowerId !== bot.id) {
+        if (
+          maxLandRatio >= coalitionThreshold &&
+          superpowerId > 0 &&
+          superpowerId !== bot.id &&
+          countActiveAlliances(bot, nations) < GAMEPLAY_RULES.MAX_ALLIANCES
+        ) {
           const superDip = bot.diplomacy[superpowerId];
           if (!superDip || superDip.status === 'WAR') {
             nations.forEach((other: Nation) => {
@@ -839,6 +845,7 @@ export function useBotAI({
               if ((bot.lastRejectedInviteTimer?.[other.id] || 0) > 0) return;
               if (other.allianceInvites?.some(inv => inv.senderNationId === bot.id)) return;
               if (other.diplomacy?.[superpowerId]?.status === 'ALLIANCE') return;
+              if (countActiveAlliances(other, nations) >= GAMEPLAY_RULES.MAX_ALLIANCES) return;
               const evalRes = evaluateAllianceDecision(bot, other, {
                 nations,
                 tiles,

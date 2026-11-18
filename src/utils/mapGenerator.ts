@@ -250,9 +250,9 @@ export function generateWorldMap(
     }
   }
   const bossPool = bossCountryIndices.length > 0 ? bossCountryIndices : fallbackAiIndices;
-  const bossNationId = bossPool.length > 0
-    ? bossPool[Math.floor(Math.random() * bossPool.length)]
-    : -1;
+  const bossNationId = difficulty === 'EASY'
+    ? -1
+    : (bossPool.length > 0 ? bossPool[Math.floor(Math.random() * bossPool.length)] : -1);
 
   const vnIslandTiles: { x: number; y: number }[] = [];
   for (const group of VN_ISLANDS) {
