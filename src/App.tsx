@@ -121,6 +121,7 @@ import { ConfirmNewGameModal } from './components/modals/ConfirmNewGameModal';
 import { StartLocationModal } from './components/modals/StartLocationModal';
 import { TitleMenu } from './components/TitleMenu';
 import { HandbookModal } from './components/HandbookModal';
+import { TutorialModal } from './components/TutorialModal';
 import McLobby from './McLobby';
 import { GameHud } from './components/GameHud';
 import { MemeLayer } from './components/MemeLayer';
@@ -265,6 +266,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState<boolean>(false);
   const [isHandbookOpen, setIsHandbookOpen] = useState<boolean>(false);
+  const [showTutorial, setShowTutorial] = useState<boolean>(() => { try { return !localStorage.getItem('pixelEmpireTutorialSeen'); } catch { return false; } });
 
   // Đổi tên Người chơi
   const [playerName, setPlayerName] = useState<string>('Việt Nam');
@@ -407,6 +409,8 @@ export default function App() {
   const tileCountCacheRef = useRef<{ t: number; counts: number[] }>({ t: -1, counts: [] });
   const coalitionFormedRef = useRef<boolean>(false);
   const unlockedAchievementsRef = useRef<Set<string>>(new Set());
+  const handledTitanUltChargesRef = useRef<Set<string>>(new Set());
+  const handledTitanUltExplodesRef = useRef<Set<string>>(new Set());
 
   const gameDataRef = useRef<{
     tiles: Tile[][];
@@ -419,6 +423,7 @@ export default function App() {
     hasMetBot: boolean;
     darkTitan: DarkTitan | null;
     darkTitans: DarkTitan[];
+    titanFx?: Array<{ kind: string; x: number; y: number; radius: number; duration: number; color: string; start: number }>;
     pendingTitanSpawn?: PendingTitanSpawn | null;
     nextTitanSpawnAt?: number;
     flyingMissiles: FlyingMissile[];
@@ -1236,6 +1241,8 @@ export default function App() {
     coalitionFormedRef.current = false;
     lastBorderAlertAtRef.current = {};
     unlockedAchievementsRef.current.clear();
+    handledTitanUltChargesRef.current.clear();
+    handledTitanUltExplodesRef.current.clear();
     victoryAwardedRef.current = false;
     victoryContinuedRef.current = false;
     setVictoryReward(null);
@@ -1464,6 +1471,31 @@ export default function App() {
     isMultiplayerRef,
     myNationIdRef,
     onTitanSyncNeeded: syncTitanStateNow,
+    onTitanUltCharge: (payload) => {
+      if (isMultiplayerRef.current && myNationIdRef.current === 1) {
+        multiplayerClient.sendTitanUlt({
+          action: 'CHARGE',
+          titanId: payload.titanId,
+          targetX: payload.x,
+          targetY: payload.y,
+          startedAt: payload.startedAt,
+          chargeSeconds: payload.chargeSeconds,
+          ultCastId: payload.ultCastId,
+        });
+      }
+    },
+    onTitanUltExplode: (payload) => {
+      if (isMultiplayerRef.current && myNationIdRef.current === 1) {
+        multiplayerClient.sendTitanUlt({
+          action: 'EXPLODE',
+          titanId: payload.titanId,
+          targetX: payload.x,
+          targetY: payload.y,
+          radius: payload.radius,
+          ultCastId: payload.ultCastId,
+        });
+      }
+    },
   });
   const { updateAttackWaves } = useAttackWaves({
     gameDataRef,
@@ -1811,7 +1843,7 @@ export default function App() {
         });
       }
 
-      // Đếm ngược Hiệp Ước Đình Chiến (TRUCE 45 giây)
+      // Đếm ngược Hiệp Ước Đình Chiến (TRUCE 45 giây) và Liên Minh (ALLIANCE 5 phút = 300 giây)
       nations.forEach(n => {
         if (!n.diplomacy) return;
         Object.keys(n.diplomacy).forEach(tKey => {
@@ -1844,6 +1876,46 @@ export default function App() {
                   type: 'FLOAT_TEXT',
                   color: '#f59e0b', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
                   text: `🕊️ Hết hạn đình chiến 45s (${other.name})`
+                });
+              }
+            }
+          } else if (dip && dip.status === 'ALLIANCE') {
+            const nowSec = data.gameTimeSeconds || 0;
+            const other = nations[targetId];
+            if (typeof dip.alliedSince !== 'number') {
+              dip.alliedSince = nowSec;
+              if (other && other.diplomacy?.[n.id]?.status === 'ALLIANCE' && typeof other.diplomacy[n.id].alliedSince !== 'number') {
+                other.diplomacy[n.id].alliedSince = nowSec;
+              }
+            }
+            if (nowSec - dip.alliedSince >= 300) {
+              dip.status = 'WAR';
+              dip.relation = 0;
+              dip.truceTimer = 0;
+              delete dip.alliedSince;
+              if (other && other.diplomacy?.[n.id]?.status === 'ALLIANCE') {
+                other.diplomacy[n.id].status = 'WAR';
+                other.diplomacy[n.id].relation = 0;
+                other.diplomacy[n.id].truceTimer = 0;
+                delete other.diplomacy[n.id].alliedSince;
+              }
+              if ((n.id === 1 && other && !other.isEliminated) || (other?.id === 1 && !n.isEliminated)) {
+                const playerNation = n.id === 1 ? n : other!;
+                const allyNation = n.id === 1 ? other! : n;
+                data.events.unshift({
+                  id: Math.random().toString(),
+                  title: '🤝 Hết Hạn Liên Minh (5 phút)',
+                  description: `Hiệp ước liên minh 5 phút với ${allyNation.name} đã kết thúc! Hai quốc gia trở lại trạng thái chiến tranh.`,
+                  type: 'DIPLOMACY',
+                  targetNationId: allyNation.id,
+                  timestamp: formatGameTime(data.gameTimeSeconds),
+                });
+                data.particles.push({
+                  x: playerNation.capitalX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  y: playerNation.capitalY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+                  type: 'FLOAT_TEXT',
+                  color: '#f59e0b', size: 0, life: 60, maxLife: 60, vx: 0, vy: -0.6,
+                  text: `🤝 Hết hạn liên minh 5 phút (${allyNation.name})`
                 });
               }
             }
@@ -2829,7 +2901,7 @@ export default function App() {
             offscreenTerritoryDirtyRef.current = true;
             fogBaseDirtyRef.current = true;
           },
-          playAttackSound: () => soundManager.playAttack(),
+          playAttackSound: () => soundManager.playAirStrike(),
           playExplosionSound: () => soundManager.playThunder(),
           localHudNationId: localId,
         });
@@ -4165,6 +4237,92 @@ export default function App() {
       syncTitanStateNow();
     };
 
+    multiplayerClient.onActionTitanUlt = (action) => {
+      if (myNationIdRef.current === 1) return; // Chỉ Client xử lý sự kiện từ Host
+      const data = gameDataRef.current;
+      if (!data || !data.darkTitans) return;
+      const titan = data.darkTitans.find((t: any) => !action.titanId || t.id === action.titanId) || data.darkTitans[0];
+      const castId = action.ultCastId || `${titan?.id || action.titanId || 'titan'}_${action.startedAt ?? 'ult'}`;
+
+      if (action.action === 'CHARGE') {
+        if (handledTitanUltChargesRef.current.has(castId)) return;
+        if (handledTitanUltChargesRef.current.size > 100) handledTitanUltChargesRef.current.clear();
+        handledTitanUltChargesRef.current.add(castId);
+        if (!titan) return;
+
+        const chargeSec = action.chargeSeconds ?? DARK_TITAN_CONFIG.ULT_CHARGE_SECONDS;
+        const elapsed =
+          typeof action.startedAt === 'number' && typeof data.gameTimeSeconds === 'number'
+            ? Math.max(0, Math.min(chargeSec - 0.1, data.gameTimeSeconds - action.startedAt))
+            : 0;
+
+        titan.ultCharge = Math.max(0.05, chargeSec - elapsed);
+        titan.ultDuration = chargeSec;
+        titan.ultStartedAt = action.startedAt ?? data.gameTimeSeconds;
+        titan.ultCastId = castId;
+        titan.ultExploded = false;
+        titan.ultX = action.targetX ?? titan.x;
+        titan.ultY = action.targetY ?? titan.y;
+
+        soundManager.playTitanUltCharge();
+        soundManager.playWarningSiren();
+        data.particles = data.particles || [];
+        data.particles.push({
+          x: titan.x * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+          y: titan.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+          color: '#f97316',
+          size: 0,
+          life: 45,
+          maxLife: 45,
+          vx: 0,
+          vy: -0.8,
+          type: 'FLOAT_TEXT',
+          text: '☄️ CẢNH BÁO: Thiên Thạch sắp rơi!',
+        });
+      } else if (action.action === 'EXPLODE') {
+        if (handledTitanUltExplodesRef.current.has(castId)) return;
+        if (handledTitanUltExplodesRef.current.size > 100) handledTitanUltExplodesRef.current.clear();
+        handledTitanUltExplodesRef.current.add(castId);
+
+        const ux = action.targetX ?? titan?.ultX ?? titan?.x ?? 0;
+        const uy = action.targetY ?? titan?.ultY ?? titan?.y ?? 0;
+        const ultR = action.radius ?? (DARK_TITAN_CONFIG.ULT_RADIUS + (titan?.ultBonus ?? 0));
+
+        soundManager.playTitanUlt();
+        soundManager.playTitanRoar();
+        if (screenShakeRef) {
+          screenShakeRef.current = { intensity: 10, duration: 20 };
+        }
+        data.titanFx = data.titanFx || [];
+        if (data.titanFx.length > 30) data.titanFx.shift();
+        data.titanFx.push({ kind: 'METEOR', x: ux, y: uy, radius: ultR, duration: 950, color: '#f97316', start: Date.now() });
+
+        data.particles = data.particles || [];
+        data.particles.push({
+          x: (titan?.x ?? ux) * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+          y: (titan?.y ?? uy) * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2,
+          color: '#f97316',
+          size: 0,
+          life: 45,
+          maxLife: 45,
+          vx: 0,
+          vy: -0.8,
+          type: 'FLOAT_TEXT',
+          text: '☄️ THIÊN THẠCH HẮC ÁM!',
+        });
+
+        if (titan) {
+          titan.ultCharge = 0;
+          titan.ultExploded = true;
+          titan.ultX = undefined;
+          titan.ultY = undefined;
+          titan.ultStartedAt = undefined;
+          titan.ultDuration = undefined;
+          titan.ultCastId = undefined;
+        }
+      }
+    };
+
     multiplayerClient.onStateSync = (syncData) => {
       if (myNationIdRef.current === 1) return; // Host has authoritative state
       const data = gameDataRef.current;
@@ -4261,12 +4419,49 @@ export default function App() {
         data.nextTitanSpawnAt = syncData.nextTitanSpawnAt;
       }
       if (syncData.darkTitans && data.darkTitans) {
-        const prevIds = new Set((data.darkTitans || []).map((t: DarkTitan) => t.id));
-        data.darkTitans = syncData.darkTitans;
+        const prevMap = new Map<string, DarkTitan>();
+        (data.darkTitans || []).forEach((t: DarkTitan) => {
+          if (t.id) prevMap.set(t.id, t);
+        });
+        const prevIds = new Set(prevMap.keys());
+        data.darkTitans = syncData.darkTitans.map((incoming: DarkTitan) => {
+          if (incoming.ultCastId && handledTitanUltExplodesRef.current.has(incoming.ultCastId)) {
+            return {
+              ...incoming,
+              ultCharge: 0,
+              ultX: undefined,
+              ultY: undefined,
+              ultStartedAt: undefined,
+              ultDuration: undefined,
+              ultCastId: undefined,
+              ultExploded: true,
+            };
+          }
+          const prev = incoming.id ? prevMap.get(incoming.id) : undefined;
+          if (prev && prev.ultCharge && prev.ultCharge > 0 && prev.ultCastId && !incoming.ultCharge && !handledTitanUltExplodesRef.current.has(prev.ultCastId)) {
+            return {
+              ...incoming,
+              ultCharge: prev.ultCharge,
+              ultX: prev.ultX,
+              ultY: prev.ultY,
+              ultStartedAt: prev.ultStartedAt,
+              ultDuration: prev.ultDuration,
+              ultCastId: prev.ultCastId,
+              ultExploded: prev.ultExploded,
+            };
+          }
+          return incoming;
+        });
         data.darkTitan = data.darkTitans[0] || null;
         data.darkTitans.forEach((t: DarkTitan) => {
-          if (t.isActive && !prevIds.has(t.id)) {
+          if (t.isActive && (!t.id ? prevMap.size === 0 : !prevIds.has(t.id))) {
             triggerTitanArrivalEffects(data, t.x, t.y, screenShakeRef);
+          }
+          if (t.isActive && t.ultCharge && t.ultCharge > 0 && t.ultCastId && !handledTitanUltChargesRef.current.has(t.ultCastId)) {
+            if (handledTitanUltChargesRef.current.size > 100) handledTitanUltChargesRef.current.clear();
+            handledTitanUltChargesRef.current.add(t.ultCastId);
+            soundManager.playTitanUltCharge();
+            soundManager.playWarningSiren();
           }
         });
       }
@@ -4286,6 +4481,19 @@ export default function App() {
       } else {
         setMultiplayerBanner('Đã kết nối lại thành công!');
         setTimeout(() => setMultiplayerBanner(null), 3000);
+      }
+    };
+
+    multiplayerClient.onConnectionStatusChange = (info) => {
+      if (info.status === 'RECONNECTING') {
+        setMultiplayerBanner(`🔄 ${info.message}`);
+      } else if (info.status === 'CONNECTED') {
+        setMultiplayerBanner('✅ Đã kết nối lại thành công!');
+        setTimeout(() => setMultiplayerBanner(null), 3000);
+      } else if (info.status === 'FAILED') {
+        setMultiplayerBanner(`❌ ${info.message}`);
+      } else if (info.status === 'DISCONNECTED') {
+        setMultiplayerBanner('⚠️ Mất kết nối tới máy chủ phòng. Đang chuẩn bị kết nối lại...');
       }
     };
 
@@ -4318,9 +4526,11 @@ export default function App() {
       multiplayerClient.onActionTech = null;
       multiplayerClient.onActionSupremeTech = null;
       multiplayerClient.onActionAir = null;
+      multiplayerClient.onActionTitanUlt = null;
       multiplayerClient.onStateSync = null;
       multiplayerClient.onRoomUpdated = null;
       multiplayerClient.onConnectionChange = null;
+      multiplayerClient.onConnectionStatusChange = null;
       multiplayerClient.onPlayerDisconnected = null;
       multiplayerClient.onError = null;
     };
@@ -5705,7 +5915,10 @@ export default function App() {
                   const rawX = vpW / 2 - (mapX * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2) * curZoom;
                   const rawY = vpH / 2 - (mapY * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2) * curZoom;
                   const clamped = clampCamera(rawX, rawY, curZoom);
+                  cameraAnimRef.current = null;
                   cameraRef.current = { x: clamped.x, y: clamped.y, zoom: curZoom };
+                  soundManager.playClick();
+                  forceUpdate((c: number) => c + 1);
                 }}
                 />
               );
@@ -6473,6 +6686,18 @@ export default function App() {
         isOpen={isHandbookOpen}
         onClose={() => setIsHandbookOpen(false)}
       />
+
+      {showTutorial && (
+        <TutorialModal
+          isOpen={showTutorial}
+          onClose={() => {
+            try {
+              localStorage.setItem('pixelEmpireTutorialSeen', '1');
+            } catch {}
+            setShowTutorial(false);
+          }}
+        />
+      )}
 
       {gameState === 'TITLE' && <MemeLayer />}
     </div>

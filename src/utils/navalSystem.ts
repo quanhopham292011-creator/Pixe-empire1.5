@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { AIR_SYSTEM_CONFIG } from '../data/gameData';
 import { TILE_PIXEL_SIZE } from './constants';
+import { soundManager } from './audio';
 import { getDepositTiles, hasActiveMineralMine } from './resources';
 import {
   findSeaPath,
@@ -1032,6 +1033,7 @@ export function damageNavalShip(
     ship.captureTargetShipId = undefined;
   }
   if (ship.hp <= 0) {
+    if (attacker?.isPlayer || data?.nations?.[ship.nationId]?.isPlayer) soundManager.playShipSunk();
     const bounty = ship.type === 'WARSHIP' ? 90 : 40;
     if (attacker && !attacker.isEliminated) {
       attacker.gold += bounty;
@@ -1833,6 +1835,7 @@ export function tickNavalSystem(data: any, difficulty: string, _callbacks?: Nava
             vy: 0,
             type: 'LASER_BEAM',
           });
+          if (owner?.isPlayer || data.nations?.[targetNav.nationId]?.isPlayer) soundManager.playCannon();
           damageNavalShip(targetNav, warshipDps, owner, data, undefined, _callbacks?.applyCasualties);
           if (ship.order !== 'LANDING') continue;
         } else if (ship.order !== 'MOVE' && ship.order !== 'LANDING') {

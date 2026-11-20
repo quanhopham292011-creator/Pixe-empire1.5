@@ -532,6 +532,10 @@ export interface DarkTitan {
   ultCharge?: number;
   ultX?: number;
   ultY?: number;
+  ultStartedAt?: number;
+  ultDuration?: number;
+  ultCastId?: string;
+  ultExploded?: boolean;
   slowTimer?: number;
   rage?: boolean;
   tier?: number;

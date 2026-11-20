@@ -7,8 +7,19 @@ class MultiplayerClient {
   private ws: WebSocket | null = null;
   private isConnecting = false;
   private messageQueue: ClientMessage[] = [];
+  private reconnectToken: string | null = null;
+  private roomCode: string | null = null;
+  private playerId: string | null = null;
+  private isIntentionalLeave = false;
+  private reconnectAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Callbacks
+  public onConnectionStatusChange: Listener<{
+    status: 'DISCONNECTED' | 'RECONNECTING' | 'CONNECTED' | 'FAILED';
+    attempt?: number;
+    message?: string;
+  }> | null = null;
   public onRoomCreated: Listener<{ room: RoomState; myPlayerId: string }> | null = null;
   public onRoomJoined: Listener<{ room: RoomState; myPlayerId: string }> | null = null;
   public onRoomUpdated: Listener<RoomState> | null = null;
@@ -51,6 +62,16 @@ class MultiplayerClient {
     bomberStartY?: number;
     bomberEndX?: number;
     bomberEndY?: number;
+  }> | null = null;
+  public onActionTitanUlt: Listener<{
+    action: 'CHARGE' | 'EXPLODE';
+    titanId?: string;
+    targetX?: number;
+    targetY?: number;
+    startedAt?: number;
+    chargeSeconds?: number;
+    radius?: number;
+    ultCastId?: string;
   }> | null = null;
   public onStateSync: Listener<{
     nations: Array<{
@@ -128,6 +149,15 @@ class MultiplayerClient {
           this.isConnecting = false;
           if (this.onConnectionChange) this.onConnectionChange(true);
 
+          if (this.reconnectToken && this.roomCode && this.playerId) {
+            this.send({
+              type: 'RECONNECT_ROOM',
+              roomCode: this.roomCode,
+              playerId: this.playerId,
+              reconnectToken: this.reconnectToken,
+            });
+          }
+
           // Gửi các tin nhắn đang chờ trong hàng đợi
           while (this.messageQueue.length > 0) {
             const msg = this.messageQueue.shift();
@@ -150,6 +180,13 @@ class MultiplayerClient {
           this.isConnecting = false;
           this.ws = null;
           if (this.onConnectionChange) this.onConnectionChange(false);
+          if (this.onConnectionStatusChange) {
+            this.onConnectionStatusChange({ status: 'DISCONNECTED', message: 'Mất kết nối' });
+          }
+
+          if (!this.isIntentionalLeave && this.reconnectToken && this.roomCode && this.playerId) {
+            this.triggerReconnect();
+          }
         };
 
         this.ws.onerror = (err) => {
@@ -172,13 +209,60 @@ class MultiplayerClient {
     }
   }
 
+  private triggerReconnect() {
+    if (this.isIntentionalLeave || this.isConnecting || this.isConnected()) return;
+    if (this.reconnectAttempts >= 6) {
+      if (this.onConnectionStatusChange) {
+        this.onConnectionStatusChange({
+          status: 'FAILED',
+          message: 'Hết thời gian chờ khôi phục phiên (60s). Phiên chơi đã hết hạn hoặc máy chủ đã đóng.',
+        });
+      }
+      if (this.onError) {
+        this.onError('Hết thời gian chờ khôi phục phiên (60s).');
+      }
+      return;
+    }
+
+    this.reconnectAttempts++;
+    const delay = Math.min(10000, Math.pow(2, this.reconnectAttempts - 1) * 1000);
+
+    if (this.onConnectionStatusChange) {
+      this.onConnectionStatusChange({
+        status: 'RECONNECTING',
+        attempt: this.reconnectAttempts,
+        message: `Mất mạng! Đang tự động kết nối lại (lần ${this.reconnectAttempts})...`,
+      });
+    }
+
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(async () => {
+      if (this.isIntentionalLeave || this.isConnected()) return;
+      await this.connect();
+      if (!this.isConnected() && !this.isIntentionalLeave) {
+        this.triggerReconnect();
+      }
+    }, delay);
+  }
+
   private handleServerMessage(msg: ServerMessage) {
     switch (msg.type) {
       case 'ROOM_CREATED':
-        if (this.onRoomCreated) this.onRoomCreated({ room: msg.room, myPlayerId: msg.myPlayerId });
-        break;
       case 'ROOM_JOINED':
-        if (this.onRoomJoined) this.onRoomJoined({ room: msg.room, myPlayerId: msg.myPlayerId });
+        if (msg.reconnectToken) {
+          this.reconnectToken = msg.reconnectToken;
+          this.roomCode = msg.room.code;
+          this.playerId = msg.myPlayerId;
+        }
+        this.reconnectAttempts = 0;
+        if (this.onConnectionStatusChange) {
+          this.onConnectionStatusChange({ status: 'CONNECTED', message: 'Đã kết nối thành công!' });
+        }
+        if (msg.type === 'ROOM_CREATED' && this.onRoomCreated) {
+          this.onRoomCreated({ room: msg.room, myPlayerId: msg.myPlayerId });
+        } else if (msg.type === 'ROOM_JOINED' && this.onRoomJoined) {
+          this.onRoomJoined({ room: msg.room, myPlayerId: msg.myPlayerId });
+        }
         break;
       case 'ROOM_UPDATED':
         if (this.onRoomUpdated) this.onRoomUpdated(msg.room);
@@ -201,6 +285,9 @@ class MultiplayerClient {
       case 'ACTION_AIR':
         if (this.onActionAir) this.onActionAir(msg);
         break;
+      case 'ACTION_TITAN_ULT':
+        if (this.onActionTitanUlt) this.onActionTitanUlt(msg);
+        break;
       case 'STATE_SYNC':
         if (this.onStateSync) this.onStateSync(msg);
         break;
@@ -214,11 +301,19 @@ class MultiplayerClient {
   }
 
   public async createRoom(playerName: string) {
+    this.isIntentionalLeave = false;
+    this.reconnectToken = null;
+    this.roomCode = null;
+    this.playerId = null;
     await this.connect();
     this.send({ type: 'CREATE_ROOM', playerName });
   }
 
   public async joinRoom(roomCode: string, playerName: string) {
+    this.isIntentionalLeave = false;
+    this.reconnectToken = null;
+    this.roomCode = null;
+    this.playerId = null;
     await this.connect();
     this.send({ type: 'JOIN_ROOM', roomCode, playerName });
   }
@@ -232,6 +327,14 @@ class MultiplayerClient {
   }
 
   public leaveRoom() {
+    this.isIntentionalLeave = true;
+    this.reconnectToken = null;
+    this.roomCode = null;
+    this.playerId = null;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.send({ type: 'LEAVE_ROOM' });
   }
 
@@ -293,6 +396,22 @@ class MultiplayerClient {
   }) {
     this.send({
       type: 'PLAYER_AIR_ACTION',
+      ...payload,
+    });
+  }
+
+  public sendTitanUlt(payload: {
+    action: 'CHARGE' | 'EXPLODE';
+    titanId?: string;
+    targetX?: number;
+    targetY?: number;
+    startedAt?: number;
+    chargeSeconds?: number;
+    radius?: number;
+    ultCastId?: string;
+  }) {
+    this.send({
+      type: 'PLAYER_TITAN_ULT',
       ...payload,
     });
   }

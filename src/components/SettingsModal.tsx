@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Volume2, VolumeX, Pause, Play, Map, LogOut, X, AlertTriangle, Settings, Cloud, CloudRain, Sun, EyeOff, Eye } from 'lucide-react';
 import { WeatherType } from '../types';
+import { soundManager } from '../utils/audio';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -42,6 +43,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onQuitWithoutSaving,
 }) => {
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  const [vol, setVol] = useState(Math.round(soundManager.volume * 100));
   const [uiScale] = useState(() => {
     const saved = localStorage.getItem('uiScale');
     return !saved || saved === '95%' ? '100%' : saved;
@@ -122,6 +124,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               >
                 {soundEnabled ? 'BẬT' : 'TẮT'}
               </button>
+            </div>
+
+            <div className="flex items-center gap-3 p-3 bg-slate-950/90 rounded-2xl border border-slate-700">
+              <Volume2 className="w-5 h-5 text-emerald-300 shrink-0" />
+              <input
+                type="range" min={0} max={100} step={5}
+                value={vol}
+                disabled={!soundEnabled}
+                onChange={(e) => { const v = Number(e.target.value); setVol(v); soundManager.setVolume(v / 100); }}
+                className="w-full h-8 accent-emerald-400 disabled:opacity-40"
+              />
+              <span className="text-sm font-bold text-white w-10 text-right shrink-0">{vol}%</span>
             </div>
 
             {/* 2. Tạm dừng trận đấu */}

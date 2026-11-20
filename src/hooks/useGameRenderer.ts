@@ -1538,6 +1538,25 @@ export function useGameRenderer({
         const ty = titan.y * TILE_PIXEL_SIZE + TILE_PIXEL_SIZE / 2;
         const pulse = Math.sin(timestamp * 0.006);
 
+        // Vùng sát khí Tà Thần bán kính 5 ô (chỉ vẽ khi nằm trong vùng nhìn thấy, không đổ bóng/gradient)
+        const auraRadiusTiles = 5;
+        if (
+          titan.x + auraRadiusTiles >= minTileX &&
+          titan.x - auraRadiusTiles <= maxTileX &&
+          titan.y + auraRadiusTiles >= minTileY &&
+          titan.y - auraRadiusTiles <= maxTileY
+        ) {
+          ctx.save();
+          ctx.fillStyle = 'rgba(168, 85, 247, 0.12)';
+          ctx.strokeStyle = 'rgba(168, 85, 247, 0.45)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(tx, ty, auraRadiusTiles * TILE_PIXEL_SIZE, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+
         ctx.save();
         // Hào quang ma thuật hắc ám Đỏ Rực (Dark Red & Crimson Aura)
         const auraGrad = ctx.createRadialGradient(tx, ty, 4, tx, ty, 24 + pulse * 4);

@@ -31,7 +31,7 @@ export function damageDarkTitan(
 
   if (titan.hp <= 0 && titan.isActive) {
     titan.isActive = false;
-    soundManager.playGeneralHorn();
+    soundManager.playTitanDeath();
 
     if (attackerNation) {
       if (attackerNation.general) {

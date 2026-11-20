@@ -70,6 +70,14 @@ export const MultiplayerModal: React.FC<MultiplayerModalProps> = ({
     multiplayerClient.onError = (msg) => {
       setErrorMessage(msg);
       setIsLoading(false);
+      if (msg.includes('Không tìm thấy phòng')) {
+        setRoomCodeInput('');
+        try {
+          if (window.location.search.includes('room=')) {
+            history.replaceState(null, '', window.location.pathname);
+          }
+        } catch {}
+      }
     };
 
     return () => {

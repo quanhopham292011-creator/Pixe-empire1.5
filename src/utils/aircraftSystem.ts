@@ -18,6 +18,7 @@ import { getSupremeBranchLevel } from './supremeTech';
 import { damageDarkTitan } from './titanCombat';
 import { getTradeShipPosition } from './seaPathfinding';
 import { damageNavalShip, isEnemyNavalShip } from './navalSystem';
+import { soundManager } from './audio';
 
 export interface AirBaseLocation {
   x: number;
@@ -622,6 +623,7 @@ export function launchAirUnit(
 
   // Xuất kích tốn 1 lượt, 0 Dầu
   nation.airSorties = Math.max(0, (nation.airSorties || 0) - 1);
+  if (nation.isPlayer) soundManager.playAirLaunch();
 
   const spec = AIR_UNIT_SPECS[type];
   const bonuses = getAirTechBonuses(nation);
@@ -1457,7 +1459,7 @@ export function tickAirUnits(
     }
   }
 
-  // Sau khi hồi phục xong 20s: Loại 1 (FIGHTER) tự tìm mục tiêu mới gần nhất hoặc tuần tra
+  // Sau khi hồi phục xong 45s: Loại 1 (FIGHTER) tự tìm mục tiêu mới gần nhất hoặc tuần tra
   for (let i = 0; i < recoveredFightersReady.length; i++) {
     const u = recoveredFightersReady[i];
     const owner = nations[u.nationId];
@@ -1485,7 +1487,7 @@ export function tickAirUnits(
     }
   }
 
-  // Sau khi hồi phục xong 20s: Loại 2 (SQUADRON) đồng bộ cả Tiểu đội nhận mục tiêu mới hoặc cùng tuần tra
+  // Sau khi hồi phục xong 45s: Loại 2 (SQUADRON) đồng bộ cả Tiểu đội nhận mục tiêu mới hoặc cùng tuần tra
   recoveredSquadronIds.forEach((sqId) => {
     const members = units.filter(
       (m) => m && !destroyedIds.has(m.id) && m.type === 'SQUADRON' && (m.squadronId || m.id) === sqId
@@ -1544,6 +1546,13 @@ export function tickAirUnits(
   }
 
   // Giai đoạn 2: Di chuyển, Chiến đấu (Mặt đất/Biển/Tà Thần + Không đối Không), Phòng Không (SAM)
+  const samFired = ctx.sams.length > 0 ? new Uint8Array(ctx.sams.length) : null;
+  const activeTitans: DarkTitan[] =
+    Array.isArray(data.darkTitans) && data.darkTitans.length > 0
+      ? data.darkTitans.filter((t: DarkTitan) => t && t.isActive)
+      : data.darkTitan && data.darkTitan.isActive
+        ? [data.darkTitan]
+        : [];
   for (let i = 0; i < units.length; i++) {
     const u = units[i];
     if (!u || destroyedIds.has(u.id) || !isFlyingAirState(u.state)) continue;
@@ -1914,10 +1923,10 @@ export function tickAirUnits(
       }
     }
 
-    // 3. Phòng Không (SAM / AIR_DEFENSE) đánh chặn máy bay đang bay qua
-    if (isFlyingAirState(u.state) && ctx.sams.length > 0) {
-      let samShots = 0;
-      for (let si = 0; si < ctx.sams.length && samShots < 2; si++) {
+    // 3. Phòng Không (SAM / AIR_DEFENSE) đánh chặn máy bay đang bay qua (mỗi SAM bắn tối đa 1 phát/giây, bỏ giới hạn 2 phát/máy bay)
+    if (isFlyingAirState(u.state) && samFired && ctx.sams.length > 0) {
+      for (let si = 0; si < ctx.sams.length; si++) {
+        if (samFired[si]) continue;
         const sam = ctx.sams[si];
         if (!isAtWar(owner, sam.nationId)) continue;
         const samOwner = nations[sam.nationId];
@@ -1925,7 +1934,7 @@ export function tickAirUnits(
         const samRange = hasTech3B ? 6.0 : 5.0;
         const dSam = Math.hypot(sam.x - u.x, sam.y - u.y);
         if (dSam <= samRange) {
-          samShots++;
+          samFired[si] = 1;
           const hitChance = hasTech3B ? AIR_SYSTEM_CONFIG.SAM_HIT_CHANCE_3B : AIR_SYSTEM_CONFIG.SAM_HIT_CHANCE_BASE;
           if (Math.random() < hitChance) {
             const samDmg = hasTech3B ? AIR_SYSTEM_CONFIG.SAM_TECH3B_DAMAGE : AIR_SYSTEM_CONFIG.SAM_BASE_DAMAGE;
@@ -1960,6 +1969,38 @@ export function tickAirUnits(
                 transitionToReturnOrPatrol(u, ctx.basesByNation, owner);
               }
             }
+          }
+        }
+      }
+    }
+
+    // 4. Vùng sát khí của Tà Thần (Dark Titan): bán kính 5 ô gây mất 14% máu tối đa/giây cho máy bay đang bay
+    if (isFlyingAirState(u.state) && !destroyedIds.has(u.id) && activeTitans.length > 0) {
+      let inTitanAura = false;
+      for (let ti = 0; ti < activeTitans.length; ti++) {
+        const titan = activeTitans[ti];
+        if (!titan || !titan.isActive) continue;
+        if (Math.hypot(titan.x - u.x, titan.y - u.y) <= 5) {
+          inTitanAura = true;
+          break;
+        }
+      }
+      if (inTitanAura) {
+        const auraDmg = Math.max(1, Math.round(u.maxHp * 0.10));
+        u.hp = Math.max(0, u.hp - auraDmg);
+        if (u.hp <= 0) {
+          destroyedIds.add(u.id);
+          shootDownAirUnit(u, nations, data, callbacks, 'Bị Tà Thần nghiền nát!');
+        } else if (u.state !== 'RETURNING' && u.hp < u.maxHp * AIR_SYSTEM_CONFIG.RETREAT_HP_RATIO) {
+          if (u.type === 'SQUADRON' && u.squadronId) {
+            for (let k = 0; k < units.length; k++) {
+              const ally = units[k];
+              if (ally && ally.squadronId === u.squadronId && isFlyingAirState(ally.state) && ally.state !== 'RETURNING') {
+                transitionToReturnOrPatrol(ally, ctx.basesByNation, owner);
+              }
+            }
+          } else {
+            transitionToReturnOrPatrol(u, ctx.basesByNation, owner);
           }
         }
       }

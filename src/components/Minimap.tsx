@@ -52,7 +52,18 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const offscreenCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const visibleMapRef = useRef<Uint8Array | null>(null);
+  const lastTouchTapRef = useRef<{ time: number; x: number; y: number } | null>(null);
+  const pingTimerRef = useRef<number | null>(null);
   const [alertBlink, setAlertBlink] = useState(true);
+  const [pingMarker, setPingMarker] = useState<{ x: number; y: number; kind: 'PREVIEW' | 'JUMP' } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pingTimerRef.current !== null) {
+        window.clearTimeout(pingTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!borderAlertKey) {
@@ -323,33 +334,111 @@ export const Minimap: React.FC<MinimapProps> = React.memo(({
     ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
     ctx.fillRect(boxX, boxY, boxW, boxH);
 
-  }, [camera, darkTitan, darkTitans, pendingTitanSpawn, flyingMissiles, attackWaves, borderAlertKey, alertBlink, tiles, nations, mapSize, playerNationId]);
+    // Điểm đánh dấu vùng vừa nhấn / nhấn đúp trên Minimap
+    if (pingMarker) {
+      const pmx = pingMarker.x * tileSize + tileSize / 2;
+      const pmy = pingMarker.y * tileSize + tileSize / 2;
+      ctx.save();
+      if (pingMarker.kind === 'JUMP') {
+        ctx.strokeStyle = '#fde047';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(pmx, pmy, 6.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(pmx - 9, pmy);
+        ctx.lineTo(pmx + 9, pmy);
+        ctx.moveTo(pmx, pmy - 9);
+        ctx.lineTo(pmx, pmy + 9);
+        ctx.stroke();
+      } else {
+        ctx.strokeStyle = 'rgba(253, 224, 71, 0.85)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.arc(pmx, pmy, 5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.restore();
+    }
 
-  const handleInteract = (clientX: number, clientY: number) => {
+  }, [camera, darkTitan, darkTitans, pendingTitanSpawn, flyingMissiles, attackWaves, borderAlertKey, alertBlink, pingMarker, tiles, nations, mapSize, playerNationId]);
+
+  const getMapCoords = (clientX: number, clientY: number): { mapX: number; mapY: number } | null => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
     const clickX = clientX - rect.left;
     const clickY = clientY - rect.top;
     const mapX = Math.max(0, Math.min(mapSize - 1, Math.floor((clickX / rect.width) * mapSize)));
     const mapY = Math.max(0, Math.min(mapSize - 1, Math.floor((clickY / rect.height) * mapSize)));
-    onNavigate(mapX, mapY);
+    return { mapX, mapY };
+  };
+
+  const showPing = (mapX: number, mapY: number, kind: 'PREVIEW' | 'JUMP') => {
+    if (pingTimerRef.current !== null) {
+      window.clearTimeout(pingTimerRef.current);
+    }
+    setPingMarker({ x: mapX, y: mapY, kind });
+    pingTimerRef.current = window.setTimeout(() => {
+      setPingMarker(null);
+      pingTimerRef.current = null;
+    }, kind === 'JUMP' ? 900 : 1200);
+  };
+
+  const triggerQuickJump = (clientX: number, clientY: number) => {
+    const coords = getMapCoords(clientX, clientY);
+    if (!coords) return;
+    showPing(coords.mapX, coords.mapY, 'JUMP');
+    onNavigate(coords.mapX, coords.mapY);
   };
 
   return (
-    <div className="relative border-2 border-slate-700/80 rounded-2xl overflow-hidden shadow-2xl bg-slate-950/90 backdrop-blur-md">
+    <div
+      className="relative border-2 border-slate-700/80 rounded-2xl overflow-hidden shadow-2xl bg-slate-950/90 backdrop-blur-md"
+      title="Nhấn đúp vào khu vực bất kỳ để di chuyển camera nhanh"
+    >
       <canvas
         ref={canvasRef}
         width={100}
         height={100}
-        onClick={(e) => handleInteract(e.clientX, e.clientY)}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (e.detail === 1) {
+            const coords = getMapCoords(e.clientX, e.clientY);
+            if (coords) showPing(coords.mapX, coords.mapY, 'PREVIEW');
+          }
+        }}
+        onDoubleClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          triggerQuickJump(e.clientX, e.clientY);
+        }}
         onTouchStart={(e) => {
-          if (e.touches[0]) {
-            handleInteract(e.touches[0].clientX, e.touches[0].clientY);
+          e.stopPropagation();
+          e.preventDefault();
+          const touch = e.touches[0];
+          if (!touch) return;
+          const now = performance.now();
+          const prev = lastTouchTapRef.current;
+          if (prev && now - prev.time <= 350 && Math.hypot(touch.clientX - prev.x, touch.clientY - prev.y) <= 28) {
+            lastTouchTapRef.current = null;
+            triggerQuickJump(touch.clientX, touch.clientY);
+          } else {
+            lastTouchTapRef.current = { time: now, x: touch.clientX, y: touch.clientY };
+            const coords = getMapCoords(touch.clientX, touch.clientY);
+            if (coords) showPing(coords.mapX, coords.mapY, 'PREVIEW');
           }
         }}
         className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 cursor-pointer block image-rendering-pixelated touch-none"
       />
+      {pingMarker?.kind === 'PREVIEW' && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-slate-950/85 text-amber-200 text-[9px] font-bold text-center py-0.5 leading-none">
+          Nhấn đúp để tới
+        </div>
+      )}
     </div>
   );
 });

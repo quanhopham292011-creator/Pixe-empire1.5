@@ -3,6 +3,7 @@ import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
+import crypto from 'crypto';
 import { SUPREME_TECH_CONFIG } from './src/data/gameData';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -39,6 +40,7 @@ interface RoomState {
 type ClientMessage =
   | { type: 'CREATE_ROOM'; playerName: string }
   | { type: 'JOIN_ROOM'; roomCode: string; playerName: string }
+  | { type: 'RECONNECT_ROOM'; roomCode: string; playerId: string; reconnectToken: string }
   | { type: 'LEAVE_ROOM' }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<RoomSettings> }
   | { type: 'START_GAME' }
@@ -94,11 +96,22 @@ type ClientMessage =
       airUnits?: any[];
       gameTimeSeconds?: number;
     }
+  | {
+      type: 'PLAYER_TITAN_ULT';
+      action: 'CHARGE' | 'EXPLODE';
+      titanId?: string;
+      targetX?: number;
+      targetY?: number;
+      startedAt?: number;
+      chargeSeconds?: number;
+      radius?: number;
+      ultCastId?: string;
+    }
   | { type: 'CHAT'; text: string };
 
 type ServerMessage =
-  | { type: 'ROOM_CREATED'; room: RoomState; myPlayerId: string }
-  | { type: 'ROOM_JOINED'; room: RoomState; myPlayerId: string }
+  | { type: 'ROOM_CREATED'; room: RoomState; myPlayerId: string; reconnectToken?: string }
+  | { type: 'ROOM_JOINED'; room: RoomState; myPlayerId: string; reconnectToken?: string }
   | { type: 'ROOM_UPDATED'; room: RoomState }
   | { type: 'GAME_STARTED'; room: RoomState }
   | {
@@ -155,6 +168,17 @@ type ServerMessage =
       airUnits?: any[];
       gameTimeSeconds?: number;
     }
+  | {
+      type: 'ACTION_TITAN_ULT';
+      action: 'CHARGE' | 'EXPLODE';
+      titanId?: string;
+      targetX?: number;
+      targetY?: number;
+      startedAt?: number;
+      chargeSeconds?: number;
+      radius?: number;
+      ultCastId?: string;
+    }
   | { type: 'PLAYER_DISCONNECTED'; playerId: string; nationId: number; message: string }
   | { type: 'ERROR'; message: string };
 
@@ -197,6 +221,21 @@ class RoomManager {
   private rooms = new Map<string, RoomState>();
   private clients = new Map<WebSocket, ConnectedClient>();
   private roomSuperStates = new Map<string, RoomSuperState>();
+  private reconnectTokens = new Map<string, { roomCode: string; playerId: string }>();
+
+  constructor() {
+    setInterval(() => {
+      for (const ws of Array.from(this.clients.keys())) {
+        const anyWs = ws as any;
+        if (anyWs.isAlive === false) {
+          try { ws.terminate(); } catch {}
+          continue;
+        }
+        anyWs.isAlive = false;
+        try { ws.ping(); } catch {}
+      }
+    }, 25000);
+  }
 
   private getSuperState(roomCode: string): RoomSuperState {
     let st = this.roomSuperStates.get(roomCode);
@@ -226,6 +265,9 @@ class RoomManager {
   public handleConnection(ws: WebSocket) {
     const playerId = 'p_' + Math.random().toString(36).substring(2, 9);
     this.clients.set(ws, { ws, playerId, roomCode: null, msgCount: 0, lastReset: Date.now() });
+
+    (ws as any).isAlive = true;
+    ws.on('pong', () => { (ws as any).isAlive = true; });
 
     ws.on('message', (data: string | Buffer) => {
       try {
@@ -323,10 +365,14 @@ class RoomManager {
         this.rooms.set(code, newRoom);
         client.roomCode = code;
 
+        const reconnectToken = crypto.randomBytes(16).toString('hex');
+        this.reconnectTokens.set(reconnectToken, { roomCode: code, playerId: client.playerId });
+
         this.send(ws, {
           type: 'ROOM_CREATED',
           room: newRoom,
           myPlayerId: client.playerId,
+          reconnectToken,
         });
         break;
       }
@@ -336,7 +382,7 @@ class RoomManager {
         const room = this.rooms.get(code);
 
         if (!room) {
-          this.send(ws, { type: 'ERROR', message: `Không tìm thấy phòng [${code}]. Vui lòng kiểm tra lại mã!` });
+          this.send(ws, { type: 'ERROR', message: `Không tìm thấy phòng [${code}]. Phòng có thể đã đóng hoặc máy chủ vừa khởi động lại. Hãy nhờ chủ phòng tạo phòng mới và gửi lại mã.` });
           return;
         }
 
@@ -374,10 +420,60 @@ class RoomManager {
         room.players.push(newPlayer);
         client.roomCode = code;
 
+        const reconnectToken = crypto.randomBytes(16).toString('hex');
+        this.reconnectTokens.set(reconnectToken, { roomCode: code, playerId: newPlayer.id });
+
         this.send(ws, {
           type: 'ROOM_JOINED',
           room,
-          myPlayerId: client.playerId,
+          myPlayerId: newPlayer.id,
+          reconnectToken,
+        });
+
+        this.broadcastToRoom(code, {
+          type: 'ROOM_UPDATED',
+          room,
+        });
+        break;
+      }
+
+      case 'RECONNECT_ROOM': {
+        const code = msg.roomCode?.toUpperCase().trim();
+        const playerId = msg.playerId;
+        const token = msg.reconnectToken;
+
+        const tokenInfo = this.reconnectTokens.get(token);
+        if (!tokenInfo || tokenInfo.roomCode !== code || tokenInfo.playerId !== playerId) {
+          this.send(ws, { type: 'ERROR', message: 'Phiên chơi đã hết hạn hoặc không hợp lệ.' });
+          return;
+        }
+
+        const room = this.rooms.get(code);
+        if (!room) {
+          this.send(ws, { type: 'ERROR', message: `Không tìm thấy phòng [${code}]. Phòng có thể đã đóng.` });
+          return;
+        }
+
+        const player = room.players.find(p => p.id === playerId);
+        if (!player) {
+          this.send(ws, { type: 'ERROR', message: 'Không tìm thấy người chơi trong phòng.' });
+          return;
+        }
+
+        if ((player as any).disconnectTimer) {
+          clearTimeout((player as any).disconnectTimer);
+          (player as any).disconnectTimer = null;
+        }
+
+        client.playerId = playerId;
+        client.roomCode = code;
+        player.connected = true;
+
+        this.send(ws, {
+          type: 'ROOM_JOINED',
+          room,
+          myPlayerId: playerId,
+          reconnectToken: token,
         });
 
         this.broadcastToRoom(code, {
@@ -679,6 +775,26 @@ class RoomManager {
         break;
       }
 
+      case 'PLAYER_TITAN_ULT': {
+        if (!client.roomCode) return;
+        const room = this.rooms.get(client.roomCode);
+        if (!room || room.status !== 'PLAYING' || room.hostId !== client.playerId) return;
+        if (msg.action !== 'CHARGE' && msg.action !== 'EXPLODE') return;
+
+        this.broadcastToRoom(client.roomCode, {
+          type: 'ACTION_TITAN_ULT',
+          action: msg.action,
+          titanId: msg.titanId,
+          targetX: msg.targetX,
+          targetY: msg.targetY,
+          startedAt: msg.startedAt,
+          chargeSeconds: msg.chargeSeconds,
+          radius: msg.radius,
+          ultCastId: msg.ultCastId,
+        }, ws);
+        break;
+      }
+
       case 'STATE_SYNC': {
         if (!client.roomCode) return;
         const room = this.rooms.get(client.roomCode);
@@ -758,15 +874,25 @@ class RoomManager {
     if (!client || !client.roomCode) return;
 
     const code = client.roomCode;
+    const playerId = client.playerId;
     const room = this.rooms.get(code);
     client.roomCode = null;
 
+    for (const [t, info] of this.reconnectTokens.entries()) {
+      if (info.playerId === playerId) {
+        this.reconnectTokens.delete(t);
+      }
+    }
+
     if (!room) return;
 
-    const playerIndex = room.players.findIndex(p => p.id === client.playerId);
+    const playerIndex = room.players.findIndex(p => p.id === playerId);
     if (playerIndex === -1) return;
 
     const [leftPlayer] = room.players.splice(playerIndex, 1);
+    if ((leftPlayer as any).disconnectTimer) {
+      clearTimeout((leftPlayer as any).disconnectTimer);
+    }
 
     if (room.players.length === 0) {
       this.rooms.delete(code);
@@ -794,8 +920,70 @@ class RoomManager {
   }
 
   private handleDisconnect(ws: WebSocket) {
-    this.leaveCurrentRoom(ws);
+    const client = this.clients.get(ws);
+    if (!client || !client.roomCode || !client.playerId) {
+      this.clients.delete(ws);
+      return;
+    }
+
+    const code = client.roomCode;
+    const playerId = client.playerId;
+    client.roomCode = null;
     this.clients.delete(ws);
+
+    const room = this.rooms.get(code);
+    if (!room) return;
+
+    const player = room.players.find(p => p.id === playerId);
+    if (!player) return;
+
+    player.connected = false;
+    this.broadcastToRoom(code, {
+      type: 'ROOM_UPDATED',
+      room,
+    });
+
+    if ((player as any).disconnectTimer) {
+      clearTimeout((player as any).disconnectTimer);
+    }
+
+    (player as any).disconnectTimer = setTimeout(() => {
+      const currentRoom = this.rooms.get(code);
+      if (!currentRoom) return;
+      const p = currentRoom.players.find(x => x.id === playerId);
+      if (p && !p.connected) {
+        for (const [t, info] of this.reconnectTokens.entries()) {
+          if (info.playerId === playerId) {
+            this.reconnectTokens.delete(t);
+          }
+        }
+        const idx = currentRoom.players.findIndex(x => x.id === playerId);
+        if (idx !== -1) {
+          const [leftPlayer] = currentRoom.players.splice(idx, 1);
+          if (currentRoom.players.length === 0) {
+            this.rooms.delete(code);
+            this.roomSuperStates.delete(code);
+          } else {
+            if (leftPlayer.isHost && currentRoom.players.length > 0) {
+              currentRoom.players[0].isHost = true;
+              currentRoom.hostId = currentRoom.players[0].id;
+            }
+            if (currentRoom.status === 'PLAYING') {
+              this.broadcastToRoom(code, {
+                type: 'PLAYER_DISCONNECTED',
+                playerId: leftPlayer.id,
+                nationId: leftPlayer.nationId,
+                message: `${leftPlayer.name} đã mất kết nối quá 60s. Bot AI đã tiếp quản quốc gia này!`,
+              });
+            }
+            this.broadcastToRoom(code, {
+              type: 'ROOM_UPDATED',
+              room: currentRoom,
+            });
+          }
+        }
+      }
+    }, 60000);
   }
 }
 

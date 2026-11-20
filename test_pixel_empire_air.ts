@@ -143,7 +143,7 @@ console.log('\n[1] Kiểm tra mở khóa độc lập Loại 1 & Loại 2/3:');
   assert(!canUseAirType23(p), 'Chưa có Đại Công Xưởng 60s -> chưa mở Loại 2 & 3');
 
   assert(AIR_SYSTEM_CONFIG.GRAND_ARSENAL_UNLOCK_SECONDS === 60, 'GRAND_ARSENAL_UNLOCK_SECONDS = 60 giây');
-  assert(AIR_SYSTEM_CONFIG.BASE_RECOVERY_SECONDS === 20, 'BASE_RECOVERY_SECONDS = 20 giây');
+  assert(AIR_SYSTEM_CONFIG.BASE_RECOVERY_SECONDS === 45, 'BASE_RECOVERY_SECONDS = 45 giây');
   assert(SUPER_BUILDING_CONFIG.BUILD_TIME_SECONDS === 45, 'Siêu công trình BUILD_TIME_SECONDS = 45 giây');
 
   // Chưa xây Đại Công Xưởng -> không hiện bộ đếm
@@ -473,21 +473,21 @@ console.log('\n[4] Kiểm tra rút lui <30% HP, đồng bộ Tiểu đội, tu�
   data.airUnits[1].y = 5;
   data.airUnits[2].x = 5;
   data.airUnits[2].y = 5;
-  // Tick 1: PATROL/RETURNING -> RECOVERING (với recoveryTimer = 20)
+  // Tick 1: PATROL/RETURNING -> RECOVERING (với recoveryTimer = 45)
   tickAirUnits(data, ctxRestored, { applyCasualties: () => {}, markTerritoryDirty: () => {} });
-  // Tick 2..20 (19 giây): vẫn đang RECOVERING
-  for (let s = 0; s < 19; s++) {
+  // Tick 2..45 (44 giây): vẫn đang RECOVERING
+  for (let s = 0; s < 44; s++) {
     tickAirUnits(data, ctxRestored, { applyCasualties: () => {}, markTerritoryDirty: () => {} });
   }
   assert(
     data.airUnits.every((u: AirUnit) => u.state === 'RECOVERING'),
-    'Sau 19s hồi phục vẫn đang RECOVERING'
+    'Sau 44s hồi phục vẫn đang RECOVERING'
   );
-  // Tick 21 (đủ 20 giây) khi không có mục tiêu nào -> chuyển PATROL (không bay quanh công trình cố định)
+  // Tick 46 (đủ 45 giây) khi không có mục tiêu nào -> chuyển PATROL (không bay quanh công trình cố định)
   tickAirUnits(data, ctxRestored, { applyCasualties: () => {}, markTerritoryDirty: () => {} });
   assert(
     data.airUnits.every((u: AirUnit) => u.state === 'PATROL' && u.hp === u.maxHp && u.salvosLeft === u.maxSalvos),
-    'Hồi đủ 20s khi không có mục tiêu -> chuyển tuần tra (PATROL) đầy HP & đạn'
+    'Hồi đủ 45s khi không có mục tiêu -> chuyển tuần tra (PATROL) đầy HP & đạn'
   );
   const patrolAnchor = { x: data.airUnits[0].patrolAnchorX, y: data.airUnits[0].patrolAnchorY };
   assert(
@@ -862,20 +862,20 @@ console.log('\n[7] Kiểm tra BOMBER về căn cứ, hồi 20s -> sẵn sàng, B
   );
   assert(getBomberRecoveryRemainingSeconds(data.airUnits, p) > 0, 'Hiển thị thời gian hồi phục khi chưa có bomber sẵn sàng');
 
-  // Bay tiếp cho tới khi chạm căn cứ và bắt đầu RECOVERING (20s)
+  // Bay tiếp cho tới khi chạm căn cứ và bắt đầu RECOVERING (45s)
   for (let s = 0; s < 15 && bomber.state !== 'RECOVERING'; s++) {
     tickAirUnits(data, ctx, { applyCasualties: () => {}, markTerritoryDirty: () => {} });
   }
   assert(bomber.state === 'RECOVERING', 'BOMBER về đến căn cứ chuyển sang RECOVERING');
   assert(getNationAirSummary(data.airUnits, 1).bomberReady === 0, 'Trong lúc đang hồi -> bomberReady = 0');
 
-  // Đếm đủ 20s hồi phục -> về HANGAR, bomberReady = 1, giữ nguyên tuyến cũ
-  for (let s = 0; s < 25 && bomber.state !== 'HANGAR'; s++) {
+  // Đếm đủ 45s hồi phục -> về HANGAR, bomberReady = 1, giữ nguyên tuyến cũ
+  for (let s = 0; s < 50 && bomber.state !== 'HANGAR'; s++) {
     tickAirUnits(data, ctx, { applyCasualties: () => {}, markTerritoryDirty: () => {} });
   }
   assert(
     bomber.state === 'HANGAR' && getNationAirSummary(data.airUnits, 1).bomberReady === 1,
-    'Hồi xong 20s -> BOMBER về HANGAR và tăng số sẵn sàng lên 1'
+    'Hồi xong 45s -> BOMBER về HANGAR và tăng số sẵn sàng lên 1'
   );
   assert(
     bomber.bomberStartX === 10 && bomber.bomberStartY === 15 && bomber.bomberEndX === 25 && bomber.bomberEndY === 15,

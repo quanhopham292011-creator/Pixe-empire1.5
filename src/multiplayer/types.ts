@@ -35,6 +35,7 @@ export interface RoomState {
 export type ClientMessage =
   | { type: 'CREATE_ROOM'; playerName: string }
   | { type: 'JOIN_ROOM'; roomCode: string; playerName: string }
+  | { type: 'RECONNECT_ROOM'; roomCode: string; playerId: string; reconnectToken: string }
   | { type: 'LEAVE_ROOM' }
   | { type: 'UPDATE_SETTINGS'; settings: Partial<RoomSettings> }
   | { type: 'START_GAME' }
@@ -108,11 +109,22 @@ export type ClientMessage =
       airUnits?: AirUnit[];
       gameTimeSeconds?: number;
     }
+  | {
+      type: 'PLAYER_TITAN_ULT';
+      action: 'CHARGE' | 'EXPLODE';
+      titanId?: string;
+      targetX?: number;
+      targetY?: number;
+      startedAt?: number;
+      chargeSeconds?: number;
+      radius?: number;
+      ultCastId?: string;
+    }
   | { type: 'CHAT'; text: string };
 
 export type ServerMessage =
-  | { type: 'ROOM_CREATED'; room: RoomState; myPlayerId: string }
-  | { type: 'ROOM_JOINED'; room: RoomState; myPlayerId: string }
+  | { type: 'ROOM_CREATED'; room: RoomState; myPlayerId: string; reconnectToken?: string }
+  | { type: 'ROOM_JOINED'; room: RoomState; myPlayerId: string; reconnectToken?: string }
   | { type: 'ROOM_UPDATED'; room: RoomState }
   | { type: 'GAME_STARTED'; room: RoomState }
   | { 
@@ -186,6 +198,17 @@ export type ServerMessage =
       nextTitanSpawnAt?: number;
       airUnits?: AirUnit[];
       gameTimeSeconds?: number;
+    }
+  | {
+      type: 'ACTION_TITAN_ULT';
+      action: 'CHARGE' | 'EXPLODE';
+      titanId?: string;
+      targetX?: number;
+      targetY?: number;
+      startedAt?: number;
+      chargeSeconds?: number;
+      radius?: number;
+      ultCastId?: string;
     }
   | { type: 'PLAYER_DISCONNECTED'; playerId: string; nationId: number; message: string }
   | { type: 'ERROR'; message: string };

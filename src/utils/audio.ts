@@ -5,6 +5,58 @@
 class SoundSystem {
   private ctx: AudioContext | null = null;
   public enabled: boolean = true;
+  private master: GainNode | null = null;
+  public volume: number = 0.8;
+  private lastPlayed: Record<string, number> = {};
+  private canPlay(key: string, minMs: number): boolean {
+    const now = Date.now();
+    if (now - (this.lastPlayed[key] || 0) < minMs) return false;
+    this.lastPlayed[key] = now;
+    return true;
+  }
+
+  constructor() {
+    try {
+      const saved = localStorage.getItem('pixelEmpireVolume');
+      if (saved !== null) {
+        const n = parseFloat(saved);
+        if (Number.isFinite(n)) this.volume = Math.max(0, Math.min(1, n));
+      }
+    } catch {}
+  }
+
+  private output(): AudioNode {
+    const ctx = this.ctx as AudioContext;
+    if (!this.master) {
+      this.master = ctx.createGain();
+      this.master.gain.value = this.volume;
+      this.master.connect(ctx.destination);
+    }
+    return this.master;
+  }
+
+  setVolume(v: number) {
+    this.volume = Math.max(0, Math.min(1, v));
+    if (this.master) this.master.gain.value = this.volume;
+    try { localStorage.setItem('pixelEmpireVolume', String(this.volume)); } catch {}
+  }
+
+  private tone(type: OscillatorType, f0: number, f1: number, delay: number, dur: number, vol: number) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + delay;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f0, t);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.linearRampToValueAtTime(vol, t + Math.min(0.03, dur / 3));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g);
+    g.connect(this.output());
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
 
   private initContext() {
     if (!this.ctx && typeof window !== 'undefined') {
@@ -34,7 +86,7 @@ class SoundSystem {
       gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.output());
 
       osc.start();
       osc.stop(this.ctx.currentTime + 0.05);
@@ -57,7 +109,7 @@ class SoundSystem {
       gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.12);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.output());
 
       osc.start();
       osc.stop(this.ctx.currentTime + 0.12);
@@ -83,7 +135,7 @@ class SoundSystem {
         gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.09 + 0.18);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.output());
 
         osc.start(now + i * 0.09);
         osc.stop(now + i * 0.09 + 0.18);
@@ -109,7 +161,7 @@ class SoundSystem {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.output());
 
       osc.start();
       osc.stop(now + 0.18);
@@ -133,7 +185,7 @@ class SoundSystem {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.output());
 
       osc.start();
       osc.stop(now + 0.15);
@@ -159,7 +211,7 @@ class SoundSystem {
         gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.1 + 0.25);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.output());
 
         osc.start(now + idx * 0.1);
         osc.stop(now + idx * 0.1 + 0.25);
@@ -186,7 +238,7 @@ class SoundSystem {
         gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.2);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.output());
 
         osc.start(now + idx * 0.12);
         osc.stop(now + idx * 0.12 + 0.2);
@@ -213,7 +265,7 @@ class SoundSystem {
         gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.15 + 0.25);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.output());
 
         osc.start(now + idx * 0.15);
         osc.stop(now + idx * 0.15 + 0.25);
@@ -240,7 +292,7 @@ class SoundSystem {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.output());
 
       osc.start(now);
       osc.stop(now + 0.75);
@@ -265,7 +317,7 @@ class SoundSystem {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.55);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.output());
 
       osc.start(now);
       osc.stop(now + 0.55);
@@ -289,7 +341,7 @@ class SoundSystem {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.output());
 
       osc.start(now);
       osc.stop(now + 0.4);
@@ -315,7 +367,7 @@ class SoundSystem {
       gain.gain.exponentialRampToValueAtTime(0.001, now + 1.25);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.output());
 
       osc.start(now);
       osc.stop(now + 1.25);
@@ -341,7 +393,7 @@ class SoundSystem {
         gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.08 + 0.22);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.output());
 
         osc.start(now + idx * 0.08);
         osc.stop(now + idx * 0.08 + 0.22);
@@ -370,7 +422,7 @@ class SoundSystem {
       gainLow.gain.exponentialRampToValueAtTime(0.001, now + 1.15);
 
       oscLow.connect(gainLow);
-      gainLow.connect(this.ctx.destination);
+      gainLow.connect(this.output());
       oscLow.start(now);
       oscLow.stop(now + 1.15);
 
@@ -386,7 +438,7 @@ class SoundSystem {
       gainSub.gain.exponentialRampToValueAtTime(0.001, now + 1.05);
 
       oscSub.connect(gainSub);
-      gainSub.connect(this.ctx.destination);
+      gainSub.connect(this.output());
       oscSub.start(now + 0.05);
       oscSub.stop(now + 1.05);
     } catch {}
@@ -411,12 +463,62 @@ class SoundSystem {
         gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.12 + 0.11);
 
         osc.connect(gain);
-        gain.connect(this.ctx.destination);
+        gain.connect(this.output());
 
         osc.start(now + idx * 0.12);
         osc.stop(now + idx * 0.12 + 0.11);
       });
     } catch {}
+  }
+
+  playTitanQ() {
+    if (!this.enabled) return; this.initContext(); if (!this.ctx) return;
+    try { this.tone('sawtooth', 700, 180, 0, 0.18, 0.12); } catch {}
+  }
+  playTitanW() {
+    if (!this.enabled) return; this.initContext(); if (!this.ctx) return;
+    try { this.tone('square', 160, 90, 0, 0.45, 0.10); this.tone('triangle', 240, 120, 0.05, 0.4, 0.08); } catch {}
+  }
+  playTitanE() {
+    if (!this.enabled) return; this.initContext(); if (!this.ctx) return;
+    try { this.tone('sawtooth', 300, 60, 0, 0.35, 0.12); this.tone('square', 110, 55, 0.1, 0.3, 0.09); } catch {}
+  }
+  playTitanUltCharge() {
+    if (!this.enabled) return; this.initContext(); if (!this.ctx) return;
+    try { this.tone('sawtooth', 60, 520, 0, 3.0, 0.10); this.tone('triangle', 90, 700, 0, 3.0, 0.07); } catch {}
+  }
+  playTitanUlt() {
+    if (!this.enabled) return; this.initContext(); if (!this.ctx) return;
+    try { this.tone('sawtooth', 140, 30, 0, 1.4, 0.2); this.tone('square', 80, 25, 0, 1.2, 0.15); this.tone('triangle', 400, 40, 0, 0.9, 0.1); } catch {}
+  }
+  playTitanDeath() {
+    if (!this.enabled) return; this.initContext(); if (!this.ctx) return;
+    try { this.tone('sawtooth', 220, 28, 0, 1.8, 0.16); this.tone('triangle', 130, 24, 0.2, 1.6, 0.12); } catch {}
+  }
+
+  playAirLaunch() {
+    if (!this.enabled) return;
+    if (!this.canPlay('airLaunch', 300)) return;
+    this.initContext(); if (!this.ctx) return;
+    try { this.tone('sawtooth', 150, 700, 0, 0.6, 0.07); this.tone('triangle', 300, 1100, 0.05, 0.55, 0.05); } catch {}
+  }
+  playAirStrike() {
+    if (!this.enabled) return;
+    if (!this.canPlay('airStrike', 120)) return;
+    this.initContext(); if (!this.ctx) return;
+    try { this.tone('sine', 900, 200, 0, 0.25, 0.06); this.tone('sawtooth', 120, 35, 0.2, 0.45, 0.16); this.tone('square', 80, 30, 0.2, 0.35, 0.10); } catch {}
+  }
+  playCannon() {
+    if (!this.enabled) return;
+    if (!this.canPlay('cannon', 700)) return;
+    this.initContext(); if (!this.ctx) return;
+    try { this.tone('sawtooth', 220, 50, 0, 0.3, 0.14); this.tone('square', 90, 40, 0, 0.25, 0.10); } catch {}
+  }
+  playShipSunk() {
+    if (!this.enabled) return;
+    if (!this.canPlay('shipSunk', 300)) return;
+    this.initContext(); if (!this.ctx) return;
+    try { this.tone('sawtooth', 300, 40, 0, 1.2, 0.15); this.tone('triangle', 180, 30, 0.15, 1.0, 0.10); } catch {}
   }
 }
 

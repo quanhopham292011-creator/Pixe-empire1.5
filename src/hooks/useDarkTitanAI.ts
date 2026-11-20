@@ -15,6 +15,21 @@ export interface UseDarkTitanAIParams {
   isMultiplayerRef?: React.MutableRefObject<boolean>;
   myNationIdRef?: React.MutableRefObject<number>;
   onTitanSyncNeeded?: () => void;
+  onTitanUltCharge?: (payload: {
+    titanId: string;
+    x: number;
+    y: number;
+    startedAt: number;
+    chargeSeconds: number;
+    ultCastId: string;
+  }) => void;
+  onTitanUltExplode?: (payload: {
+    titanId: string;
+    x: number;
+    y: number;
+    radius: number;
+    ultCastId: string;
+  }) => void;
 }
 
 export function computeThreat(data: any): number {
@@ -120,6 +135,8 @@ export function stepDarkTitanSystem({
   screenShakeRef,
   isMultiplayerClientNonHost = false,
   onSyncNeeded,
+  onTitanUltCharge,
+  onTitanUltExplode,
 }: {
   data: any;
   offscreenTerritoryDirtyRef: React.MutableRefObject<boolean>;
@@ -127,6 +144,21 @@ export function stepDarkTitanSystem({
   screenShakeRef?: React.MutableRefObject<{ intensity: number; duration: number }>;
   isMultiplayerClientNonHost?: boolean;
   onSyncNeeded?: () => void;
+  onTitanUltCharge?: (payload: {
+    titanId: string;
+    x: number;
+    y: number;
+    startedAt: number;
+    chargeSeconds: number;
+    ultCastId: string;
+  }) => void;
+  onTitanUltExplode?: (payload: {
+    titanId: string;
+    x: number;
+    y: number;
+    radius: number;
+    ultCastId: string;
+  }) => void;
 }) {
   if (!data || !data.tiles || !data.nations) return;
 
@@ -159,7 +191,9 @@ export function stepDarkTitanSystem({
       const tier = threat >= 0.66 ? 3 : threat >= 0.33 ? 2 : 1;
       const tierHpMult = tier === 1 ? 0.85 : tier === 2 ? 0.95 : 1.0;
       const tierDmgMult = tier === 1 ? 0.85 : tier === 2 ? 0.95 : 1.0;
-      const scaledHp = Math.round(DARK_TITAN_CONFIG.MAX_HP * (1 + threat * (DARK_TITAN_CONFIG.HP_GROW[diff] ?? 1.8)) * tierHpMult);
+      const rawScaledHp = Math.round(DARK_TITAN_CONFIG.MAX_HP * (1 + threat * (DARK_TITAN_CONFIG.HP_GROW[diff] ?? 1.8)) * tierHpMult);
+      const hpCap = DARK_TITAN_CONFIG.HP_CAP[diff];
+      const scaledHp = typeof hpCap === 'number' ? Math.min(hpCap, rawScaledHp) : rawScaledHp;
       const warnSec = DARK_TITAN_CONFIG.SPAWN_WARNING_SECONDS;
 
       const pending: PendingTitanSpawn = {
@@ -272,8 +306,18 @@ export function stepDarkTitanSystem({
     }
   }
 
-  // Trong Multiplayer, máy khách (non-host) nhận trạng thái Tà Thần đồng bộ từ Host
+  // Trong Multiplayer, máy khách (non-host) đếm ngược hiển thị gồng chiêu R; vụ nổ do sự kiện ACTION_TITAN_ULT từ Host kích hoạt duy nhất
   if (isMultiplayerClientNonHost) {
+    data.darkTitans.forEach((titan: DarkTitan) => {
+      if (!titan.isActive) return;
+      if (titan.ultExploded) {
+        titan.ultCharge = 0;
+        return;
+      }
+      if (titan.ultCharge && titan.ultCharge > 0) {
+        titan.ultCharge = Math.max(0.05, titan.ultCharge - 1);
+      }
+    });
     return;
   }
 
@@ -489,10 +533,14 @@ export function stepDarkTitanSystem({
 
     if (titan.ultCharge && titan.ultCharge > 0) {
       titan.ultCharge -= 1;
-      if (titan.ultCharge <= 0) {
+      if (titan.ultCharge <= 0 && !titan.ultExploded) {
+        titan.ultExploded = true;
+        titan.ultCharge = 0;
         const ux = titan.ultX ?? titan.x;
         const uy = titan.ultY ?? titan.y;
         const ultR = DARK_TITAN_CONFIG.ULT_RADIUS + (titan.ultBonus ?? 0);
+        const ultCastId = titan.ultCastId || `${titan.id || 'titan'}_${titan.ultStartedAt ?? data.gameTimeSeconds}`;
+        soundManager.playTitanUlt();
         soundManager.playTitanRoar();
         if (screenShakeRef) {
           screenShakeRef.current = { intensity: 10, duration: 20 };
@@ -509,6 +557,9 @@ export function stepDarkTitanSystem({
         titan.postUltPauseTimer = DARK_TITAN_CONFIG.POST_ULT_PAUSE_SECONDS;
         titan.ultX = undefined;
         titan.ultY = undefined;
+        titan.ultStartedAt = undefined;
+        titan.ultDuration = undefined;
+        titan.ultCastId = undefined;
         say('☄️ THIÊN THẠCH HẮC ÁM!', '#f97316');
         data.particles.push({
           x: titan.x * TS + TS / 2,
@@ -522,6 +573,13 @@ export function stepDarkTitanSystem({
           type: 'FLOAT_TEXT',
           text: '💫 Tà Thần sơ hở — Hãy phản công!',
         });
+        onTitanUltExplode?.({
+          titanId: titan.id || '',
+          x: ux,
+          y: uy,
+          radius: ultR,
+          ultCastId,
+        });
       }
     } else {
       const nearSuper = nearestSuperBuilding(14);
@@ -531,18 +589,35 @@ export function stepDarkTitanSystem({
       );
 
       if (cd.r <= 0 && near) {
-        titan.ultCharge = DARK_TITAN_CONFIG.ULT_CHARGE_SECONDS;
+        const chargeSeconds = DARK_TITAN_CONFIG.ULT_CHARGE_SECONDS;
+        const startedAt = data.gameTimeSeconds;
+        const ultCastId = `${titan.id || 'titan'}_${startedAt}_${Math.random().toString(36).slice(2, 7)}`;
+        titan.ultCharge = chargeSeconds;
+        titan.ultDuration = chargeSeconds;
+        titan.ultStartedAt = startedAt;
+        titan.ultCastId = ultCastId;
+        titan.ultExploded = false;
+        soundManager.playTitanUltCharge();
         titan.ultX = near.x;
         titan.ultY = near.y;
         cd.r = DARK_TITAN_CONFIG.ULT_COOLDOWN;
         soundManager.playWarningSiren();
         say('☄️ CẢNH BÁO: Thiên Thạch sắp rơi!', '#f97316');
         didCastSkill = true;
+        onTitanUltCharge?.({
+          titanId: titan.id || '',
+          x: near.x,
+          y: near.y,
+          startedAt,
+          chargeSeconds,
+          ultCastId,
+        });
       } else if (cd.q <= 0 && nearestOwned(2)) {
         hitArea(titan.x, titan.y, 3, DARK_TITAN_CONFIG.Q_DAMAGE_TROOPS * dmgMul, false, false, 0.25);
         addFx('CLAW', titan.x, titan.y, 3, 600, '#ef4444');
-        titan.hp = Math.min(titan.maxHp, titan.hp + Math.floor(titan.maxHp * 0.02));
+        titan.hp = Math.min(titan.maxHp, titan.hp + Math.floor(titan.maxHp * 0.015));
         cd.q = DARK_TITAN_CONFIG.Q_COOLDOWN;
+        soundManager.playTitanQ();
         say('🩸 Móng Vuốt Hủy Diệt', '#ef4444');
         didCastSkill = true;
       } else if (cd.w <= 0 && wavesNear.length > 0) {
@@ -552,6 +627,7 @@ export function stepDarkTitanSystem({
         titan.slowTimer = 6;
         addFx('CHAIN', titan.x, titan.y, 7, 800, '#a855f7');
         cd.w = DARK_TITAN_CONFIG.W_COOLDOWN;
+        soundManager.playTitanW();
         say('⛓️ Xiềng Xích Bóng Tối', '#a855f7');
         didCastSkill = true;
       } else if (cd.e <= 0) {
@@ -578,6 +654,7 @@ export function stepDarkTitanSystem({
           titan.moveTimer = 0;
           addFx('TELEPORT', titan.x, titan.y, 2.5, 700, '#8b5cf6');
           cd.e = DARK_TITAN_CONFIG.E_COOLDOWN;
+          soundManager.playTitanE();
           say('🌀 Dịch Chuyển Bóng Đêm', '#8b5cf6');
           hitArea(titan.x, titan.y, 2, DARK_TITAN_CONFIG.E_DAMAGE_TROOPS * dmgMul, false, false, 0.2);
           didCastSkill = true;
@@ -699,6 +776,8 @@ export function useDarkTitanAI({
   isMultiplayerRef,
   myNationIdRef,
   onTitanSyncNeeded,
+  onTitanUltCharge,
+  onTitanUltExplode,
 }: UseDarkTitanAIParams) {
   const updateDarkTitans = useCallback(() => {
     const isClientNonHost = Boolean(
@@ -711,6 +790,8 @@ export function useDarkTitanAI({
       screenShakeRef,
       isMultiplayerClientNonHost: isClientNonHost,
       onSyncNeeded: onTitanSyncNeeded,
+      onTitanUltCharge,
+      onTitanUltExplode,
     });
   }, [
     gameDataRef,
@@ -720,6 +801,8 @@ export function useDarkTitanAI({
     isMultiplayerRef,
     myNationIdRef,
     onTitanSyncNeeded,
+    onTitanUltCharge,
+    onTitanUltExplode,
   ]);
 
   return { updateDarkTitans };
